@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Directory of the script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Check if this commit is a version bump commit
+commit_message=$(git log -1 --pretty=%B)
+if [[ "$commit_message" =~ ^(chore: bump version|chore: update changelog) ]]; then
+    echo "Skipping version script - this is a version bump commit"
+    exit 0
+fi
+
+# Try to find the version script in different possible locations
+VERSION_SCRIPT=""
+
+# Method 1: Try relative to git hooks directory (for submodules)
+if [ -f "$SCRIPT_DIR/../../../../../Modules/Cms/scripts/version.sh" ]; then
+    VERSION_SCRIPT="$SCRIPT_DIR/../../scripts/version.sh"
+# Method 2: Try relative to git directory (for standalone repos)
+elif [ -f "$SCRIPT_DIR/../scripts/version.sh" ]; then
+    VERSION_SCRIPT="$SCRIPT_DIR/../scripts/version.sh"
+# Method 3: Try to find it from the working directory
+elif [ -f "scripts/version.sh" ]; then
+    VERSION_SCRIPT="scripts/version.sh"
+fi
+
+# Run version script if found
+if [ -n "$VERSION_SCRIPT" ] && [ -f "$VERSION_SCRIPT" ]; then
+    echo "Running version script: $VERSION_SCRIPT"
+    $VERSION_SCRIPT --nointeractive
+else
+    echo "Warning: version.sh script not found"
+fi
+
+exit 0
