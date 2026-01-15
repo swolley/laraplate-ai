@@ -168,22 +168,28 @@ amend_or_commit() {
 update_composer_version() {
     local new_version=$1
     
-    cd "$(git rev-parse --show-toplevel)"
+    local repo_root=$(git rev-parse --show-toplevel)
+    local composer_file="$repo_root/composer.json"
+    
+    # Ensure we're working with the root composer.json only
+    if [ ! -f "$composer_file" ]; then
+        echo "Error: composer.json not found in repository root"
+        exit 1
+    fi
     
     if command -v jq >/dev/null 2>&1; then
         # if jq is installed - modifica la proprietà version alla root
         tmp=$(mktemp)
-        jq --arg version "$new_version" '.version = $version' composer.json > "$tmp" && mv "$tmp" composer.json
+        jq --arg version "$new_version" '.version = $version' "$composer_file" > "$tmp" && mv "$tmp" "$composer_file"
     else
         # fallback to sed if jq is not available
-        sed -i "s/^    \"version\": \".*\",$/    \"version\": \"$new_version\",/" composer.json
+        sed -i "s/^    \"version\": \".*\",$/    \"version\": \"$new_version\",/" "$composer_file"
     fi
     
-    # add the file to git
-    git add composer.json
+    # add only the root composer.json file to git
+    git add "$composer_file"
     amend_or_commit "chore: bump version to $new_version"
 }
-
 # Function to update the changelog
 # Arguments:
 #   $1: New version string
