@@ -186,10 +186,10 @@ update_composer_version() {
         sed -i "s/^    \"version\": \".*\",$/    \"version\": \"$new_version\",/" "$composer_file"
     fi
     
-    # add only the root composer.json file to git
+    # add only the root composer.json file to git (but don't commit yet)
     git add "$composer_file"
-    amend_or_commit "chore: bump version to $new_version"
 }
+
 # Function to update the changelog
 # Arguments:
 #   $1: New version string
@@ -201,9 +201,8 @@ update_changelog() {
     # update the changelog
     git cliff --output CHANGELOG.md
     
-    # add the file to git
+    # add the file to git (but don't commit yet)
     git add CHANGELOG.md
-    amend_or_commit "chore: update changelog for version $new_version"
 }
 
 # Function to update the version in the current repository
@@ -253,15 +252,25 @@ update_version() {
 
     echo "Updating version from $current_version to $new_version"
     
-    # update composer.json
+    # update composer.json (stages the file)
     update_composer_version "$new_version"
     
-    # update the changelog
+    # update the changelog (stages the file)
     update_changelog "$new_version"
+    
+    # create a single commit with all changes
+    amend_or_commit "chore: bump version to $new_version"
     
     # create and push the tag
     git tag -a "$new_version" -m "Release $new_version"
-    git push && git push origin "$new_version"
+    
+    # try to push, but don't fail if credentials are not available
+    if git push 2>/dev/null; then
+        git push origin "$new_version" 2>/dev/null || echo "Warning: Could not push tag. You may need to push manually: git push origin $new_version"
+    else
+        echo "Warning: Could not push commits. You may need to push manually: git push"
+        echo "Warning: Could not push tag. You may need to push manually: git push origin $new_version"
+    fi
 }
 
 SILENT=false
