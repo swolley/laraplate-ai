@@ -1,9 +1,16 @@
 {
     "name": "AI",
     "alias": "ai",
-    "description": "",
-    "keywords": [],
-    "priority": 0,
+    "description": "AI Module for Embeddings, Vector Search and Automatic Translation",
+    "keywords": [
+        "ai",
+        "artificial-intelligence",
+        "embeddings",
+        "vector-search",
+        "translation",
+        "machine-learning"
+    ],
+    "priority": 999,
     "providers": [
         "Modules\\AI\\Providers\\AIServiceProvider"
     ],
