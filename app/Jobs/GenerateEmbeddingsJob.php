@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Jobs;
 
 use Exception;
-use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,11 +15,9 @@ use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
-use Modules\AI\Models\ModelEmbedding;
 use Modules\AI\Services\EmbeddingService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Psr\Http\Client\ClientExceptionInterface;
-use RuntimeException;
 use Throwable;
 
 final class GenerateEmbeddingsJob implements ShouldQueue

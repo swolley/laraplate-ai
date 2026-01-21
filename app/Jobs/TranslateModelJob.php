@@ -120,7 +120,7 @@ final class TranslateModelJob implements ShouldQueue
         TranslationService $translation_service,
     ): void {
         $default_locale = config('app.locale');
-        $translatable_fields = $model->getTranslatableFields();
+        $translatable_fields = $model::getTranslatableFields();
         $translated_data = [];
 
         foreach ($translatable_fields as $field) {
