@@ -84,7 +84,7 @@ final class EmbeddingService
 
     private function getGenerator(): ?EmbeddingGeneratorInterface
     {
-        switch (config('search.vector_search.provider')) {
+        switch (config('ai.features.embeddings.provider')) {
             case 'openai':
                 $config = new OpenAIConfig(config('ai.providers.openai.api_key'));
 

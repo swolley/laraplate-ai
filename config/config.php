@@ -9,17 +9,23 @@ return [
     'features' => [
         'embeddings' => [
             'enabled' => env('AI_EMBEDDINGS_ENABLED', true),
+            'default_provider' => env('AI_EMBEDDINGS_PROVIDER', 'sentence_transformers'),
             // NOTE: Future - attivazione per modulo specifico
             // 'modules' => ['cms'], // Se abilitato, permette di attivare embeddings solo per certi moduli
         ],
         'translation' => [
             'enabled' => env('AI_TRANSLATION_ENABLED', true),
+            'default_provider' => env('AI_TRANSLATION_PROVIDER', 'deepl'),
             // NOTE: Future - attivazione per modulo specifico
             // 'modules' => ['cms'], // Se abilitato, permette di attivare traduzione solo per certi moduli
         ],
+        'chat' => [
+            'enabled' => env('AI_CHAT_ENABLED', true),
+            'default_provider' => env('AI_CHAT_PROVIDER', 'ollama'),
+            'max_context_messages' => env('AI_CHAT_MAX_CONTEXT', 50),
+            'enable_summary' => env('AI_CHAT_ENABLE_SUMMARY', false), // Step 5
+        ],
     ],
-
-    'default' => env('AI_PROVIDER', 'ollama'),
 
     'providers' => [
         'openai' => [

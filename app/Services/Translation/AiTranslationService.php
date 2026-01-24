@@ -16,7 +16,7 @@ final class AiTranslationService implements TranslationServiceInterface
             return $text;
         }
 
-        $provider = config('ai.default', 'ollama');
+        $provider = config('ai.features.translation.default_provider');
         $prompt = $this->buildPrompt($text, $from_locale, $to_locale);
 
         try {
