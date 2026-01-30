@@ -6,6 +6,21 @@ return [
     // Rimappato automaticamente come ai.* quando il modulo è attivo
     // Se il modulo è disattivato, questa config non è disponibile
 
+    // TODO: Future - User/Tenant-selectable AI provider
+    // Implement a system where users or tenants can select their preferred AI provider.
+    // This would involve:
+    // 1. Storing provider preferences in user/tenant settings
+    // 2. Creating a ProviderResolver service that checks user preferences
+    // 3. Allowing per-conversation provider override
+    // 4. Implementing provider capability detection (not all providers support tools, streaming, etc.)
+    //
+    // Example future config structure:
+    // 'user_selectable_provider' => [
+    //     'enabled' => env('AI_USER_SELECTABLE_PROVIDER', false),
+    //     'allowed_providers' => ['ollama', 'openai', 'mistral', 'anthropic'],
+    //     'default_for_new_users' => 'ollama', // Privacy-first default (local)
+    // ],
+
     'features' => [
         'embeddings' => [
             'enabled' => env('AI_EMBEDDINGS_ENABLED', true),
@@ -24,6 +39,46 @@ return [
             'default_provider' => env('AI_CHAT_PROVIDER', 'ollama'),
             'max_context_messages' => env('AI_CHAT_MAX_CONTEXT', 50),
             'enable_summary' => env('AI_CHAT_ENABLE_SUMMARY', false), // Step 5
+        ],
+        'faq' => [
+            'enabled' => env('AI_FAQ_ENABLED', true),
+            'documentation_path' => env('AI_FAQ_DOCS_PATH', null), // null = resource_path('docs')
+            'vector_store' => env('AI_FAQ_VECTOR_STORE', 'filesystem'), // memory (testing only), filesystem
+            'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH', null), // null = storage_path('app/ai/faq-vectorstore.json')
+            'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),
+            'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.7),
+            'question_detection' => [
+                'enabled' => env('AI_FAQ_QUESTION_DETECTION', true),
+                // Custom question words per locale (optional override)
+                // 'words' => [
+                //     'it' => ['cosa', 'come', 'perché', ...],
+                //     'en' => ['what', 'how', 'why', ...],
+                // ],
+            ],
+            'format_citations' => env('AI_FAQ_FORMAT_CITATIONS', true), // Append markdown citations to answers
+        ],
+        'tools' => [
+            'enabled' => env('AI_TOOLS_ENABLED', true),
+            // Tool definitions with risk levels
+            'definitions' => [
+                // Example tool definitions (register actual tools via ToolRegistry::register())
+                // 'get_user_info' => ['risk_level' => 'low'],
+                // 'update_record' => ['risk_level' => 'medium'],
+                // 'delete_record' => ['risk_level' => 'high'],
+            ],
+        ],
+        'guardrails' => [
+            'enabled' => env('AI_GUARDRAILS_ENABLED', false),
+            'prompt_injection_detection' => env('AI_GUARDRAILS_PROMPT_INJECTION', false),
+            'lakera_api_key' => env('LAKERA_API_KEY'),
+            'lakera_endpoint' => env('LAKERA_ENDPOINT', 'https://api.lakera.ai/'),
+            'json_validation' => env('AI_GUARDRAILS_JSON_VALIDATION', false),
+            'retry_on_failure' => env('AI_GUARDRAILS_RETRY', true),
+        ],
+        'contextual_suggestions' => [
+            'enabled' => env('AI_CONTEXTUAL_SUGGESTIONS_ENABLED', false),
+            'cooldown_minutes' => (int) env('AI_CONTEXTUAL_SUGGESTIONS_COOLDOWN', 5), // Min minutes between suggestions
+            'cache_ttl' => (int) env('AI_CONTEXTUAL_SUGGESTIONS_CACHE_TTL', 3600), // Cache duration in seconds
         ],
     ],
 
