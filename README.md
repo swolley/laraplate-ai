@@ -26,6 +26,11 @@ The AI Module provides artificial intelligence capabilities for embeddings gener
 **Key Features:**
 - ✨ Embeddings generation for vector search
 - 🌐 Automatic translation (AI-powered and DeepL)
+- 💬 AI Chat with conversation history and streaming
+- 📚 RAG (Retrieval-Augmented Generation) for FAQ/documentation
+- 🛠️ Tool/Function calling with 3-level risk management
+- 🧠 Conversation memory with automatic summarization
+- 🛡️ Guardrails for prompt injection detection and output validation
 - 🔄 Event-driven architecture for seamless integration
 - 🎯 Zero dependencies from Core/Cms modules (Core never depends on AI)
 
@@ -94,6 +99,28 @@ SENTENCE_TRANSFORMERS_API_KEY=       # Sentence Transformers API key (optional)
 
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key
+
+# Chat Configuration
+AI_CHAT_ENABLED=true                 # Enable chat functionality
+AI_CHAT_PROVIDER=ollama              # Chat provider (ollama, openai, mistral, anthropic)
+AI_CHAT_MAX_CONTEXT=50               # Max messages in context window
+AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarization
+
+# FAQ/RAG Configuration
+AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
+AI_FAQ_DOCS_PATH=                    # Custom documentation path (default: resources/docs)
+AI_FAQ_VECTOR_STORE=filesystem       # Vector store type (memory, filesystem)
+AI_FAQ_MAX_DOCS=5                    # Max documents to retrieve
+AI_FAQ_MIN_SIMILARITY=0.7            # Minimum similarity score
+
+# Tools Configuration
+AI_TOOLS_ENABLED=true                # Enable tool/function calling
+
+# Guardrails Configuration
+AI_GUARDRAILS_ENABLED=false          # Enable guardrails
+AI_GUARDRAILS_PROMPT_INJECTION=false # Enable prompt injection detection
+LAKERA_API_KEY=                      # Lakera Guard API key
+LAKERA_ENDPOINT=https://api.lakera.ai/  # Lakera endpoint
 ```
 
 ### Module Priority
@@ -153,6 +180,40 @@ The AI Module includes built-in features such as:
     - Translation caching for performance
     - Fallback mechanisms for failed translations
     - DeepL integration for professional translations
+
+-   **AI Chat:**
+    - Multi-provider support (OpenAI, Ollama, Mistral, Anthropic)
+    - Conversation history with database persistence
+    - Streaming responses (Server-Sent Events)
+    - System message customization per conversation
+
+-   **FAQ/RAG (Retrieval-Augmented Generation):**
+    - Documentation indexing with embeddings
+    - Vector similarity search for relevant context
+    - Automatic question detection (locale-aware)
+    - Citations in responses with source attribution
+    - Command: `php artisan ai:index-docs`
+
+-   **Tool/Function Calling:**
+    - Register custom tools with `ToolRegistry`
+    - 3-level risk classification (low, medium, high)
+    - Low risk: immediate execution
+    - Medium risk: user confirmation required
+    - High risk: admin approval required
+    - Async execution via jobs
+
+-   **Conversation Memory:**
+    - Automatic summarization after N messages
+    - Key facts extraction
+    - Summary snapshots for history
+    - Opt-in/opt-out per conversation
+    - "Forget" functionality
+
+-   **Guardrails:**
+    - Prompt injection detection (Lakera Guard API)
+    - JSON format validation
+    - Retry strategy for failed validations
+    - Configurable per feature
 
 -   **Event-Driven Architecture:**
     - `ModelRequiresIndexing`: Event emitted when a model needs indexing
@@ -277,10 +338,17 @@ This section tracks all pending tasks and issues that need to be addressed in th
 
 ### High Priority
 
-- [ ] **AI Agent for FAQ Generation**
-  - Implement AI agent that analyzes application code
-  - Generate FAQ documentation automatically
-  - Use vector storage for FAQ search
+- [ ] **Filament Admin Panel for AI**
+  - ActionRequest approval interface (for high-risk actions)
+  - Conversation monitoring
+  - Tool usage analytics
+  - Guardrails configuration UI
+
+- [ ] **User/Tenant-Selectable AI Provider**
+  - Allow users or tenants to select their preferred AI provider
+  - Store provider preferences in user/tenant settings
+  - Support per-conversation provider override
+  - Implement provider capability detection
 
 ### Medium Priority
 
@@ -289,6 +357,15 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Allow enabling embeddings/translation per specific module
   - Currently commented in config for future implementation
 
+- [ ] **Frontend UI for AI Features**
+  - Chat widget component
+  - Action confirmation dialogs
+  - Suggestion display component
+
+- [ ] **Register Default Tools**
+  - Create tool definitions for common CRUD operations
+  - Document tool registration best practices
+
 ### Low Priority
 
 - [ ] **Additional AI Providers**
@@ -296,9 +373,26 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Support for more translation providers
   - Provider abstraction layer improvements
 
+- [ ] **Advanced RAG Features**
+  - Multi-document source types (database, API)
+  - Hybrid search (keyword + vector)
+  - Re-ranking with cross-encoder
+
+### Completed Features
+
+- [x] **Chat System** - Streaming and non-streaming support
+- [x] **RAG/FAQ** - Documentation indexing and question answering
+- [x] **Memory/Summarization** - Automatic conversation summarization
+- [x] **Guardrails** - Prompt injection detection (Lakera integration)
+- [x] **Contextual Suggestions** - Proactive AI suggestions with rate limiting
+- [x] **Tool System Infrastructure** - ToolRegistry, ActionRequest, risk classification
+- [x] **Tool System API** - Full API exposure with confirm/approve/reject endpoints
+- [x] **Event-Driven Architecture** - Clean decoupling from Core module
+
 ### Notes
 
 - The module is designed to be extracted as a standalone package
 - Future plans include making it installable via Composer
 - Consider making it a paid package option
 - Architecture supports easy extension with new AI features
+- **Privacy**: Ollama provider enables fully local AI processing
