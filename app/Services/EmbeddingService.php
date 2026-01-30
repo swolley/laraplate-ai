@@ -82,6 +82,14 @@ final class EmbeddingService
         return $generator->embedText($text);
     }
 
+    /**
+     * Get the configured embedding generator for use by other services (e.g. RAG).
+     */
+    public function getEmbeddingGenerator(): ?EmbeddingGeneratorInterface
+    {
+        return $this->getGenerator();
+    }
+
     private function getGenerator(): ?EmbeddingGeneratorInterface
     {
         switch (config('ai.features.embeddings.provider')) {
