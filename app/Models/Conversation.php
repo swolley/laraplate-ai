@@ -24,14 +24,9 @@ final class Conversation extends Model
         'title',
         'system_message',
         'metadata',
+        'memory_enabled',
+        'summary',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'metadata' => 'array',
-        ];
-    }
 
     /**
      * Get the user that owns the conversation.
@@ -47,6 +42,14 @@ final class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class)->orderBy('created_at');
+    }
+
+    /**
+     * Get the summaries for the conversation.
+     */
+    public function summaries(): HasMany
+    {
+        return $this->hasMany(ConversationSummary::class)->orderByDesc('created_at');
     }
 
     /**
@@ -87,5 +90,13 @@ final class Conversation extends Model
         }
 
         return $messages;
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'metadata' => 'array',
+            'memory_enabled' => 'boolean',
+        ];
     }
 }
