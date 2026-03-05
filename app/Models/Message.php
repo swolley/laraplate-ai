@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Override;
 
 /**
  * @mixin IdeHelperMessage
@@ -16,8 +17,10 @@ final class Message extends Model
 {
     use HasFactory;
 
+    #[Override]
     protected $table = 'ai_messages';
 
+    #[Override]
     protected $fillable = [
         'conversation_id',
         'role',
@@ -25,6 +28,14 @@ final class Message extends Model
         'metadata',
         'token_count',
     ];
+
+    /**
+     * Get the conversation that owns the message.
+     */
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(Conversation::class);
+    }
 
     protected function casts(): array
     {
@@ -35,17 +46,10 @@ final class Message extends Model
     }
 
     /**
-     * Get the conversation that owns the message.
-     */
-    public function conversation(): BelongsTo
-    {
-        return $this->belongsTo(Conversation::class);
-    }
-
-    /**
      * Scope a query to only include messages with a specific role.
      */
-    public function scopeByRole(Builder $query, string $role): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function byRole(Builder $query, string $role): Builder
     {
         return $query->where('role', $role);
     }

@@ -14,13 +14,13 @@ use Modules\Core\Models\User;
  * Service for generating contextual AI suggestions based on UI context.
  * Features rate limiting and caching to prevent excessive API calls.
  */
-final class ContextualSuggestionService
+final readonly class ContextualSuggestionService
 {
-    private const RATE_LIMIT_KEY_PREFIX = 'ai:suggestion:rate:';
+    private const string RATE_LIMIT_KEY_PREFIX = 'ai:suggestion:rate:';
 
-    private const CACHE_KEY_PREFIX = 'ai:suggestion:cache:';
+    private const string CACHE_KEY_PREFIX = 'ai:suggestion:cache:';
 
-    private const SUGGESTION_SYSTEM_PROMPT = <<<'PROMPT'
+    private const string SUGGESTION_SYSTEM_PROMPT = <<<'PROMPT'
 You are a helpful assistant providing brief, actionable suggestions based on the user's current context.
 Keep suggestions concise (1-2 sentences), relevant, and helpful.
 Focus on improving productivity or highlighting useful features.
@@ -28,7 +28,7 @@ Respond in the same language as the context.
 PROMPT;
 
     public function __construct(
-        private readonly ChatService $chatService,
+        private ChatService $chatService,
     ) {}
 
     /**
@@ -79,7 +79,7 @@ PROMPT;
      */
     public function getPendingSuggestions(User $user, int $limit = 5): \Illuminate\Database\Eloquent\Collection
     {
-        return ContextualSuggestion::forUser($user->id)
+        return ContextualSuggestion::query()->forUser($user->id)
             ->notDismissed()
             ->recent(60)
             ->orderByDesc('created_at')
@@ -180,7 +180,7 @@ PROMPT;
      */
     private function createSuggestionRecord(User $user, array $context, string $suggestion): ContextualSuggestion
     {
-        return ContextualSuggestion::create([
+        return ContextualSuggestion::query()->create([
             'user_id' => $user->id,
             'context' => $context,
             'suggestion' => $suggestion,

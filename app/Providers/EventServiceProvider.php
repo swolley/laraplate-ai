@@ -9,6 +9,7 @@ use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
+use Override;
 
 final class EventServiceProvider extends ServiceProvider
 {
@@ -18,6 +19,7 @@ final class EventServiceProvider extends ServiceProvider
      *
      * @var array<string, array<int, string>>
      */
+    #[Override]
     protected $listen = [
         ModelRequiresIndexing::class => [
             HandleModelIndexingListener::class, // Executes first
@@ -32,6 +34,7 @@ final class EventServiceProvider extends ServiceProvider
      *
      * @var bool
      */
+    #[Override]
     protected static $shouldDiscoverEvents = true;
 
     /**

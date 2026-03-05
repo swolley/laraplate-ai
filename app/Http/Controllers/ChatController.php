@@ -38,7 +38,7 @@ final class ChatController extends Controller
             metadata: $validated['metadata'] ?? null,
         );
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData($conversation->load('messages'))
             ->setStatus(Response::HTTP_CREATED)
             ->json();
@@ -49,12 +49,12 @@ final class ChatController extends Controller
      */
     public function listConversations(ListConversationsRequest $request): JsonResponse
     {
-        $conversations = Conversation::where('user_id', Auth::id())
+        $conversations = Conversation::query()->where('user_id', Auth::id())
             ->withCount('messages')
             ->latest()
             ->paginate($request->validated('per_page', 15));
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData($conversations->items())
             ->setTotalRecords($conversations->total())
             ->setCurrentRecords($conversations->count())
@@ -73,7 +73,7 @@ final class ChatController extends Controller
 
         $conversation->load('messages');
 
-        return (new ResponseBuilder(request()))
+        return new ResponseBuilder(request())
             ->setData($conversation)
             ->json();
     }
@@ -89,7 +89,7 @@ final class ChatController extends Controller
             ->latest()
             ->paginate($request->validated('per_page', 50));
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData($messages->items())
             ->setTotalRecords($messages->total())
             ->setCurrentRecords($messages->count())
@@ -108,7 +108,7 @@ final class ChatController extends Controller
 
         $conversation->delete();
 
-        return (new ResponseBuilder(request()))
+        return new ResponseBuilder(request())
             ->setData(['message' => 'Conversation deleted'])
             ->json();
     }
@@ -176,7 +176,7 @@ final class ChatController extends Controller
             context: $validated['context'] ?? null,
         );
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData([
                 'id' => $message->id,
                 'role' => $message->role,
@@ -207,7 +207,7 @@ final class ChatController extends Controller
         $message = $result['message'];
         $action_requests = $result['action_requests'];
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData([
                 'message' => [
                     'id' => $message->id,
@@ -216,7 +216,7 @@ final class ChatController extends Controller
                     'metadata' => $message->metadata,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ],
-                'action_requests' => array_map(static fn ($ar): array => [
+                'action_requests' => array_map(static fn (\Modules\AI\Models\ActionRequest $ar): array => [
                     'id' => $ar->id,
                     'tool_name' => $ar->tool_name,
                     'tool_args' => $ar->tool_args,
@@ -236,8 +236,6 @@ final class ChatController extends Controller
      */
     private function authorizeConversationAccess(Conversation $conversation): void
     {
-        if ($conversation->user_id !== Auth::id()) {
-            abort(Response::HTTP_FORBIDDEN, 'You do not have access to this conversation.');
-        }
+        abort_if($conversation->user_id !== Auth::id(), Response::HTTP_FORBIDDEN, 'You do not have access to this conversation.');
     }
 }

@@ -11,20 +11,20 @@ use LLPhant\Embeddings\Document;
  * Reads markdown and HTML files from a path (file or directory) for documentation indexing.
  * Similar to LLPhant's FileDataReader but focused on docs (e.g. resources/docs).
  */
-final class FileDocumentReader implements DataReader
+final readonly class FileDocumentReader implements DataReader
 {
     /**
      * @var string[]
      */
-    private const DEFAULT_EXTENSIONS = ['md', 'markdown', 'html', 'htm'];
+    private const array DEFAULT_EXTENSIONS = ['md', 'markdown', 'html', 'htm'];
 
     /**
      * @param  string[]  $extensions
      */
     public function __construct(
-        private readonly string $file_path,
-        private readonly string $document_class = Document::class,
-        private readonly array $extensions = self::DEFAULT_EXTENSIONS,
+        private string $file_path,
+        private string $document_class = Document::class,
+        private array $extensions = self::DEFAULT_EXTENSIONS,
     ) {}
 
     /**
@@ -62,10 +62,13 @@ final class FileDocumentReader implements DataReader
         }
 
         foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
+            if ($entry === '.') {
                 continue;
             }
 
+            if ($entry === '..') {
+                continue;
+            }
             $full_path = $directory . DIRECTORY_SEPARATOR . $entry;
 
             if (is_dir($full_path)) {

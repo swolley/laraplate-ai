@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\User;
+use Override;
 
 /**
  * @mixin IdeHelperConversation
@@ -17,8 +18,10 @@ final class Conversation extends Model
 {
     use HasFactory;
 
+    #[Override]
     protected $table = 'ai_conversations';
 
+    #[Override]
     protected $fillable = [
         'user_id',
         'title',
@@ -41,7 +44,7 @@ final class Conversation extends Model
      */
     public function messages(): HasMany
     {
-        return $this->hasMany(Message::class)->orderBy('created_at');
+        return $this->hasMany(Message::class)->oldest();
     }
 
     /**
@@ -49,7 +52,7 @@ final class Conversation extends Model
      */
     public function summaries(): HasMany
     {
-        return $this->hasMany(ConversationSummary::class)->orderByDesc('created_at');
+        return $this->hasMany(ConversationSummary::class)->latest();
     }
 
     /**

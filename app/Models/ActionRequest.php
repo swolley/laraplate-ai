@@ -8,11 +8,20 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
+use Override;
 
+/**
+ * @mixin IdeHelperActionRequest
+ */
 final class ActionRequest extends Model
 {
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+
+    #[Override]
     protected $table = 'ai_action_requests';
 
+    #[Override]
     protected $fillable = [
         'conversation_id',
         'user_id',
@@ -46,17 +55,20 @@ final class ActionRequest extends Model
         return $this->risk_level === 'medium';
     }
 
-    public function scopePendingUserConfirmation(Builder $query): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function pendingUserConfirmation(Builder $query): Builder
     {
         return $query->where('status', 'pending_user_confirmation');
     }
 
-    public function scopePendingAdminApproval(Builder $query): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function pendingAdminApproval(Builder $query): Builder
     {
         return $query->where('status', 'pending_admin_approval');
     }
 
-    public function scopeForUser(Builder $query, int $userId): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function forUser(Builder $query, int $userId): Builder
     {
         return $query->where('user_id', $userId);
     }

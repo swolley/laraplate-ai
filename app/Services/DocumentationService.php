@@ -43,7 +43,7 @@ final class DocumentationService
      */
     public function indexDocuments(?string $path = null): int
     {
-        $path = $path ?? $this->getDocumentationPath();
+        $path ??= $this->getDocumentationPath();
 
         if (! is_dir($path) && ! is_file($path)) {
             return 0;
@@ -69,9 +69,7 @@ final class DocumentationService
         $formatted = EmbeddingFormatter::formatEmbeddings($split_documents);
         $generator = $this->embeddingService->getEmbeddingGenerator();
 
-        if ($generator === null) {
-            throw new Exception('Embedding generator is not configured. Cannot index documentation.');
-        }
+        throw_if(! $generator instanceof \LLPhant\Embeddings\EmbeddingGenerator\EmbeddingGeneratorInterface, Exception::class, 'Embedding generator is not configured. Cannot index documentation.');
 
         $embedded = $generator->embedDocuments($formatted);
         $store = $this->getVectorStore();
@@ -103,9 +101,7 @@ final class DocumentationService
     {
         $generator = $this->embeddingService->getEmbeddingGenerator();
 
-        if ($generator === null) {
-            throw new Exception('Embedding generator is not configured. Cannot answer question.');
-        }
+        throw_if(! $generator instanceof \LLPhant\Embeddings\EmbeddingGenerator\EmbeddingGeneratorInterface, Exception::class, 'Embedding generator is not configured. Cannot answer question.');
 
         $store = $this->getVectorStore();
         $k = config('ai.features.faq.max_documents', 5);
@@ -185,13 +181,11 @@ final class DocumentationService
 
     private function getDocumentationPath(): string
     {
-        return config('ai.features.faq.documentation_path')
-            ?? resource_path('docs');
+        return config('ai.features.faq.documentation_path', resource_path('docs'));
     }
 
     private function getVectorStorePath(): string
     {
-        return config('ai.features.faq.vector_store_path')
-            ?? storage_path('app/ai/faq-vectorstore.json');
+        return config('ai.features.faq.vector_store_path', storage_path('app/ai/faq-vectorstore.json'));
     }
 }

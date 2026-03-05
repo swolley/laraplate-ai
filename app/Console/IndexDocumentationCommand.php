@@ -7,12 +7,15 @@ namespace Modules\AI\Console;
 use Exception;
 use Illuminate\Console\Command;
 use Modules\AI\Services\DocumentationService;
+use Override;
 
 final class IndexDocumentationCommand extends Command
 {
+    #[Override]
     protected $signature = 'ai:index-docs
                             {--path= : Custom path to documentation (default: config or resource_path(\'docs\'))}';
 
+    #[Override]
     protected $description = 'Index documentation for FAQ/RAG (embeddings and vector store)';
 
     public function handle(DocumentationService $documentationService): int

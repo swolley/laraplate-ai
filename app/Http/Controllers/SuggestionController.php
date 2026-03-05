@@ -28,7 +28,7 @@ final class SuggestionController extends Controller
         $user = Auth::user();
 
         if ($user === null) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('Unauthorized')
                 ->setStatus(Response::HTTP_UNAUTHORIZED)
                 ->json();
@@ -36,7 +36,7 @@ final class SuggestionController extends Controller
 
         $suggestions = $this->suggestionService->getPendingSuggestions($user);
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData($suggestions->map(static fn (ContextualSuggestion $s): array => [
                 'id' => $s->id,
                 'suggestion' => $s->suggestion,
@@ -55,7 +55,7 @@ final class SuggestionController extends Controller
         $user = Auth::user();
 
         if ($user === null) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('Unauthorized')
                 ->setStatus(Response::HTTP_UNAUTHORIZED)
                 ->json();
@@ -65,13 +65,13 @@ final class SuggestionController extends Controller
 
         $suggestion = $this->suggestionService->generateSuggestion($user, $validated['context']);
 
-        if ($suggestion === null) {
-            return (new ResponseBuilder($request))
+        if (! $suggestion instanceof ContextualSuggestion) {
+            return new ResponseBuilder($request)
                 ->setData(null)
                 ->json();
         }
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData([
                 'id' => $suggestion->id,
                 'suggestion' => $suggestion->suggestion,
@@ -90,14 +90,14 @@ final class SuggestionController extends Controller
         $user = Auth::user();
 
         if ($user === null) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('Unauthorized')
                 ->setStatus(Response::HTTP_UNAUTHORIZED)
                 ->json();
         }
 
         if ($suggestion->user_id !== $user->id) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('Forbidden')
                 ->setStatus(Response::HTTP_FORBIDDEN)
                 ->json();
@@ -105,7 +105,7 @@ final class SuggestionController extends Controller
 
         $this->suggestionService->dismissSuggestion($suggestion);
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData(['success' => true])
             ->json();
     }

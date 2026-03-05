@@ -26,7 +26,7 @@ final class HandleModelIndexingListener
 
         // Dispatch only the embeddings job, NOT IndexInSearchJob
         if ($event->sync) {
-            (new GenerateEmbeddingsJob($event->model))->handle();
+            new GenerateEmbeddingsJob($event->model)->handle();
         } else {
             dispatch(new GenerateEmbeddingsJob($event->model));
         }
@@ -42,11 +42,7 @@ final class HandleModelIndexingListener
         }
 
         // Check if model supports embeddings (has embed property and vector search enabled)
-        if (! $this->modelSupportsEmbeddings($model)) {
-            return false;
-        }
-
-        return true;
+        return $this->modelSupportsEmbeddings($model);
     }
 
     private function modelSupportsEmbeddings(Model $model): bool
@@ -62,11 +58,7 @@ final class HandleModelIndexingListener
         }
 
         // Check if vector search is enabled for this model
-        if (! method_exists($model, 'vectorSearchEnabled') || ! $model->vectorSearchEnabled()) {
-            return false;
-        }
-
-        return true;
+        return method_exists($model, 'vectorSearchEnabled') && $model->vectorSearchEnabled();
     }
 
     private function saveEventToCache(ModelRequiresIndexing $event): void

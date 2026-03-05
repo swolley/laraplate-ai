@@ -10,12 +10,14 @@ use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Helpers\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
+use Override;
 
 final class TranslateContentCommand extends Command
 {
     /**
      * The name and signature of the console command.
      */
+    #[Override]
     protected $signature = 'model:translate
                             {model : The model to translate}
                             {--id= : Specific model ID to translate}
@@ -27,6 +29,7 @@ final class TranslateContentCommand extends Command
     /**
      * The console command description.
      */
+    #[Override]
     protected $description = 'Translate content, categories, or tags to other locales <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     /**

@@ -46,7 +46,7 @@ final class ActionRequestController extends Controller
 
         $requests = $query->paginate(request()->integer('per_page', 20));
 
-        return (new ResponseBuilder(request()))
+        return new ResponseBuilder(request())
             ->setData($requests->items())
             ->setTotalRecords($requests->total())
             ->setCurrentRecords($requests->count())
@@ -65,7 +65,7 @@ final class ActionRequestController extends Controller
 
         $actionRequest->load(['conversation:id,title', 'user:id,name,email']);
 
-        return (new ResponseBuilder(request()))
+        return new ResponseBuilder(request())
             ->setData([
                 'id' => $actionRequest->id,
                 'user' => $actionRequest->user ? [
@@ -99,7 +99,7 @@ final class ActionRequestController extends Controller
         $this->authorizeOwnership($actionRequest);
 
         if ($actionRequest->status !== 'pending_user_confirmation') {
-            return (new ResponseBuilder(request()))
+            return new ResponseBuilder(request())
                 ->setError('This action request is not pending user confirmation.')
                 ->setStatus(Response::HTTP_BAD_REQUEST)
                 ->json();
@@ -107,7 +107,7 @@ final class ActionRequestController extends Controller
 
         $this->actionRequestService->confirmRequest($actionRequest);
 
-        return (new ResponseBuilder(request()))
+        return new ResponseBuilder(request())
             ->setData([
                 'id' => $actionRequest->id,
                 'status' => $actionRequest->fresh()->status,
@@ -125,22 +125,22 @@ final class ActionRequestController extends Controller
         $user = Auth::user();
 
         if (! $user->hasRole(['admin', 'superadmin'])) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('Only administrators can approve high-risk action requests.')
                 ->setStatus(Response::HTTP_FORBIDDEN)
                 ->json();
         }
 
         if ($actionRequest->status !== 'pending_admin_approval') {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('This action request is not pending admin approval.')
                 ->setStatus(Response::HTTP_BAD_REQUEST)
                 ->json();
         }
 
-        $this->actionRequestService->approveRequest($actionRequest, $user);
+        $this->actionRequestService->approveRequest($actionRequest);
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData([
                 'id' => $actionRequest->id,
                 'status' => $actionRequest->fresh()->status,
@@ -159,7 +159,7 @@ final class ActionRequestController extends Controller
         $this->authorizeAccess($actionRequest);
 
         if (! in_array($actionRequest->status, ['pending_user_confirmation', 'pending_admin_approval'], true)) {
-            return (new ResponseBuilder($request))
+            return new ResponseBuilder($request)
                 ->setError('This action request cannot be rejected in its current state.')
                 ->setStatus(Response::HTTP_BAD_REQUEST)
                 ->json();
@@ -167,7 +167,7 @@ final class ActionRequestController extends Controller
 
         $this->actionRequestService->rejectRequest($actionRequest);
 
-        return (new ResponseBuilder($request))
+        return new ResponseBuilder($request)
             ->setData([
                 'id' => $actionRequest->id,
                 'status' => 'rejected',
@@ -185,9 +185,7 @@ final class ActionRequestController extends Controller
         $user = Auth::user();
         $is_admin = $user->hasRole(['admin', 'superadmin']);
 
-        if (! $is_admin && $actionRequest->user_id !== $user->id) {
-            abort(Response::HTTP_FORBIDDEN, 'You do not have access to this action request.');
-        }
+        abort_if(! $is_admin && $actionRequest->user_id !== $user->id, Response::HTTP_FORBIDDEN, 'You do not have access to this action request.');
     }
 
     /**
@@ -195,8 +193,6 @@ final class ActionRequestController extends Controller
      */
     private function authorizeOwnership(ActionRequest $actionRequest): void
     {
-        if ($actionRequest->user_id !== Auth::id()) {
-            abort(Response::HTTP_FORBIDDEN, 'You do not own this action request.');
-        }
+        abort_if($actionRequest->user_id !== Auth::id(), Response::HTTP_FORBIDDEN, 'You do not own this action request.');
     }
 }

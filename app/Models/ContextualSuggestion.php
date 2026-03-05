@@ -8,13 +8,23 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
+use Override;
 
+/**
+ * @mixin IdeHelperContextualSuggestion
+ */
 final class ContextualSuggestion extends Model
 {
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+
+    #[Override]
     public $timestamps = false;
 
+    #[Override]
     protected $table = 'ai_contextual_suggestions';
 
+    #[Override]
     protected $fillable = [
         'user_id',
         'context',
@@ -27,24 +37,27 @@ final class ContextualSuggestion extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function scopeForUser(Builder $query, int $user_id): Builder
+    public function dismiss(): void
+    {
+        $this->update(['dismissed_at' => now()]);
+    }
+
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function forUser(Builder $query, int $user_id): Builder
     {
         return $query->where('user_id', $user_id);
     }
 
-    public function scopeNotDismissed(Builder $query): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function notDismissed(Builder $query): Builder
     {
         return $query->whereNull('dismissed_at');
     }
 
-    public function scopeRecent(Builder $query, int $minutes = 60): Builder
+    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    protected function recent(Builder $query, int $minutes = 60): Builder
     {
         return $query->where('created_at', '>=', now()->subMinutes($minutes));
-    }
-
-    public function dismiss(): void
-    {
-        $this->update(['dismissed_at' => now()]);
     }
 
     protected function casts(): array

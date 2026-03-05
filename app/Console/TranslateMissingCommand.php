@@ -10,12 +10,14 @@ use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Helpers\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
+use Override;
 
 final class TranslateMissingCommand extends Command
 {
     /**
      * The name and signature of the console command.
      */
+    #[Override]
     protected $signature = 'model:translate-missing
                             {model : The model to translate}
                             {--locale= : Specific locale to check for missing translations}
@@ -24,6 +26,7 @@ final class TranslateMissingCommand extends Command
     /**
      * The console command description.
      */
+    #[Override]
     protected $description = 'Find and translate models with missing translations <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     /**

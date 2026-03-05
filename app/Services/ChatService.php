@@ -31,7 +31,7 @@ final class ChatService
         ?string $systemMessage = null,
         ?array $metadata = null,
     ): Conversation {
-        return Conversation::create([
+        return Conversation::query()->create([
             'user_id' => $user->id,
             'title' => $title,
             'system_message' => $systemMessage,
@@ -167,7 +167,7 @@ final class ChatService
 
             return [
                 'message' => $conversation->addMessage('assistant', $message_content, [
-                    'tool_calls' => array_map(fn (ActionRequest $ar) => [
+                    'tool_calls' => array_map(fn (ActionRequest $ar): array => [
                         'id' => $ar->id,
                         'tool' => $ar->tool_name,
                         'status' => $ar->status,
@@ -224,7 +224,7 @@ final class ChatService
         ?array $context,
         callable $on_chunk,
     ): Message {
-        $user_message_model = $conversation->addMessage('user', $user_message, $context);
+        $conversation->addMessage('user', $user_message, $context);
 
         try {
             $chat = $this->getChatInstance();
@@ -292,7 +292,7 @@ final class ChatService
      */
     private function getDocumentationService(): DocumentationService
     {
-        return app(DocumentationService::class);
+        return resolve(DocumentationService::class);
     }
 
     /**
@@ -300,7 +300,7 @@ final class ChatService
      */
     private function getToolRegistry(): ToolRegistry
     {
-        return app(ToolRegistry::class);
+        return resolve(ToolRegistry::class);
     }
 
     /**
@@ -308,7 +308,7 @@ final class ChatService
      */
     private function getActionRequestService(): ActionRequestService
     {
-        return app(ActionRequestService::class);
+        return resolve(ActionRequestService::class);
     }
 
     /**
@@ -316,7 +316,7 @@ final class ChatService
      */
     private function getMemoryService(): MemoryService
     {
-        return app(MemoryService::class);
+        return resolve(MemoryService::class);
     }
 
     /**
@@ -324,7 +324,7 @@ final class ChatService
      */
     private function getGuardrailsService(): GuardrailsService
     {
-        return app(GuardrailsService::class);
+        return resolve(GuardrailsService::class);
     }
 
     /**
@@ -373,13 +373,7 @@ final class ChatService
         $question_words = $this->getQuestionWordsForLocale($locale);
         $lower = mb_strtolower($trimmed);
 
-        foreach ($question_words as $word) {
-            if (str_starts_with($lower, $word . ' ') || str_contains($lower, ' ' . $word . ' ')) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($question_words, fn ($word): bool => str_starts_with($lower, $word . ' ') || str_contains($lower, ' ' . $word . ' '));
     }
 
     /**

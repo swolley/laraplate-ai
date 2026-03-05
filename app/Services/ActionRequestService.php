@@ -13,11 +13,11 @@ use Modules\AI\Services\Tools\RiskClassifier;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Models\User;
 
-final class ActionRequestService
+final readonly class ActionRequestService
 {
     public function __construct(
-        private readonly ToolRegistry $toolRegistry,
-        private readonly RiskClassifier $riskClassifier,
+        private ToolRegistry $toolRegistry,
+        private RiskClassifier $riskClassifier,
     ) {}
 
     /**
@@ -31,9 +31,7 @@ final class ActionRequestService
     ): ActionRequest {
         $definition = $this->toolRegistry->getTool($toolName);
 
-        if ($definition === null) {
-            throw new Exception("Unknown tool: {$toolName}");
-        }
+        throw_if(! $definition instanceof Tools\ToolDefinition, Exception::class, "Unknown tool: {$toolName}");
 
         $config_risk = config("ai.features.tools.definitions.{$toolName}.risk_level");
         $risk_level = $this->riskClassifier->classifyRisk($toolName, $args, $config_risk);
@@ -45,7 +43,7 @@ final class ActionRequestService
             default => 'pending_user_confirmation',
         };
 
-        $request = ActionRequest::create([
+        $request = ActionRequest::query()->create([
             'user_id' => $user->id,
             'conversation_id' => $conversation?->id,
             'tool_name' => $toolName,
@@ -66,11 +64,11 @@ final class ActionRequestService
      */
     public function executeRequest(ActionRequest $request): void
     {
-        if (! in_array($request->status, ['approved'], true)) {
+        if ($request->status !== 'approved') {
             $request->update(['status' => 'executing']);
         }
 
-        ExecuteActionRequestJob::dispatch($request);
+        dispatch(new ExecuteActionRequestJob($request));
     }
 
     /**
@@ -78,9 +76,7 @@ final class ActionRequestService
      */
     public function confirmRequest(ActionRequest $request): void
     {
-        if ($request->status !== 'pending_user_confirmation') {
-            throw new Exception('Request is not pending user confirmation.');
-        }
+        throw_if($request->status !== 'pending_user_confirmation', Exception::class, 'Request is not pending user confirmation.');
 
         $request->update(['status' => 'approved']);
         $this->executeRequest($request);
@@ -89,11 +85,9 @@ final class ActionRequestService
     /**
      * Approve a high-risk request (admin approved). Called when Modification is approved.
      */
-    public function approveRequest(ActionRequest $request, User $approver): void
+    public function approveRequest(ActionRequest $request): void
     {
-        if ($request->status !== 'pending_admin_approval') {
-            throw new Exception('Request is not pending admin approval.');
-        }
+        throw_if($request->status !== 'pending_admin_approval', Exception::class, 'Request is not pending admin approval.');
 
         $request->update(['status' => 'approved']);
         $this->executeRequest($request);
@@ -116,7 +110,7 @@ final class ActionRequestService
     {
         $definition = $this->toolRegistry->getTool($request->tool_name);
 
-        if ($definition === null) {
+        if (! $definition instanceof Tools\ToolDefinition) {
             throw new Exception("Unknown tool: {$request->tool_name}");
         }
 

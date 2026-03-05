@@ -11,9 +11,9 @@ use Modules\AI\Models\ConversationSummary;
 
 final class MemoryService
 {
-    private const SUMMARY_THRESHOLD = 20; // Messages before triggering summary
+    private const int SUMMARY_THRESHOLD = 20; // Messages before triggering summary
 
-    private const SUMMARY_SYSTEM_PROMPT = <<<'PROMPT'
+    private const string SUMMARY_SYSTEM_PROMPT = <<<'PROMPT'
 You are a conversation summarizer. Create a concise summary of the conversation that captures:
 1. Main topics discussed
 2. Key decisions or conclusions
@@ -22,7 +22,7 @@ You are a conversation summarizer. Create a concise summary of the conversation 
 Be brief but comprehensive. Write in the same language as the conversation.
 PROMPT;
 
-    private const FACTS_SYSTEM_PROMPT = <<<'PROMPT'
+    private const string FACTS_SYSTEM_PROMPT = <<<'PROMPT'
 Extract key facts from this conversation as a JSON array of strings.
 Focus on: user preferences, important information shared, decisions made.
 Return ONLY a valid JSON array, no other text.
@@ -62,8 +62,7 @@ PROMPT;
      */
     public function summarizeConversation(Conversation $conversation, ChatInterface $chat): string
     {
-        $messages = $conversation->messages()
-            ->orderBy('created_at')
+        $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
 
         if ($messages->isEmpty()) {
@@ -71,7 +70,7 @@ PROMPT;
         }
 
         $conversation_text = $messages
-            ->map(fn ($m) => ucfirst($m->role) . ': ' . $m->content)
+            ->map(fn ($m): string => ucfirst((string) $m->role) . ': ' . $m->content)
             ->implode("\n\n");
 
         // Include existing summary for context if available
@@ -93,8 +92,7 @@ PROMPT;
      */
     public function extractFacts(Conversation $conversation, ChatInterface $chat): array
     {
-        $messages = $conversation->messages()
-            ->orderBy('created_at')
+        $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
 
         if ($messages->isEmpty()) {
@@ -102,7 +100,7 @@ PROMPT;
         }
 
         $conversation_text = $messages
-            ->map(fn ($m) => ucfirst($m->role) . ': ' . $m->content)
+            ->map(fn ($m): string => ucfirst((string) $m->role) . ': ' . $m->content)
             ->implode("\n\n");
 
         $chat->setSystemMessage(self::FACTS_SYSTEM_PROMPT);
@@ -130,7 +128,7 @@ PROMPT;
         $conversation->update(['summary' => $summary]);
 
         // Create historical snapshot
-        return ConversationSummary::create([
+        return ConversationSummary::query()->create([
             'conversation_id' => $conversation->id,
             'summary' => $summary,
             'facts' => $facts,

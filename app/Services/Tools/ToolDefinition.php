@@ -9,17 +9,17 @@ namespace Modules\AI\Services\Tools;
  *
  * @phpstan-type ParameterShape array{name: string, type: string, description: string}
  */
-final class ToolDefinition
+final readonly class ToolDefinition
 {
     /**
      * @param  ParameterShape[]  $parameters
      * @param  callable(mixed ...$args): mixed  $handler
      */
     public function __construct(
-        public readonly string $name,
-        public readonly string $description,
-        public readonly array $parameters,
-        public readonly string $riskLevel,
-        public readonly mixed $handler,
+        public string $name,
+        public string $description,
+        public array $parameters,
+        public string $riskLevel,
+        public mixed $handler,
     ) {}
 }

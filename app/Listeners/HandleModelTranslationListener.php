@@ -39,7 +39,7 @@ final class HandleModelTranslationListener
         }
 
         // Check if model has HasTranslations trait
-        return ! (! class_uses_trait($model, HasTranslations::class));
+        return class_uses_trait($model, HasTranslations::class);
     }
 
     private function registerTranslationForIndexing(Model $model): void
