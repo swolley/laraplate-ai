@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\AI\Models\Conversation;
 use Modules\Core\Models\User;
-use Tests\TestCase;
+use Modules\Core\Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 

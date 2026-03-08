@@ -10,9 +10,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 |--------------------------------------------------------------------------
 */
 
-pest()->extend(Tests\TestCase::class)
+pest()->extend(Modules\Core\Tests\TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
 
-pest()->extend(Tests\TestCase::class)
+pest()->extend(Modules\Core\Tests\TestCase::class)
     ->in('Unit');
