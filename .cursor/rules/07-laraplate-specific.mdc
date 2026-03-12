@@ -1,0 +1,120 @@
+---
+description: Laraplate/AI module-specific architecture and conventions
+globs: ["**/Modules/AI/**", "**/module.json", "**/module.php"]
+alwaysApply: false
+---
+
+# Laraplate AI – Module Specific Rules
+
+Questo file definisce le regole **specifiche per il modulo AI** all'interno di Laraplate.
+Non descrive l'intera applicazione, ma si concentra su:
+- quale ruolo ha il modulo AI nel sistema
+- come il modulo AI si appoggia al Core
+- come progettare correttamente servizi AI (chat, embeddings, suggerimenti, documentazione, ecc.).
+
+Per le linee guida generali di Laravel, moduli, Filament, testing, CI/CD, ecc. fare riferimento a:
+- `laravel-boost.mdc`
+- `01-php-laravel-standards.mdc`
+- `02-architecture-patterns.mdc`
+- `03-performance-optimization.mdc`
+- `04-error-handling-security.mdc`
+- `05-testing-development.mdc`.
+
+## Ruolo del modulo AI
+
+- **Funzionalità AI trasversali**: il modulo AI fornisce servizi di intelligenza artificiale riutilizzabili:
+  - chat e messaggistica AI-driven,
+  - generazione di suggerimenti,
+  - gestione embedding e ricerca semantica,
+  - lettura/indicizzazione di documentazione.
+- **Costruito sopra il Core**: riutilizza servizi infrastrutturali del Core (logging, impostazioni, search, queue, locking, ecc.).
+- **Agnostico al dominio**: non contiene logica di dominio specifica (Cms, e-commerce, ecc.), ma API e servizi generici che i moduli di dominio possono usare.
+
+### Cosa vive nel modulo AI
+
+- Modelli e logica per:
+  - conversazioni, messaggi, riassunti di conversazioni,
+  - job per generare e gestire embeddings,
+  - mapping tra modelli applicativi e provider AI esterni.
+- Servizi:
+  - servizi di chat e orchestrazione chiamate al provider AI,
+  - servizi di embedding/vector store,
+  - servizi di documentazione (lettura, chunking, indexing della documentazione).
+- HTTP layer:
+  - controller e request specifici (es. `ChatController`, request per suggestion, ecc.),
+  - validazioni e trasformazioni dei payload verso/da provider AI.
+
+### Cosa **non** dovrebbe vivere nel modulo AI
+
+- Regole di business specifiche di un singolo dominio (es. workflow editoriali del Cms, logiche di pricing di un e-commerce).
+- UI e componenti che non siano strettamente legati alle funzionalità AI (es. Filament resources puramente editoriali, viste CMS).
+- Duplicazioni di funzionalità già presenti nel Core (search engine astratti, locking, impostazioni generali, ecc.).
+
+Se una funzionalità:
+- è generica, riutilizzabile e usa un provider AI → candidata per il modulo AI;
+- è specifica di un dominio funzionale (es. usare l'AI per generare contenuti CMS) → la logica di dominio deve stare nel modulo di dominio, usando i servizi AI generici.
+
+## Relazione tra AI e Core
+
+- Il modulo AI **dipende** dal Core per:
+  - gestione delle impostazioni e delle credenziali (config),
+  - infrastruttura di queue, logging, cache,
+  - eventuali astrazioni di search e indexing condivise.
+- Il modulo AI **espone**:
+  - servizi di alto livello per chat, completions, embeddings, documentazione,
+  - API interne che i moduli di dominio possono chiamare (es. per generare suggerimenti, indicizzare contenuti, fare query semantiche).
+
+Non deve esserci dipendenza inversa (Core → AI).
+
+## Struttura modulare e file critici del modulo AI
+
+Nel modulo AI la struttura tipica (semplificata) è:
+
+```
+Modules/AI/
+├── app/
+│   ├── Http/
+│   ├── Models/
+│   ├── Services/
+│   └── ...
+├── config/
+├── database/
+├── resources/
+├── routes/
+└── module.json
+```
+
+- I servizi AI:
+  - devono essere organizzati in modo chiaro (`Services/ChatService`, `Services/EmbeddingService`, `Services/DocumentationService`, ecc.),
+  - devono avere confini netti (chat ≠ embeddings ≠ docs) ma possibilità di collaborare tramite interfacce ben definite.
+- Le request/response HTTP:
+  - devono usare Form Request per validazione,
+  - devono restare sottili, delegando la logica ai servizi AI.
+
+## Testing nel modulo AI
+
+- I test del modulo AI verificano:
+  - logica di orchestrazione delle chiamate ai provider AI,
+  - gestione degli errori e dei timeout dei provider,
+  - correttezza della pipeline di embeddings (preparazione testo, generazione, salvataggio, ricerca),
+  - corretto comportamento di controller ed endpoint pubblici.
+- È consigliato:
+  - isolare le integrazioni con provider esterni tramite interfacce e finti adapter (facili da mockare nei test),
+  - usare test di feature per i flussi principali (chat, generazione suggerimenti, indexing docs).
+
+Per linee guida comuni su testing e tooling fare sempre riferimento a:
+- `05-testing-development.mdc`
+- `laravel-boost.mdc`.
+
+## Riferimenti incrociati
+
+- Per tutto ciò che riguarda:
+  - qualità del codice, static analysis, CI/CD → vedi `laravel-boost.mdc`;
+  - standard PHP/Laravel (tipi, naming, stile) → vedi `01-php-laravel-standards.mdc`;
+  - pattern architetturali e servizi → vedi `02-architecture-patterns.mdc`;
+  - performance, caching, code optimization → vedi `03-performance-optimization.mdc`;
+  - error handling, logging, security → vedi `04-error-handling-security.mdc`;
+  - strategia di testing → vedi `05-testing-development.mdc`.
+
+Questo file deve restare focalizzato sul **ruolo del modulo AI** e sulla sua relazione con il Core e con gli altri moduli: se una regola è generale per l'intera app, deve vivere nelle regole di root o negli altri file `.mdc` condivisi.
+
