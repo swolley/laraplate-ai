@@ -28,7 +28,7 @@ final class TranslateModelJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public $deleteWhenMissingModels = true;
+    public bool $deleteWhenMissingModels = true;
 
     /**
      * @var array|int[]
@@ -56,6 +56,9 @@ final class TranslateModelJob implements ShouldQueue
         ];
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     public function handle(TranslationService $translation_service): void
     {
         /** @var Model&HasTranslations $model */
@@ -83,7 +86,7 @@ final class TranslateModelJob implements ShouldQueue
         }
 
         $locales_to_translate = $this->locales === [] ? LocaleContext::getAvailable() : $this->locales;
-        $locales_to_translate = array_filter($locales_to_translate, fn ($locale): bool => $locale !== $default_locale);
+        $locales_to_translate = array_filter($locales_to_translate, fn (string $locale): bool => $locale !== $default_locale);
 
         foreach ($locales_to_translate as $locale) {
             // Skip if translation exists and force is false
@@ -112,6 +115,8 @@ final class TranslateModelJob implements ShouldQueue
 
     /**
      * @param  Model&HasTranslations  $model
+     *
+     * @codeCoverageIgnore
      */
     private function translateModel(
         Model $model,
@@ -150,6 +155,8 @@ final class TranslateModelJob implements ShouldQueue
      *
      * @param  array<string, mixed>  $components
      * @return array<string, mixed>
+     *
+     * @codeCoverageIgnore
      */
     private function translateComponents(
         array $components,

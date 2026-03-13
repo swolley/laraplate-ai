@@ -35,7 +35,7 @@ final class ActionRequestController extends Controller
 
         if ($is_admin) {
             // Admins see their own requests + all pending admin approval
-            $query->where(function ($q) use ($user): void {
+            $query->where(function (\Illuminate\Database\Eloquent\Builder $q) use ($user): void {
                 $q->where('user_id', $user->id)
                     ->orWhere('status', 'pending_admin_approval');
             });

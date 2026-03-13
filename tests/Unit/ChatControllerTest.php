@@ -1,0 +1,270 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
+use Modules\AI\Http\Controllers\ChatController;
+use Modules\AI\Http\Requests\InsertConversationRequest;
+use Modules\AI\Http\Requests\ListConversationsRequest;
+use Modules\AI\Http\Requests\ListMessagesRequest;
+use Modules\AI\Http\Requests\SendMessageRequest;
+use Modules\AI\Models\ActionRequest;
+use Modules\AI\Models\Conversation;
+use Modules\AI\Services\ChatService;
+use Modules\Core\Models\User;
+
+uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
+
+beforeEach(function (): void {
+    $this->user = User::factory()->create();
+});
+
+it('insertConversation creates conversation', function (): void {
+    Auth::shouldReceive('user')->andReturn($this->user);
+
+    $conversation = Conversation::query()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Test',
+    ]);
+
+    $chatService = Mockery::mock(ChatService::class);
+    $chatService->shouldReceive('createConversation')
+        ->once()
+        ->andReturn($conversation);
+
+    $request = new InsertConversationRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['title' => 'Test']);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->insertConversation($request);
+
+    expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
+});
+
+it('listConversations returns paginated conversations', function (): void {
+    Auth::shouldReceive('user')->andReturn($this->user);
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    Conversation::query()->create(['user_id' => $this->user->id, 'title' => 'Conv 1']);
+
+    $chatService = Mockery::mock(ChatService::class);
+
+    $request = new ListConversationsRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['per_page' => 15]);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->listConversations($request);
+
+    $data = $response->getData(true);
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data)->toHaveKey('data');
+});
+
+it('detailConversation returns conversation with messages', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id, 'title' => 'Test']);
+    $conversation->messages()->create(['role' => 'user', 'content' => 'Hello']);
+
+    $chatService = Mockery::mock(ChatService::class);
+
+    $controller = new ChatController($chatService);
+    $response = $controller->detailConversation($conversation);
+
+    $data = $response->getData(true);
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data['data']['id'])->toBe($conversation->id);
+});
+
+it('deleteConversation deletes conversation', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+
+    $chatService = Mockery::mock(ChatService::class);
+
+    $controller = new ChatController($chatService);
+    $response = $controller->deleteConversation($conversation);
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and(Conversation::query()->find($conversation->id))->toBeNull();
+});
+
+it('insertMessage sends message and returns response', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+    $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Hi']);
+
+    $chatService = Mockery::mock(ChatService::class);
+    $chatService->shouldReceive('sendMessage')
+        ->once()
+        ->andReturn($message);
+
+    $request = new SendMessageRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['message' => 'Hello']);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->insertMessage($request, $conversation);
+
+    expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
+});
+
+it('streamMessage returns StreamedResponse and invokes on_chunk callback', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+
+    $chatService = Mockery::mock(ChatService::class);
+    $chatService->shouldReceive('sendMessageStream')
+        ->once()
+        ->withArgs(function ($conv, $msg, $ctx, $on_chunk): bool {
+            $on_chunk('Hello ');
+            $on_chunk('world');
+
+            return true;
+        });
+
+    $request = new SendMessageRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['message' => 'Hello']);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->streamMessage($request, $conversation);
+
+    expect($response)->toBeInstanceOf(Symfony\Component\HttpFoundation\StreamedResponse::class);
+
+    ob_start();
+    ob_start();
+    $response->sendContent();
+    ob_end_flush();
+    $output = ob_get_clean();
+    ob_end_clean();
+    expect($output)->toContain('"type":"chunk","content":"Hello "')
+        ->and($output)->toContain('"type":"chunk","content":"world"');
+});
+
+it('authorizeConversationAccess aborts for unauthorized', function (): void {
+    $otherUser = User::factory()->create();
+    Auth::shouldReceive('id')->andReturn($otherUser->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+
+    $chatService = Mockery::mock(ChatService::class);
+
+    $controller = new ChatController($chatService);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->detailConversation($conversation))
+        ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+});
+
+it('listMessages returns paginated messages for conversation', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+    $conversation->messages()->create(['role' => 'user', 'content' => 'Hello']);
+    $conversation->messages()->create(['role' => 'assistant', 'content' => 'Hi there']);
+
+    $chatService = Mockery::mock(ChatService::class);
+
+    $request = new ListMessagesRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['per_page' => 50]);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->listMessages($request, $conversation);
+
+    $data = $response->getData(true);
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data)->toHaveKey('data')
+        ->and($data['data'])->toHaveCount(2);
+});
+
+it('sendMessageWithTools returns message and action requests', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+    $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Response']);
+    $actionRequest = ActionRequest::query()->create([
+        'user_id' => $this->user->id,
+        'conversation_id' => $conversation->id,
+        'tool_name' => 'test_tool',
+        'tool_args' => ['key' => 'value'],
+        'risk_level' => 'medium',
+        'status' => 'pending_user_confirmation',
+    ]);
+
+    $chatService = Mockery::mock(ChatService::class);
+    $chatService->shouldReceive('sendMessageWithTools')
+        ->once()
+        ->with($conversation, 'Hello', null)
+        ->andReturn([
+            'message' => $message,
+            'action_requests' => [$actionRequest],
+        ]);
+
+    $request = new SendMessageRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['message' => 'Hello']);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->sendMessageWithTools($request, $conversation);
+
+    $data = $response->getData(true);
+    expect($response->getStatusCode())->toBe(Response::HTTP_CREATED)
+        ->and($data)->toHaveKey('data')
+        ->and($data['data'])->toHaveKey('message')
+        ->and($data['data'])->toHaveKey('action_requests')
+        ->and($data['data']['action_requests'])->toHaveCount(1)
+        ->and($data['data']['action_requests'][0]['tool_name'])->toBe('test_tool');
+});
+
+it('sendMessageWithTools passes context when provided', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+    $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Response']);
+
+    $chatService = Mockery::mock(ChatService::class);
+    $chatService->shouldReceive('sendMessageWithTools')
+        ->once()
+        ->with($conversation, 'Hello', ['page' => 'dashboard'])
+        ->andReturn([
+            'message' => $message,
+            'action_requests' => [],
+        ]);
+
+    $request = new SendMessageRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['message' => 'Hello', 'context' => ['page' => 'dashboard']]);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+    $response = $controller->sendMessageWithTools($request, $conversation);
+
+    expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
+});

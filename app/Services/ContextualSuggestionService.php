@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use Closure;
 use Exception;
 use Illuminate\Support\Facades\Cache;
-use LLPhant\Chat\ChatInterface;
+use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\Core\Models\User;
+use NeuronAI\Chat\Messages\UserMessage;
 
 /**
  * Service for generating contextual AI suggestions based on UI context.
@@ -28,7 +30,7 @@ Respond in the same language as the context.
 PROMPT;
 
     public function __construct(
-        private ChatService $chatService,
+        private ?Closure $chatAgentFactory = null,
     ) {}
 
     /**
@@ -45,7 +47,6 @@ PROMPT;
             return null;
         }
 
-        // Check cache for similar context
         $cache_key = $this->getCacheKey($user, $context);
         $cached_suggestion = Cache::get($cache_key);
 
@@ -54,18 +55,15 @@ PROMPT;
         }
 
         try {
-            $chat = $this->chatService->getChatInstance();
-            $suggestion = $this->generateSuggestionText($chat, $context);
+            $suggestion = $this->generateSuggestionText($context);
 
             if ($suggestion === null || $suggestion === '') {
                 return null;
             }
 
-            // Cache the suggestion
             $cache_ttl = config('ai.features.contextual_suggestions.cache_ttl', 3600);
             Cache::put($cache_key, $suggestion, $cache_ttl);
 
-            // Update rate limit
             $this->updateRateLimit($user);
 
             return $this->createSuggestionRecord($user, $context, $suggestion);
@@ -95,9 +93,6 @@ PROMPT;
         $suggestion->dismiss();
     }
 
-    /**
-     * Check if user is rate limited.
-     */
     private function isRateLimited(User $user): bool
     {
         $key = self::RATE_LIMIT_KEY_PREFIX . $user->id;
@@ -112,9 +107,6 @@ PROMPT;
         return $cooldown_minutes > now()->diffInMinutes($last_suggestion_at);
     }
 
-    /**
-     * Update rate limit timestamp.
-     */
     private function updateRateLimit(User $user): void
     {
         $key = self::RATE_LIMIT_KEY_PREFIX . $user->id;
@@ -122,9 +114,6 @@ PROMPT;
         Cache::put($key, now(), $cooldown_minutes * 60);
     }
 
-    /**
-     * Generate cache key for context.
-     */
     private function getCacheKey(User $user, array $context): string
     {
         $context_hash = md5(json_encode($context, JSON_THROW_ON_ERROR));
@@ -132,23 +121,29 @@ PROMPT;
         return self::CACHE_KEY_PREFIX . $user->id . ':' . $context_hash;
     }
 
-    /**
-     * Generate suggestion text using LLM.
-     */
-    private function generateSuggestionText(ChatInterface $chat, array $context): ?string
+    private function generateSuggestionText(array $context): ?string
     {
-        $chat->setSystemMessage(self::SUGGESTION_SYSTEM_PROMPT);
+        $agent = $this->makeChatAgent();
 
         $prompt = $this->buildPromptFromContext($context);
 
-        $response = $chat->generateText($prompt);
+        $response = $agent->chat(new UserMessage($prompt));
 
-        return mb_trim($response) ?: null;
+        $text = mb_trim($response->getMessage()->getContent());
+
+        return $text !== '' ? $text : null;
     }
 
-    /**
-     * Build prompt from context.
-     */
+    private function makeChatAgent(): ChatAgent
+    {
+        if ($this->chatAgentFactory instanceof Closure) {
+            return ($this->chatAgentFactory)();
+        }
+
+        /** @var ChatAgent */
+        return ChatAgent::make(systemPrompt: self::SUGGESTION_SYSTEM_PROMPT); // @codeCoverageIgnore
+    }
+
     private function buildPromptFromContext(array $context): string
     {
         $parts = [];
@@ -175,9 +170,6 @@ PROMPT;
         return implode("\n", $parts) . "\n\nProvide a brief, helpful suggestion.";
     }
 
-    /**
-     * Create suggestion record in database.
-     */
     private function createSuggestionRecord(User $user, array $context, string $suggestion): ContextualSuggestion
     {
         return ContextualSuggestion::query()->create([

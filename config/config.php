@@ -42,9 +42,9 @@ return [
         ],
         'faq' => [
             'enabled' => env('AI_FAQ_ENABLED', true),
-            'documentation_path' => env('AI_FAQ_DOCS_PATH', null), // null = resource_path('docs')
+            'documentation_path' => env('AI_FAQ_DOCS_PATH'), // null = resource_path('docs')
             'vector_store' => env('AI_FAQ_VECTOR_STORE', 'filesystem'), // memory (testing only), filesystem
-            'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH', null), // null = storage_path('app/ai/faq-vectorstore.json')
+            'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.json')
             'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),
             'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.7),
             'question_detection' => [
@@ -102,6 +102,11 @@ return [
         'mistral' => [
             'api_key' => env('MISTRAL_API_KEY'),
             'model' => env('MISTRAL_MODEL', 'mistral-large-latest'),
+        ],
+
+        'anthropic' => [
+            'api_key' => env('ANTHROPIC_API_KEY'),
+            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
         ],
 
         'sentence_transformers' => [

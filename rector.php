@@ -8,17 +8,20 @@ use Rector\Php83\Rector\ClassMethod\AddOverrideAttributeToOverriddenMethodsRecto
 use RectorLaravel\Set\LaravelSetList;
 use RectorLaravel\Set\LaravelSetProvider;
 
-$modules = array_filter(glob(__DIR__ . '/Modules/*'), 'is_dir');
+$modules = array_filter(glob(__DIR__ . '/Modules/*') ?: [], 'is_dir');
+
+$candidatePaths = [
+    __DIR__ . '/app',
+    __DIR__ . '/bootstrap/app.php',
+    __DIR__ . '/config',
+    __DIR__ . '/database',
+    __DIR__ . '/public',
+    __DIR__ . '/routes',
+    __DIR__ . '/tests',
+];
+
 $paths = array_merge(
-    [
-        __DIR__ . '/app',
-        __DIR__ . '/bootstrap/app.php',
-        __DIR__ . '/config',
-        __DIR__ . '/database',
-        __DIR__ . '/public',
-        __DIR__ . '/routes',
-        __DIR__ . '/tests',
-    ],
+    array_filter($candidatePaths, static fn (string $path): bool => file_exists($path)),
     array_map(static fn ($module) => "{$module}/app", $modules),
 );
 

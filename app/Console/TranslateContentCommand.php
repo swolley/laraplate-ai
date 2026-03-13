@@ -34,6 +34,8 @@ final class TranslateContentCommand extends Command
 
     /**
      * Execute the console command.
+     *
+     * @codeCoverageIgnore Depends on Core module (models(), HasTranslations, LocaleContext)
      */
     public function handle(): int
     {

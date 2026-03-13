@@ -7,7 +7,7 @@ namespace Modules\AI\Services\Tools;
 /**
  * DTO for a registered tool (name, description, parameters, risk level, handler).
  *
- * @phpstan-type ParameterShape array{name: string, type: string, description: string}
+ * @phpstan-type ParameterShape array{name: string, type: string, description: string, required?: bool}
  */
 final readonly class ToolDefinition
 {

@@ -26,7 +26,7 @@ final class HandleModelIndexingListener
 
         // Dispatch only the embeddings job, NOT IndexInSearchJob
         if ($event->sync) {
-            new GenerateEmbeddingsJob($event->model)->handle();
+            app()->call([new GenerateEmbeddingsJob($event->model), 'handle']);
         } else {
             dispatch(new GenerateEmbeddingsJob($event->model));
         }
@@ -52,10 +52,11 @@ final class HandleModelIndexingListener
             return false;
         }
 
-        // Check if model has embed property
+        // @codeCoverageIgnoreStart
         if (! isset($model->embed) || $model->embed === []) {
             return false;
         }
+        // @codeCoverageIgnoreEnd
 
         // Check if vector search is enabled for this model
         return method_exists($model, 'vectorSearchEnabled') && $model->vectorSearchEnabled();

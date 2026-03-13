@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Documentation;
 
-use LLPhant\Embeddings\DataReader\DataReader;
-use LLPhant\Embeddings\Document;
+use NeuronAI\RAG\Document;
 
 /**
  * Reads markdown and HTML files from a path (file or directory) for documentation indexing.
- * Similar to LLPhant's FileDataReader but focused on docs (e.g. resources/docs).
  */
-final readonly class FileDocumentReader implements DataReader
+final readonly class FileDocumentReader
 {
     /**
      * @var string[]
@@ -23,7 +21,6 @@ final readonly class FileDocumentReader implements DataReader
      */
     public function __construct(
         private string $file_path,
-        private string $document_class = Document::class,
         private array $extensions = self::DEFAULT_EXTENSIONS,
     ) {}
 
@@ -58,7 +55,7 @@ final readonly class FileDocumentReader implements DataReader
         $entries = scandir($directory);
 
         if ($entries === false) {
-            return [];
+            return []; // @codeCoverageIgnore
         }
 
         foreach ($entries as $entry) {
@@ -114,11 +111,10 @@ final readonly class FileDocumentReader implements DataReader
 
     private function createDocument(string $content, string $source_name): Document
     {
-        $document = new $this->document_class;
-        $document->content = $content;
+        $document = new Document($content);
         $document->sourceType = 'files';
         $document->sourceName = $source_name;
-        $document->hash = hash('sha256', $content);
+        $document->id = hash('sha256', $content);
 
         return $document;
     }

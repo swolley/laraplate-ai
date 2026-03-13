@@ -31,6 +31,8 @@ final class TranslateMissingCommand extends Command
 
     /**
      * Execute the console command.
+     *
+     * @codeCoverageIgnore Depends on Core module (models(), HasTranslations, LocaleContext)
      */
     public function handle(): int
     {
@@ -41,7 +43,7 @@ final class TranslateMissingCommand extends Command
         $default_locale = config('app.locale');
         $locales_to_check = $locale ? [$locale] : array_filter(
             LocaleContext::getAvailable(),
-            fn ($l): bool => $l !== $default_locale,
+            fn (string $l): bool => $l !== $default_locale,
         );
 
         $translatable_models = models(true, filter: fn (string $model): bool => class_uses_trait($model, HasTranslations::class));
@@ -71,10 +73,10 @@ final class TranslateMissingCommand extends Command
 
         foreach ($locales_to_check as $check_locale) {
             $query = $model_class::query()
-                ->whereHas('translations', function ($q) use ($default_locale): void {
+                ->whereHas('translations', function (\Illuminate\Database\Eloquent\Builder $q) use ($default_locale): void {
                     $q->where('locale', $default_locale);
                 })
-                ->whereDoesntHave('translations', function ($q) use ($check_locale): void {
+                ->whereDoesntHave('translations', function (\Illuminate\Database\Eloquent\Builder $q) use ($check_locale): void {
                     $q->where('locale', $check_locale);
                 });
 

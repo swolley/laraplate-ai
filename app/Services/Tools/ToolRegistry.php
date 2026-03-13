@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Tools;
 
-use LLPhant\Chat\FunctionInfo\FunctionInfo;
-use LLPhant\Chat\FunctionInfo\Parameter;
-use RuntimeException;
+use Modules\AI\Models\ActionRequest;
+use Modules\AI\Models\Conversation;
+use Modules\AI\Services\ActionRequestService;
+use NeuronAI\Tools\PropertyType;
+use NeuronAI\Tools\Tool;
+use NeuronAI\Tools\ToolProperty;
 
 /**
  * Registry for AI tools that can be called by LLM.
  *
- * Tools are registered with handlers and risk levels. When LLM proposes a tool call,
- * use generateTextOrReturnFunctionCalled() which returns FunctionInfo[] without executing.
- * Then create ActionRequest based on the returned tool calls.
+ * Tools are registered with handlers and risk levels. Converts internal
+ * ToolDefinition DTOs into NeuronAI Tool instances for agent consumption.
  */
 final class ToolRegistry
 {
@@ -23,20 +25,10 @@ final class ToolRegistry
     private array $tools = [];
 
     /**
-     * Placeholder method - actual execution goes through ActionRequestService.
-     * This exists because LLPhant FunctionInfo expects the instance to have callable methods.
-     */
-    public function __call(string $name, array $arguments): mixed
-    {
-        // This should never be called directly - tools are executed via ActionRequestService
-        throw new RuntimeException("Tool '{$name}' should be executed via ActionRequestService, not directly.");
-    }
-
-    /**
      * Register a tool with its handler.
      *
-     * @param  array{name: string, type: string, description: string}[]  $parameters
-     * @param  callable(mixed ...$args): mixed  $handler  The actual handler to execute
+     * @param  array{name: string, type: string, description: string, required?: bool}[]  $parameters
+     * @param  callable(mixed ...$args): mixed  $handler
      */
     public function register(
         string $name,
@@ -67,73 +59,129 @@ final class ToolRegistry
         return array_values($this->tools);
     }
 
-    /**
-     * Check if any tools are registered.
-     */
     public function hasTools(): bool
     {
         return $this->tools !== [];
     }
 
     /**
-     * Build LLPhant FunctionInfo[] for chat tools.
-     * These are used with setTools() on chat instance.
+     * Build NeuronAI Tool instances for agent attachment.
      *
-     * Note: LLPhant FunctionInfo requires an instance with methods, but we use
-     * generateTextOrReturnFunctionCalled() which returns FunctionInfo[] without
-     * executing them. The actual execution happens through ActionRequestService.
-     *
-     * @return FunctionInfo[]
+     * @return Tool[]
      */
-    public function getAllToolsAsFunctionInfo(): array
+    public function getAllNeuronTools(): array
     {
         $result = [];
 
         foreach ($this->tools as $definition) {
-            $result[] = $this->buildFunctionInfo($definition);
+            $result[] = $this->buildNeuronTool($definition);
         }
 
         return $result;
     }
 
     /**
-     * Parse arguments from FunctionInfo returned by LLPhant.
+     * Build NeuronAI Tool instances with risk-based approval wrapping.
+     * Low-risk tools execute immediately. Medium/high-risk tools create ActionRequests.
      *
-     * @return array<string, mixed>
+     * @param  ActionRequest[]  $pending_requests  Collects ActionRequests created for medium/high-risk tools (passed by reference)
+     * @return Tool[]
      */
-    public function parseToolArguments(FunctionInfo $function_info): array
-    {
-        if (! isset($function_info->jsonArgs) || $function_info->jsonArgs === '') {
-            return [];
+    public function getAllNeuronToolsWithApproval(
+        Conversation $conversation,
+        ActionRequestService $action_request_service,
+        RiskClassifier $risk_classifier,
+        array &$pending_requests,
+    ): array {
+        $result = [];
+
+        foreach ($this->tools as $definition) {
+            $tool = $this->buildNeuronToolStructure($definition);
+
+            $config_risk = config("ai.features.tools.definitions.{$definition->name}.risk_level");
+            $risk_level = $risk_classifier->classifyRisk($definition->name, [], $config_risk);
+
+            if ($risk_level === 'low') {
+                $tool->setCallable($definition->handler);
+            } else {
+                $tool->setCallable(function (...$args) use ($definition, $conversation, $action_request_service, $risk_level, &$pending_requests): string {
+                    $named_args = [];
+
+                    foreach ($definition->parameters as $index => $param) {
+                        $name = $param['name'];
+
+                        // @codeCoverageIgnoreStart
+                        if (array_key_exists($name, $args)) {
+                            $named_args[$name] = $args[$name];
+                        } elseif (array_key_exists($index, $args)) {
+                            $named_args[$name] = $args[$index];
+                        } else {
+                            $named_args[$name] = null;
+                        }
+                        // @codeCoverageIgnoreEnd
+                    }
+
+                    $request = $action_request_service->createRequest(
+                        $conversation->user,
+                        $definition->name,
+                        $named_args,
+                        $conversation,
+                    );
+
+                    $pending_requests[] = $request;
+
+                    $status_label = $risk_level === 'medium'
+                        ? 'pending user confirmation'
+                        : 'pending admin approval';
+
+                    return "Action '{$definition->name}' requires {$status_label} before execution. Request ID: {$request->id}";
+                });
+            }
+
+            $result[] = $tool;
         }
 
-        return json_decode($function_info->jsonArgs, true, 512, JSON_THROW_ON_ERROR) ?? [];
+        return $result;
     }
 
-    private function buildFunctionInfo(ToolDefinition $definition): FunctionInfo
+    private function buildNeuronTool(ToolDefinition $definition): Tool
     {
-        $params = [];
-        $required = [];
+        $tool = $this->buildNeuronToolStructure($definition);
+        $tool->setCallable($definition->handler);
 
-        foreach ($definition->parameters as $p) {
-            $param = new Parameter(
-                $p['name'],
-                $p['type'] ?? 'string',
-                $p['description'] ?? '',
+        return $tool;
+    }
+
+    private function buildNeuronToolStructure(ToolDefinition $definition): Tool
+    {
+        $tool = Tool::make(
+            $definition->name,
+            $definition->description,
+        );
+
+        foreach ($definition->parameters as $param) {
+            $tool->addProperty(
+                new ToolProperty(
+                    name: $param['name'],
+                    type: $this->mapPropertyType($param['type']),
+                    description: $param['description'],
+                    required: $param['required'] ?? true,
+                ),
             );
-            $params[] = $param;
-            $required[] = $param;
         }
 
-        // LLPhant FunctionInfo needs an instance, but since we use generateTextOrReturnFunctionCalled()
-        // which returns without executing, we can use $this as a placeholder.
-        // The handler execution goes through ActionRequestService, not through FunctionInfo::call().
-        return new FunctionInfo(
-            $definition->name,
-            $this,
-            $definition->description,
-            $params,
-            $required,
-        );
+        return $tool;
+    }
+
+    private function mapPropertyType(string $type): PropertyType
+    {
+        return match ($type) {
+            'integer', 'int' => PropertyType::INTEGER,
+            'number', 'float', 'double' => PropertyType::NUMBER,
+            'boolean', 'bool' => PropertyType::BOOLEAN,
+            'array' => PropertyType::ARRAY,
+            'object' => PropertyType::OBJECT,
+            default => PropertyType::STRING,
+        };
     }
 }

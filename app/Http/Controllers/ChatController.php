@@ -135,9 +135,9 @@ final class ChatController extends Controller
                         'type' => 'chunk',
                         'content' => $delta,
                     ], JSON_THROW_ON_ERROR) . "\n\n";
-                } catch (JsonException) {
+                } catch (JsonException) { // @codeCoverageIgnoreStart
                     // in caso di errore di encoding, saltiamo il chunk
-                }
+                } // @codeCoverageIgnoreEnd
 
                 @ob_flush();
                 @flush();
@@ -152,9 +152,9 @@ final class ChatController extends Controller
 
             try {
                 echo 'data: ' . json_encode(['type' => 'end'], JSON_THROW_ON_ERROR) . "\n\n";
-            } catch (JsonException) {
+            } catch (JsonException) { // @codeCoverageIgnoreStart
                 // ignore
-            }
+            } // @codeCoverageIgnoreEnd
 
             @ob_flush();
             @flush();

@@ -4,39 +4,21 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
-use Exception;
+use Closure;
 use Illuminate\Support\Str;
-use LLPhant\Chat\ChatInterface;
-use LLPhant\Embeddings\DocumentSplitter\DocumentSplitter;
-use LLPhant\Embeddings\EmbeddingFormatter\EmbeddingFormatter;
-use LLPhant\Embeddings\VectorStores\FileSystem\FileSystemVectorStore;
-use LLPhant\Embeddings\VectorStores\Memory\MemoryVectorStore;
-use LLPhant\Embeddings\VectorStores\VectorStoreBase;
-use LLPhant\Query\SemanticSearch\IdentityTransformer;
-use LLPhant\Query\SemanticSearch\QuestionAnswering;
+use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Services\Documentation\FileDocumentReader;
+use NeuronAI\Chat\Messages\UserMessage;
+use NeuronAI\RAG\Splitter\SentenceTextSplitter;
 
-final class DocumentationService
+final readonly class DocumentationService
 {
-    private ?VectorStoreBase $memoryStore = null;
-
-    public function __construct(
-        private readonly EmbeddingService $embeddingService,
-    ) {}
-
     /**
-     * Get the vector store for FAQ/RAG based on config.
+     * @param  Closure(): DocumentationAgent|null  $agentFactory  Optional factory for testing
      */
-    public function getVectorStore(): VectorStoreBase
-    {
-        $driver = config('ai.features.faq.vector_store', 'filesystem');
-
-        return match ($driver) {
-            'memory' => $this->memoryStore ??= new MemoryVectorStore,
-            'filesystem' => new FileSystemVectorStore($this->getVectorStorePath()),
-            default => throw new Exception("Unsupported FAQ vector store: {$driver}"),
-        };
-    }
+    public function __construct(
+        private ?Closure $agentFactory = null,
+    ) {}
 
     /**
      * Index documentation from path: read files, split, generate embeddings, save to vector store.
@@ -56,77 +38,55 @@ final class DocumentationService
             return 0;
         }
 
+        $splitter = new SentenceTextSplitter;
         $split_documents = [];
 
         foreach ($documents as $document) {
-            $chunks = DocumentSplitter::splitDocument($document);
+            $chunks = $splitter->splitDocument($document);
 
             foreach ($chunks as $chunk) {
                 $split_documents[] = $chunk;
             }
         }
 
-        $formatted = EmbeddingFormatter::formatEmbeddings($split_documents);
-        $generator = $this->embeddingService->getEmbeddingGenerator();
+        $factory = $this->agentFactory ?? DocumentationAgent::make(...);
 
-        throw_if(! $generator instanceof \LLPhant\Embeddings\EmbeddingGenerator\EmbeddingGeneratorInterface, Exception::class, 'Embedding generator is not configured. Cannot index documentation.');
+        /** @var DocumentationAgent $agent */
+        $agent = $factory();
+        $agent->addDocuments($split_documents);
 
-        $embedded = $generator->embedDocuments($formatted);
-        $store = $this->getVectorStore();
-
-        if ($store instanceof FileSystemVectorStore) {
-            $path = $this->getVectorStorePath();
-            $dir = dirname($path);
-
-            if (! is_dir($dir)) {
-                mkdir($dir, 0755, true);
-            }
-
-            if (file_exists($path)) {
-                $store->deleteStore();
-            }
-        }
-
-        $store->addDocuments($embedded);
-
-        return count($embedded);
+        return count($split_documents);
     }
 
     /**
-     * Answer a question using RAG (vector search + LLM). Returns answer and citations for message metadata.
+     * Answer a question using RAG (vector search + LLM).
      *
      * @return array{answer: string, citations: array<int, array{source: string, excerpt: string, score: float|null}>}
      */
-    public function answerQuestion(string $question, ChatInterface $chat): array
+    public function answerQuestion(string $question): array
     {
-        $generator = $this->embeddingService->getEmbeddingGenerator();
-
-        throw_if(! $generator instanceof \LLPhant\Embeddings\EmbeddingGenerator\EmbeddingGeneratorInterface, Exception::class, 'Embedding generator is not configured. Cannot answer question.');
-
-        $store = $this->getVectorStore();
-        $k = config('ai.features.faq.max_documents', 5);
-
-        $qa = new QuestionAnswering(
-            $store,
-            $generator,
-            $chat,
-            new IdentityTransformer,
+        $factory = $this->agentFactory ?? fn (): DocumentationAgent => DocumentationAgent::make(
+            topK: (int) config('ai.features.faq.max_documents', 5),
         );
 
-        $answer = $qa->answerQuestion($question, $k);
-        $retrieved = $qa->getRetrievedDocuments();
+        /** @var DocumentationAgent $agent */
+        $agent = $factory();
+
+        $response = $agent->chat(new UserMessage($question));
+        $answer = $response->getMessage()->getContent();
 
         $citations = [];
 
-        foreach ($retrieved as $doc) {
-            $citations[] = [
-                'source' => $doc->sourceName,
-                'excerpt' => Str::limit($doc->content, 300),
-                'score' => null,
-            ];
+        if (method_exists($response->getMessage(), 'getCitations')) {
+            foreach ($response->getMessage()->getCitations() as $citation) {
+                $citations[] = [
+                    'source' => $citation->getSourceName() ?? 'Unknown',
+                    'excerpt' => Str::limit($citation->getContent() ?? '', 300),
+                    'score' => $citation->getScore(),
+                ];
+            }
         }
 
-        // Format citations as markdown if enabled
         $formatted_answer = $answer;
 
         if (config('ai.features.faq.format_citations', true) && $citations !== []) {
@@ -140,7 +100,7 @@ final class DocumentationService
     }
 
     /**
-     * Check if FAQ/RAG is enabled and documentation is indexed (for filesystem: file exists).
+     * Check if FAQ/RAG is enabled and documentation is indexed.
      */
     public function isAvailable(): bool
     {
@@ -148,20 +108,17 @@ final class DocumentationService
             return false;
         }
 
-        $store = $this->getVectorStore();
+        $store_driver = (string) config('ai.features.faq.vector_store', 'filesystem');
 
-        if ($store instanceof FileSystemVectorStore) {
-            $path = $this->getVectorStorePath();
+        if ($store_driver === 'filesystem') {
+            $path = (string) config('ai.features.faq.vector_store_path') ?: storage_path('app/ai/faq-vectorstore.store');
 
-            return file_exists($path) && ! $store->isEmpty();
+            return file_exists($path);
         }
 
         return true;
     }
 
-    /**
-     * Append formatted citations to the answer.
-     */
     private function appendCitationsToAnswer(string $answer, array $citations): string
     {
         if ($citations === []) {
@@ -181,11 +138,6 @@ final class DocumentationService
 
     private function getDocumentationPath(): string
     {
-        return config('ai.features.faq.documentation_path', resource_path('docs'));
-    }
-
-    private function getVectorStorePath(): string
-    {
-        return config('ai.features.faq.vector_store_path', storage_path('app/ai/faq-vectorstore.json'));
+        return (string) config('ai.features.faq.documentation_path') ?: resource_path('docs');
     }
 }

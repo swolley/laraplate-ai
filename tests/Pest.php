@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use DG\BypassFinals;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\AI\Tests\TestCase;
+
+BypassFinals::enable();
 
 /*
 |--------------------------------------------------------------------------
@@ -10,9 +14,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 |--------------------------------------------------------------------------
 */
 
-pest()->extend(Modules\Core\Tests\TestCase::class)
+pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
 
-pest()->extend(Modules\Core\Tests\TestCase::class)
+pest()->extend(TestCase::class)
     ->in('Unit');

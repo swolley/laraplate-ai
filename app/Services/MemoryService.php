@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use Closure;
 use Exception;
-use LLPhant\Chat\ChatInterface;
+use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\ConversationSummary;
+use Modules\AI\Models\Message;
+use NeuronAI\Chat\Messages\UserMessage;
 
-final class MemoryService
+final readonly class MemoryService
 {
-    private const int SUMMARY_THRESHOLD = 20; // Messages before triggering summary
+    private const int SUMMARY_THRESHOLD = 20;
 
     private const string SUMMARY_SYSTEM_PROMPT = <<<'PROMPT'
 You are a conversation summarizer. Create a concise summary of the conversation that captures:
@@ -29,6 +32,10 @@ Return ONLY a valid JSON array, no other text.
 Example: ["User prefers dark mode", "Project deadline is March 15"]
 PROMPT;
 
+    public function __construct(
+        private ?Closure $chatAgentFactory = null,
+    ) {}
+
     /**
      * Check if conversation should be summarized based on message count.
      */
@@ -45,7 +52,6 @@ PROMPT;
         $message_count = $conversation->messages()->count();
         $threshold = config('ai.features.chat.summary_threshold', self::SUMMARY_THRESHOLD);
 
-        // Check if we already have a recent summary
         $last_summary = $conversation->summaries()->first();
 
         if ($last_summary !== null) {
@@ -58,9 +64,9 @@ PROMPT;
     }
 
     /**
-     * Generate a summary of the conversation using LLM.
+     * Generate a summary of the conversation using a NeuronAI agent.
      */
-    public function summarizeConversation(Conversation $conversation, ChatInterface $chat): string
+    public function summarizeConversation(Conversation $conversation): string
     {
         $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
@@ -70,19 +76,20 @@ PROMPT;
         }
 
         $conversation_text = $messages
-            ->map(fn ($m): string => ucfirst((string) $m->role) . ': ' . $m->content)
+            ->map(fn (Message $m): string => ucfirst((string) $m->role) . ': ' . $m->content)
             ->implode("\n\n");
 
-        // Include existing summary for context if available
         $context = '';
 
         if ($conversation->summary) {
             $context = "Previous summary:\n{$conversation->summary}\n\nNew messages:\n";
         }
 
-        $chat->setSystemMessage(self::SUMMARY_SYSTEM_PROMPT);
+        $summary_agent = $this->makeChatAgent(self::SUMMARY_SYSTEM_PROMPT);
 
-        return $chat->generateText($context . $conversation_text);
+        $response = $summary_agent->chat(new UserMessage($context . $conversation_text));
+
+        return $response->getMessage()->getContent();
     }
 
     /**
@@ -90,7 +97,7 @@ PROMPT;
      *
      * @return string[]
      */
-    public function extractFacts(Conversation $conversation, ChatInterface $chat): array
+    public function extractFacts(Conversation $conversation): array
     {
         $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
@@ -100,14 +107,14 @@ PROMPT;
         }
 
         $conversation_text = $messages
-            ->map(fn ($m): string => ucfirst((string) $m->role) . ': ' . $m->content)
+            ->map(fn (Message $m): string => ucfirst((string) $m->role) . ': ' . $m->content)
             ->implode("\n\n");
 
-        $chat->setSystemMessage(self::FACTS_SYSTEM_PROMPT);
-
         try {
-            $response = $chat->generateText($conversation_text);
-            $facts = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+            $facts_agent = $this->makeChatAgent(self::FACTS_SYSTEM_PROMPT);
+
+            $response = $facts_agent->chat(new UserMessage($conversation_text));
+            $facts = json_decode((string) $response->getMessage()->getContent(), true, 512, JSON_THROW_ON_ERROR);
 
             return is_array($facts) ? $facts : [];
         } catch (Exception) {
@@ -118,16 +125,14 @@ PROMPT;
     /**
      * Create a summary snapshot and update conversation summary.
      */
-    public function createSummarySnapshot(Conversation $conversation, ChatInterface $chat): ConversationSummary
+    public function createSummarySnapshot(Conversation $conversation): ConversationSummary
     {
-        $summary = $this->summarizeConversation($conversation, $chat);
-        $facts = $this->extractFacts($conversation, $chat);
+        $summary = $this->summarizeConversation($conversation);
+        $facts = $this->extractFacts($conversation);
         $message_count = $conversation->messages()->count();
 
-        // Update conversation's rolling summary
         $conversation->update(['summary' => $summary]);
 
-        // Create historical snapshot
         return ConversationSummary::query()->create([
             'conversation_id' => $conversation->id,
             'summary' => $summary,
@@ -167,5 +172,15 @@ PROMPT;
         }
 
         return "Previous conversation summary:\n{$conversation->summary}";
+    }
+
+    private function makeChatAgent(string $systemPrompt): ChatAgent
+    {
+        if ($this->chatAgentFactory instanceof Closure) {
+            return ($this->chatAgentFactory)($systemPrompt);
+        }
+
+        /** @var ChatAgent */
+        return ChatAgent::make(systemPrompt: $systemPrompt); // @codeCoverageIgnore
     }
 }

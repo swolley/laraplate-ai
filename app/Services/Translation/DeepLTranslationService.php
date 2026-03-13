@@ -7,7 +7,6 @@ namespace Modules\AI\Services\Translation;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Modules\Core\Services\Translation\TranslationServiceInterface;
 
 final class DeepLTranslationService implements TranslationServiceInterface
 {

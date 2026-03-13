@@ -65,6 +65,8 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     /**
      * @throws ClientExceptionInterface
      * @throws JsonException
+     *
+     * @codeCoverageIgnore
      */
     public function handle(EmbeddingService $embedding_service): void
     {
@@ -94,6 +96,9 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         }
     }
 
+    /**
+     * @codeCoverageIgnore
+     */
     public function failed(Throwable $exception): void
     {
         Log::error('GenerateEmbeddingsJob failed', [

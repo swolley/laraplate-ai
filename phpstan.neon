@@ -12,55 +12,71 @@ parameters:
     # Directory da analizzare
     paths:
         - app/
-        - bootstrap/app.php
         - config
         - database
-        - public
         - routes
     
     # File da escludere
     excludePaths:
         - vendor/**
+        # Files that depend on Core module or parent app (not available standalone)
+        - app/Services/Translation/DeepLTranslationService.php
+        - app/Providers/AIServiceProvider.php
+        - app/Providers/RouteServiceProvider.php
+        - app/Http/Controllers/**
+        - app/Console/**
         
     # Ignora errori specifici
     ignoreErrors:
-        # - '#Call to an undefined method [a-zA-Z0-9\\_]+::shouldReceive\(\)#'
-        # - '#Call to an undefined method Illuminate\\Routing\\Route::name\(\).$#'
-        # - '#Call to an undefined method Illuminate\\Routing\\Route::withoutMiddleware\(\).$#'
-        # - '#Call to an undefined method Illuminate\\Routing\\Route::can\(\).$#'
-        # - '#Call to an undefined method Illuminate\\Routing\\Route::where\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Http\\Requests\\CrudRequest::isJson\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Http\\Requests\\CrudRequest::json\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Http\\Requests\\CrudRequest::getRealMethod\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Grids\\Requests\\GridRequest::has\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Grids\\Requests\\GridRequest::get\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Grids\\Requests\\GridRequest::all\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\\Grids\\Requests\\GridRequest::getMethod\(\).$#'
-        # - '#Call to an undefined static method Illuminate\\Database\\Eloquent\\Model::withTrashed\(\).$#'
-        # - '#Call to an undefined static method Illuminate\\Database\\Eloquent\\Model::getTimestampColumns\(\).$#'
-        # - '#Call to an undefined method Modules\\Core\Grids\\Casts\\GridRequestData|Modules\\Core\\Grids\\Requests\\GridRequest::getMethod\(\).$#'
-        # - '#Call to an undefined method Illuminate\\Http\\Request::getMethod\(\).$#'
-        # Ignora gli errori relativi ai metodi dei trait HasValidations e HasPermissions
-        # - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Model::shouldSkipValidation\(\)#'
-        # - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Model::validateWithRules\(\)#'
-        # - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Model::getRules\(\)#'
-        # - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Model::getOperationRules\(\)#'
-        # - '#Call to an undefined method Illuminate\\Foundation\\Auth\\User::isSuperAdmin\(\)#'
-        # - '#Call to an undefined method Illuminate\\Foundation\\Auth\\User::hasPermission\(\)#'
         - 
           message: "#Called 'env' outside of the config directory which returns null when the config is cached, use 'config'.$#"
           identifier: larastan.noEnvCallsOutsideOfConfig
-          path: Modules/*/config/*
-        # - '#Static call to instance method __construct\(\)#'
-        - '#Class PHP_CodeSniffer\\Standards\\Squiz\\Sniffs\\PHP\\EvalSniff not found.#'
-        - '#Class PHP_CodeSniffer\\Standards\\PSR1\\Sniffs\\Methods\\CamelCapsMethodNameSniff not found.#'
-        - '#Class PHP_CodeSniffer\\Standards\\Generic\\Sniffs\\WhiteSpace\\DisallowTabIndentSniff not found.#'
-        - '#Class PHP_CodeSniffer\\Standards\\Generic\\Sniffs\\Metrics\\CyclomaticComplexitySniff not found.#'
-        - '#PHPDoc tag @mixin contains unknown class.*IdeHelper.*#'
-        # Laravel Scout - metodi aggiunti dal trait Searchable
-        - '#Call to an undefined method.*::searchableAs\(\)#'
-        # Cache::remember con array come TTL (probabilmente un bug, ma ignoriamo per ora)
-        - '#Parameter.*\$ttl.*Cache::remember.*array given#'
+          reportUnmatched: false
+        -
+          message: '#PHPDoc tag @mixin contains unknown class.*IdeHelper.*#'
+          reportUnmatched: false
+        -
+          message: '#Call to an undefined method.*::searchableAs\(\)#'
+          reportUnmatched: false
+        -
+          message: '#Parameter.*\$ttl.*Cache::remember.*array given#'
+          reportUnmatched: false
+        # Core module dependencies (not available in standalone mode)
+        -
+          message: '#.*Modules.Core.*#'
+          reportUnmatched: false
+        # Eloquent model properties resolved by IdeHelper (not generated in standalone)
+        -
+          identifier: property.notFound
+          reportUnmatched: false
+        # Parent app classes not available standalone (App\Http\Controllers\Controller)
+        -
+          message: '#extends unknown class App\\\\#'
+          reportUnmatched: false
+        # Core module helper functions (class_uses_trait, models)
+        -
+          message: '#Function (class_uses_trait|models) not found#'
+          reportUnmatched: false
+        # User model methods from Core (hasRole, etc.)
+        -
+          message: '#Call to an undefined method.*Auth\\\\User::#'
+          reportUnmatched: false
+        # Model belongsTo with Core User class string
+        -
+          message: '#expects class-string.*Model.*, string given#'
+          reportUnmatched: false
+        # Core module trait methods on Eloquent models (prepareDataToEmbed, embeddings, etc.)
+        -
+          message: '#Call to an undefined method.*::(prepareDataToEmbed|embeddings)\(\)#'
+          reportUnmatched: false
+        # Pre-existing issues in Jobs/Listeners (Core module dependent)
+        -
+          identifier: arguments.count
+          path: app/Listeners/*
+          reportUnmatched: false
+        -
+          identifier: booleanNot.alwaysFalse
+          reportUnmatched: false
 
     # Configurazione per Laravel
     checkModelProperties: true

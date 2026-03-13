@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\User;
+use NeuronAI\Chat\Enums\MessageRole;
+use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
 /**
@@ -60,6 +62,7 @@ final class Conversation extends Model
      */
     public function addMessage(string $role, string $content, ?array $metadata = null): Message
     {
+        /** @var Message */
         return $this->messages()->create([
             'role' => $role,
             'content' => $content,
@@ -68,28 +71,21 @@ final class Conversation extends Model
     }
 
     /**
-     * Get messages formatted for LLPhant (Message[] format).
+     * Get messages formatted for NeuronAI agent chat history.
      *
-     * @return array<int, array{role: string, content: string}>
+     * @return NeuronMessage[]
      */
-    public function getMessagesForLLPhant(): array
+    public function getMessagesForNeuron(): array
     {
         $messages = [];
 
-        // Add system message if present
-        if ($this->system_message) {
-            $messages[] = [
-                'role' => 'system',
-                'content' => $this->system_message,
-            ];
-        }
-
-        // Add conversation messages
         foreach ($this->messages as $message) {
-            $messages[] = [
-                'role' => $message->role,
-                'content' => $message->content,
-            ];
+            $role = match ($message->role) {
+                'assistant' => MessageRole::ASSISTANT,
+                default => MessageRole::USER,
+            };
+
+            $messages[] = new NeuronMessage($role, $message->content);
         }
 
         return $messages;

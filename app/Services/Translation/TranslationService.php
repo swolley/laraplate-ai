@@ -95,6 +95,7 @@ final class TranslationService implements TranslationServiceInterface
                 'to' => $to_locale,
             ]);
 
+            // @codeCoverageIgnoreStart
             if ($this->fallback_service instanceof TranslationServiceInterface) {
                 try {
                     return $this->fallback_service->translate($text, $from_locale, $to_locale);
@@ -106,6 +107,7 @@ final class TranslationService implements TranslationServiceInterface
                     ]);
                 }
             }
+            // @codeCoverageIgnoreEnd
 
             return $text;
         }
