@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
@@ -15,8 +16,7 @@ use Override;
  */
 final class ActionRequest extends Model
 {
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use HasFactory;
 
     #[Override]
     protected $table = 'ai_action_requests';

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -48,7 +49,7 @@ final class Message extends Model
     /**
      * Scope a query to only include messages with a specific role.
      */
-    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    #[Scope]
     protected function byRole(Builder $query, string $role): Builder
     {
         return $query->where('role', $role);
