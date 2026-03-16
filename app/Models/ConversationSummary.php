@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Override;
@@ -13,8 +14,7 @@ use Override;
  */
 final class ConversationSummary extends Model
 {
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use HasFactory;
 
     #[Override]
     public $timestamps = false;
