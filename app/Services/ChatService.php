@@ -272,8 +272,8 @@ final class ChatService
             return;
         }
 
-        $agent = $this->buildAgent($conversation);
-        $memory_service->createSummarySnapshot($conversation, $agent);
+        $this->buildAgent($conversation);
+        $memory_service->createSummarySnapshot($conversation);
     }
 
     private function looksLikeQuestion(string $message): bool

@@ -489,7 +489,7 @@ it('sendMessage triggers summary creation when shouldSummarize is true', functio
     $memoryMock->shouldReceive('shouldSummarize')->once()->andReturn(true);
     $memoryMock->shouldReceive('createSummarySnapshot')
         ->once()
-        ->with(Mockery::type(Conversation::class), Mockery::type(ChatAgent::class));
+        ->with(Mockery::type(Conversation::class));
     app()->instance(MemoryService::class, $memoryMock);
 
     $docMock = Mockery::mock(DocumentationService::class);

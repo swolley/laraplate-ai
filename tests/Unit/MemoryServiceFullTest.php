@@ -195,8 +195,7 @@ it('createSummarySnapshot creates ConversationSummary record', function (): void
         'memory_enabled' => true,
     ]);
 
-    $agent = ChatAgent::make();
-    $snapshot = $this->service->createSummarySnapshot($conversation, $agent);
+    $snapshot = $this->service->createSummarySnapshot($conversation);
 
     expect($snapshot)->toBeInstanceOf(ConversationSummary::class)
         ->and($snapshot->conversation_id)->toBe($conversation->id)
@@ -211,8 +210,7 @@ it('summarizeConversation returns empty string for empty conversation', function
         'memory_enabled' => true,
     ]);
 
-    $agent = ChatAgent::make();
-    $result = $this->service->summarizeConversation($conversation, $agent);
+    $result = $this->service->summarizeConversation($conversation);
 
     expect($result)->toBe('');
 });
@@ -293,8 +291,7 @@ it('extractFacts returns empty array for empty conversation', function (): void 
         'memory_enabled' => true,
     ]);
 
-    $agent = ChatAgent::make();
-    $result = $this->service->extractFacts($conversation, $agent);
+    $result = $this->service->extractFacts($conversation);
 
     expect($result)->toBe([]);
 });
