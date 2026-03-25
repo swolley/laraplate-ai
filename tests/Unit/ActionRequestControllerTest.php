@@ -11,15 +11,8 @@ use Modules\AI\Http\Requests\RejectActionRequest;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\ActionRequestService;
+use Modules\AI\Tests\Unit\AdminUser;
 use Modules\Core\Models\User;
-
-class AdminUser extends User
-{
-    public function hasRole(array|string $roles): bool
-    {
-        return true;
-    }
-}
 
 uses(RefreshDatabase::class);
 

@@ -99,8 +99,12 @@
   },
   "autoload-dev": {
     "psr-4": {
-      "Modules\\AI\\Tests\\": "tests/"
-    }
+      "Modules\\AI\\Tests\\Unit\\": "tests/Unit",
+      "Modules\\AI\\Tests\\Feature\\": "tests/Feature"
+    },
+    "classmap": [
+      "tests/TestCase.php"
+    ]
   },
   "config": {
     "allow-plugins": {

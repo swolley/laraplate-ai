@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\AI\Tests\Unit;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Modules\Core\Helpers\HasTranslations;
+
+class TranslatableModelStub extends Model
+{
+    use HasFactory;
+    use HasTranslations;
+
+    public function getTable(): string
+    {
+        return 'test_translatable';
+    }
+}

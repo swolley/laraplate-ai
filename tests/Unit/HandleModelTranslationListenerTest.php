@@ -8,20 +8,10 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Listeners\HandleModelTranslationListener;
+use Modules\AI\Tests\Unit\TranslatableModelStub;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
 use Modules\Core\Helpers\HasTranslations;
-
-class TranslatableModelStub extends Model
-{
-    use HasTranslations;
-    use Illuminate\Database\Eloquent\Factories\HasFactory;
-
-    public function getTable(): string
-    {
-        return 'test_translatable';
-    }
-}
 
 beforeEach(function (): void {
     Config::set('ai.features.translation.enabled', true);
