@@ -41,14 +41,14 @@ it('returns null for non-registered tool', function (): void {
 it('reports hasTools correctly', function (): void {
     expect($this->registry->hasTools())->toBeFalse();
 
-    $this->registry->register('test', fn (): string => 'ok', 'Test', []);
+    $this->registry->register('test', static fn (): string => 'ok', 'Test', []);
 
     expect($this->registry->hasTools())->toBeTrue();
 });
 
 it('returns all tools as definitions', function (): void {
-    $this->registry->register('tool_a', fn (): string => 'a', 'Tool A', []);
-    $this->registry->register('tool_b', fn (): string => 'b', 'Tool B', []);
+    $this->registry->register('tool_a', static fn (): string => 'a', 'Tool A', []);
+    $this->registry->register('tool_b', static fn (): string => 'b', 'Tool B', []);
 
     $all = $this->registry->getAllTools();
 
@@ -58,7 +58,7 @@ it('returns all tools as definitions', function (): void {
 });
 
 it('builds NeuronAI Tool instances via getAllNeuronTools', function (): void {
-    $handler = fn (string $q): string => "Result: {$q}";
+    $handler = static fn (string $q): string => "Result: {$q}";
 
     $this->registry->register(
         'search',
@@ -139,16 +139,16 @@ it('maps property types correctly', function (): void {
 });
 
 it('registers tools with custom risk levels', function (): void {
-    $this->registry->register('safe', fn (): string => 'ok', 'Safe', [], 'low');
-    $this->registry->register('risky', fn (): string => 'ok', 'Risky', [], 'high');
+    $this->registry->register('safe', static fn (): string => 'ok', 'Safe', [], 'low');
+    $this->registry->register('risky', static fn (): string => 'ok', 'Risky', [], 'high');
 
     expect($this->registry->getTool('safe')->riskLevel)->toBe('low')
         ->and($this->registry->getTool('risky')->riskLevel)->toBe('high');
 });
 
 it('overwrites tool when registering same name twice', function (): void {
-    $this->registry->register('tool', fn (): string => 'v1', 'Version 1', []);
-    $this->registry->register('tool', fn (): string => 'v2', 'Version 2', []);
+    $this->registry->register('tool', static fn (): string => 'v1', 'Version 1', []);
+    $this->registry->register('tool', static fn (): string => 'v2', 'Version 2', []);
 
     $tool = $this->registry->getTool('tool');
     expect($tool->description)->toBe('Version 2');

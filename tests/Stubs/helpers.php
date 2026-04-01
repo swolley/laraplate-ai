@@ -31,10 +31,10 @@ if (! function_exists('createActionRequestService')) {
     function createActionRequestService(bool $withFailingTool = false): Modules\AI\Services\ActionRequestService
     {
         $toolRegistry = new Modules\AI\Services\Tools\ToolRegistry;
-        $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+        $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
 
         if ($withFailingTool) {
-            $toolRegistry->register('failing_tool', fn (): never => throw new Exception('Tool failed'), 'failing', [], 'low');
+            $toolRegistry->register('failing_tool', static fn (): never => throw new Exception('Tool failed'), 'failing', [], 'low');
         }
         $riskClassifier = new Modules\AI\Services\Tools\RiskClassifier(['test' => ['risk_level' => 'low'], 'failing_tool' => ['risk_level' => 'low']]);
 

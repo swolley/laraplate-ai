@@ -6,6 +6,7 @@ namespace Modules\AI\Services;
 
 use Closure;
 use Exception;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\ConversationSummary;
@@ -68,6 +69,7 @@ PROMPT;
      */
     public function summarizeConversation(Conversation $conversation): string
     {
+        /** @var Collection<int, Message> */
         $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
 
@@ -99,6 +101,7 @@ PROMPT;
      */
     public function extractFacts(Conversation $conversation): array
     {
+        /** @var Collection<int, Message> */
         $messages = $conversation->messages()->oldest()
             ->get(['role', 'content']);
 

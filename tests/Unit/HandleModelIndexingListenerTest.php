@@ -9,7 +9,6 @@ use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Tests\Unit\SearchableModelStub;
 use Modules\Core\Events\ModelRequiresIndexing;
-use Modules\Core\Search\Traits\Searchable;
 
 beforeEach(function (): void {
     Config::set('ai.features.embeddings.enabled', true);

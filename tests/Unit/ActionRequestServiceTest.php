@@ -20,7 +20,7 @@ beforeEach(function (): void {
 
 it('createRequest creates an ActionRequest with low risk and dispatches job', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
 
     $riskClassifier = new RiskClassifier(['test' => ['risk_level' => 'low']]);
 
@@ -40,7 +40,7 @@ it('createRequest creates an ActionRequest with low risk and dispatches job', fu
 
 it('createRequest creates request with medium risk and pending_user_confirmation status', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'medium');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'medium');
 
     $riskClassifier = new RiskClassifier(['test' => ['risk_level' => 'medium']]);
 
@@ -57,7 +57,7 @@ it('createRequest creates request with medium risk and pending_user_confirmation
 
 it('createRequest creates request with high risk and pending_admin_approval status', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'high');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'high');
 
     $riskClassifier = new RiskClassifier(['test' => ['risk_level' => 'high']]);
 
@@ -74,7 +74,7 @@ it('createRequest creates request with high risk and pending_admin_approval stat
 
 it('confirmRequest updates status to approved and dispatches job', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
@@ -96,7 +96,7 @@ it('confirmRequest updates status to approved and dispatches job', function (): 
 
 it('confirmRequest throws when not pending_user_confirmation', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
@@ -115,7 +115,7 @@ it('confirmRequest throws when not pending_user_confirmation', function (): void
 
 it('approveRequest updates status to approved and dispatches job', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
@@ -137,7 +137,7 @@ it('approveRequest updates status to approved and dispatches job', function (): 
 
 it('approveRequest throws when not pending_admin_approval', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
@@ -156,7 +156,7 @@ it('approveRequest throws when not pending_admin_approval', function (): void {
 
 it('rejectRequest updates status to rejected', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
@@ -224,7 +224,7 @@ it('runToolHandler passes array values to handler when tool_args is array', func
 
 it('createRequest uses pending_user_confirmation status when risk level is unknown', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
 
     $riskClassifier = Mockery::mock(RiskClassifier::class);
     $riskClassifier->shouldReceive('classifyRisk')
@@ -243,7 +243,7 @@ it('createRequest uses pending_user_confirmation status when risk level is unkno
 
 it('executeRequest updates status to executing when status is not approved', function (): void {
     $toolRegistry = new ToolRegistry;
-    $toolRegistry->register('test', fn (): string => 'result', 'test', [], 'low');
+    $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
     $riskClassifier = new RiskClassifier;
 
     $service = new ActionRequestService($toolRegistry, $riskClassifier);
