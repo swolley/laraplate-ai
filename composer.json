@@ -2,7 +2,7 @@
   "name": "swolley/laraplate-ai",
   "vendor": "swolley",
   "description": "AI Module contains all the necessary functionalities for build up a new AI integrated application",
-  "version": "v2.0.0",
+  "version": "v2.0.1",
   "keywords": [
     "laravel",
     "laraplate",
@@ -77,7 +77,7 @@
       "composer bump",
       "npx npm-check-updates -u"
     ],
-    "version": "v2.0.1",
+    "version": "./scripts/version.sh --nointeractive",
     "version:silent": "./scripts/version.sh --silent --nointeractive",
     "version:major": "./scripts/version.sh major",
     "version:minor": "./scripts/version.sh minor",
