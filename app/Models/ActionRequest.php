@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
+use Modules\Core\Overrides\Model;
 use Override;
 
 /**
@@ -16,8 +15,6 @@ use Override;
  */
 final class ActionRequest extends Model
 {
-    use HasFactory;
-
     #[Override]
     protected $table = 'ai_action_requests';
 
@@ -34,6 +31,23 @@ final class ActionRequest extends Model
         'error',
         'executed_at',
     ];
+
+    public function getRules(): array
+    {
+        $rules = parent::getRules();
+        $rules[Model::DEFAULT_RULE] = array_merge($rules[Model::DEFAULT_RULE], [
+            'conversation_id' => ['required', 'exists:ai_conversations,id'],
+            'status' => ['required', 'string', 'max:255'],
+        ]);
+        $rules['create'] = array_merge($rules['create'], [
+            'user_id' => ['required', 'exists:users,id'],
+            'tool_name' => ['required', 'string', 'max:255'],
+            'tool_args' => ['required', 'array'],
+            'risk_level' => ['required', 'string', 'max:255'],
+        ]);
+
+        return $rules;
+    }
 
     public function user(): BelongsTo
     {
