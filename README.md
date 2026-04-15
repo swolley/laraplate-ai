@@ -222,7 +222,6 @@ The AI Module includes built-in features such as:
     - Seamless integration with Core module's search functionality
 
 -   **Modular Design:**
-    - Zero dependencies from Core/Cms (Core never knows about AI)
     - Can be disabled without breaking application functionality
     - Extensible architecture for future AI features
 
