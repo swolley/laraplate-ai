@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
+use Modules\Core\Overrides\Model;
 use Override;
 
 /**
@@ -16,11 +15,6 @@ use Override;
  */
 final class ContextualSuggestion extends Model
 {
-    use HasFactory;
-
-    #[Override]
-    public $timestamps = false;
-
     #[Override]
     protected $table = 'ai_contextual_suggestions';
 
@@ -31,6 +25,10 @@ final class ContextualSuggestion extends Model
         'suggestion',
         'dismissed_at',
     ];
+
+    private bool $softDeletesEnabled = false;
+
+    private bool $versionStrategy = false;
 
     public function user(): BelongsTo
     {

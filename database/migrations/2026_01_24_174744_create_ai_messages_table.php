@@ -21,7 +21,12 @@ return new class extends Migration
             $table->text('content')->comment('Message content');
             $table->json('metadata')->nullable()->comment('Additional data: context, tool calls, citations, etc.');
             $table->unsignedInteger('token_count')->nullable()->comment('Token count for cost tracking');
-            MigrateUtils::timestamps($table);
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
 
             /**
              * Creating an index on both 'conversation_id' and 'created_at' allows for more efficient queries

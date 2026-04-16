@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Core\Models\User;
+use Modules\Core\Overrides\Model;
 use NeuronAI\Chat\Enums\MessageRole;
 use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
@@ -18,8 +17,6 @@ use Override;
  */
 final class Conversation extends Model
 {
-    use HasFactory;
-
     #[Override]
     protected $table = 'ai_conversations';
 
@@ -32,6 +29,10 @@ final class Conversation extends Model
         'memory_enabled',
         'summary',
     ];
+
+    private bool $softDeletesEnabled = false;
+
+    private bool $versionStrategy = false;
 
     /**
      * Get the user that owns the conversation.

@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Overrides\Model;
 use Override;
 
 /**
@@ -14,11 +13,6 @@ use Override;
  */
 final class ConversationSummary extends Model
 {
-    use HasFactory;
-
-    #[Override]
-    public $timestamps = false;
-
     #[Override]
     protected $table = 'ai_conversation_summaries';
 
@@ -29,6 +23,10 @@ final class ConversationSummary extends Model
         'facts',
         'message_count',
     ];
+
+    private bool $softDeletesEnabled = false;
+
+    private bool $versionStrategy = false;
 
     public function conversation(): BelongsTo
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\Core\Helpers\MigrateUtils;
 
 return new class extends Migration
 {
@@ -19,7 +20,12 @@ return new class extends Migration
             $table->json('context')->comment('UI context (page, action, data)');
             $table->text('suggestion')->comment('AI-generated suggestion text');
             $table->timestamp('dismissed_at')->nullable()->comment('When user dismissed the suggestion');
-            $table->timestamp('created_at')->useCurrent();
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
 
             $table->index(['user_id', 'created_at']);
         });

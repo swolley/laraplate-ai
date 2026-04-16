@@ -20,7 +20,12 @@ return new class extends Migration
             $table->string('title')->nullable()->comment('Conversation title (auto-generated or manual)');
             $table->text('system_message')->nullable()->comment('Custom system prompt for this conversation');
             $table->json('metadata')->nullable()->comment('Additional context data');
-            MigrateUtils::timestamps($table);
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
         });
     }
 

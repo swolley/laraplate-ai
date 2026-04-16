@@ -6,9 +6,8 @@ namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Core\Overrides\Model;
 use Override;
 
 /**
@@ -16,8 +15,6 @@ use Override;
  */
 final class Message extends Model
 {
-    use HasFactory;
-
     #[Override]
     protected $table = 'ai_messages';
 
@@ -29,6 +26,10 @@ final class Message extends Model
         'metadata',
         'token_count',
     ];
+
+    private bool $softDeletesEnabled = false;
+
+    private bool $versionStrategy = false;
 
     /**
      * Get the conversation that owns the message.

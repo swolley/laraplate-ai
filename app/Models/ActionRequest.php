@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Core\Models\User;
@@ -31,6 +32,10 @@ final class ActionRequest extends Model
         'error',
         'executed_at',
     ];
+
+    private bool $softDeletesEnabled = false;
+
+    private bool $versionStrategy = false;
 
     public function getRules(): array
     {
@@ -69,19 +74,19 @@ final class ActionRequest extends Model
         return $this->risk_level === 'medium';
     }
 
-    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    #[Scope]
     protected function pendingUserConfirmation(Builder $query): Builder
     {
         return $query->where('status', 'pending_user_confirmation');
     }
 
-    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    #[Scope]
     protected function pendingAdminApproval(Builder $query): Builder
     {
         return $query->where('status', 'pending_admin_approval');
     }
 
-    #[\Illuminate\Database\Eloquent\Attributes\Scope]
+    #[Scope]
     protected function forUser(Builder $query, int $userId): Builder
     {
         return $query->where('user_id', $userId);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\Core\Helpers\MigrateUtils;
 
 return new class extends Migration
 {
@@ -19,6 +20,12 @@ return new class extends Migration
                 ->comment('Whether memory/summary is enabled for this conversation');
             $table->text('summary')->nullable()->after('memory_enabled')
                 ->comment('Rolling summary of the conversation');
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
         });
 
         // Create summaries table for historical snapshots
@@ -28,7 +35,12 @@ return new class extends Migration
             $table->text('summary')->comment('Summary text at this point in time');
             $table->json('facts')->nullable()->comment('Extracted key facts from conversation');
             $table->unsignedInteger('message_count')->comment('Number of messages when summary was created');
-            $table->timestamp('created_at')->useCurrent();
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
 
             $table->index('conversation_id');
         });

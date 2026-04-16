@@ -26,7 +26,12 @@ return new class extends Migration
             $table->json('result')->nullable()->comment('Tool execution result');
             $table->text('error')->nullable()->comment('Error message if failed');
             $table->timestamp('executed_at')->nullable()->comment('When the tool was executed');
-            MigrateUtils::timestamps($table);
+
+            MigrateUtils::timestamps(
+                $table,
+                hasCreateUpdate: true,
+                hasSoftDelete: true,
+            );
 
             $table->index(['user_id', 'status']);
             $table->index('status');
