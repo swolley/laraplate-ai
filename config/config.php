@@ -75,6 +75,11 @@ return [
             'json_validation' => env('AI_GUARDRAILS_JSON_VALIDATION', false),
             'retry_on_failure' => env('AI_GUARDRAILS_RETRY', true),
         ],
+        'search_orchestration' => [
+            'enabled' => env('AI_SEARCH_ORCHESTRATION_ENABLED', true),
+            'default_provider' => env('AI_SEARCH_ORCHESTRATION_PROVIDER'),
+        ],
+
         'contextual_suggestions' => [
             'enabled' => env('AI_CONTEXTUAL_SUGGESTIONS_ENABLED', false),
             'cooldown_minutes' => (int) env('AI_CONTEXTUAL_SUGGESTIONS_COOLDOWN', 5), // Min minutes between suggestions
@@ -112,6 +117,10 @@ return [
         'sentence_transformers' => [
             'url' => env('SENTENCE_TRANSFORMERS_URL'),
             'api_key' => env('SENTENCE_TRANSFORMERS_API_KEY'),
+        ],
+
+        'cross_encoder' => [
+            'endpoint' => env('CROSS_ENCODER_ENDPOINT', 'http://127.0.0.1:8001/score'),
         ],
 
         'deepl' => [

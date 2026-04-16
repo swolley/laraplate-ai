@@ -9,16 +9,27 @@ use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 require_once __DIR__ . '/Stubs/helpers.php';
+
 require_once __DIR__ . '/Stubs/CoreTraits.php';
+
 require_once __DIR__ . '/Stubs/TranslatableTestModels.php';
+
 require_once __DIR__ . '/Stubs/TranslatableMissingTestModels.php';
+
 require_once __DIR__ . '/Stubs/TranslateModelJobStub.php';
+
 require_once __DIR__ . '/Stubs/AppController.php';
+
 require_once __DIR__ . '/Stubs/CoreModuleServiceProvider.php';
+
 require_once __DIR__ . '/Stubs/CoreTranslationInterface.php';
+
 require_once __DIR__ . '/Stubs/CoreSearchable.php';
+
 require_once __DIR__ . '/Stubs/CoreEvents.php';
+
 require_once __DIR__ . '/Stubs/CoreResponseBuilder.php';
+
 require_once __DIR__ . '/Stubs/CoreUser.php';
 
 abstract class TestCase extends OrchestraTestCase

@@ -16,7 +16,7 @@ final class IndexDocumentationCommand extends Command
                             {--path= : Custom path to documentation (default: config or resource_path(\'docs\'))}';
 
     #[Override]
-    protected $description = 'Index documentation for FAQ/RAG (embeddings and vector store)';
+    protected $description = 'Index documentation for FAQ/RAG (embeddings and vector store) <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     public function handle(DocumentationService $documentationService): int
     {
