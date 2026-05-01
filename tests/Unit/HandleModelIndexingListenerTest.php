@@ -49,7 +49,7 @@ it('dispatches GenerateEmbeddingsJob for async', function (): void {
     $listener->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class);
-    expect($event->requiredPreProcessing)->toContain('embeddings');
+    expect($event->required_pre_processing)->toContain('embeddings');
 });
 
 it('runs GenerateEmbeddingsJob sync when event sync is true', function (): void {
@@ -61,7 +61,7 @@ it('runs GenerateEmbeddingsJob sync when event sync is true', function (): void 
     $listener->handle($event);
 
     Queue::assertNothingPushed();
-    expect($event->requiredPreProcessing)->toContain('embeddings');
+    expect($event->required_pre_processing)->toContain('embeddings');
 });
 
 it('adds embeddings to required pre-processing', function (): void {
@@ -72,5 +72,5 @@ it('adds embeddings to required pre-processing', function (): void {
     $listener = new HandleModelIndexingListener();
     $listener->handle($event);
 
-    expect($event->requiredPreProcessing)->toContain('embeddings');
+    expect($event->required_pre_processing)->toContain('embeddings');
 });

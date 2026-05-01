@@ -33,6 +33,14 @@ class DocumentationAgent extends RAG
         return new static(...$arguments);
     }
 
+    /**
+     * Clears the in-memory vector store singleton (used when FAQ vector_store driver is "memory" and a full rebuild is requested).
+     */
+    public static function resetSharedMemoryVectorStore(): void
+    {
+        self::$shared_memory_store = null;
+    }
+
     protected function provider(): AIProviderInterface
     {
         return ProviderFactory::make($this->providerName);

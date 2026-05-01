@@ -226,11 +226,9 @@ it('createRequest uses pending_user_confirmation status when risk level is unkno
     $toolRegistry = new ToolRegistry;
     $toolRegistry->register('test', static fn (): string => 'result', 'test', [], 'low');
 
-    $riskClassifier = Mockery::mock(RiskClassifier::class);
-    $riskClassifier->shouldReceive('classifyRisk')
-        ->andReturn('unknown');
+    config(['ai.features.tools.definitions.test.risk_level' => 'unknown']);
 
-    $service = new ActionRequestService($toolRegistry, $riskClassifier);
+    $service = new ActionRequestService($toolRegistry, new RiskClassifier);
     $user = User::factory()->create();
 
     $request = $service->createRequest($user, 'test', []);

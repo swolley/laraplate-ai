@@ -13,10 +13,11 @@ final class IndexDocumentationCommand extends Command
 {
     #[Override]
     protected $signature = 'ai:index-docs
-                            {--path= : Custom path to documentation (default: config or resource_path(\'docs\'))}';
+                            {--path= : Scan only this file or directory (omit to index roots returned by rag_paths())}
+                            {--full : Delete the vector store first, then rebuild from the selected documentation}';
 
     #[Override]
-    protected $description = 'Index documentation for FAQ/RAG (embeddings and vector store) <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Index documentation for FAQ/RAG: when --path is omitted, roots come from rag_paths(). Incremental runs use reindex-by-source to avoid duplicate chunks unless --full is passed. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     public function handle(DocumentationService $documentationService): int
     {
@@ -27,6 +28,7 @@ final class IndexDocumentationCommand extends Command
         }
 
         $path = $this->option('path');
+        $full = (bool) $this->option('full');
 
         if ($path !== null && (! is_dir($path) && ! is_file($path))) {
             $this->error("Path does not exist or is not readable: {$path}");
@@ -34,8 +36,12 @@ final class IndexDocumentationCommand extends Command
             return self::FAILURE;
         }
 
+        if ($full && (string) config('ai.features.faq.vector_store', 'filesystem') === 'memory') {
+            $this->comment('Vector store driver is "memory": --full resets the in-process shared store only.');
+        }
+
         try {
-            $count = $documentationService->indexDocuments($path);
+            $count = $documentationService->indexDocuments($path !== null ? (string) $path : null, $full);
             $this->info("Indexed {$count} document chunks.");
 
             return self::SUCCESS;

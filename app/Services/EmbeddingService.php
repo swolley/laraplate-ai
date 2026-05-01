@@ -6,11 +6,13 @@ namespace Modules\AI\Services;
 
 use Closure;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
+use Modules\AI\Contracts\IEmbeddingService;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Splitter\SentenceTextSplitter;
+use Override;
 
-final readonly class EmbeddingService
+final readonly class EmbeddingService implements IEmbeddingService
 {
     /**
      * @param  Closure(): EmbeddingsProviderInterface|null  $providerFactory  Optional factory for testing
@@ -24,6 +26,7 @@ final readonly class EmbeddingService
      *
      * @return Document[]
      */
+    #[Override]
     public function embedDocument(string $data): array
     {
         $content = preg_replace("/\n|\t/", ' ', $data);
@@ -47,6 +50,7 @@ final readonly class EmbeddingService
      *
      * @return float[]
      */
+    #[Override]
     public function embedText(string $text): array
     {
         return $this->getProvider()->embedText($text);
@@ -55,6 +59,7 @@ final readonly class EmbeddingService
     /**
      * Get the configured embedding provider for use by other services (e.g. RAG).
      */
+    #[Override]
     public function getEmbeddingsProvider(): EmbeddingsProviderInterface
     {
         return $this->getProvider();

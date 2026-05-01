@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Providers;
 
+use Modules\AI\Contracts\IChatService;
+use Modules\AI\Contracts\IEmbeddingService;
+use Modules\AI\Services\ChatService;
+use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
@@ -27,6 +31,9 @@ class AIServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         parent::register();
+
+        $this->app->singleton(IChatService::class, ChatService::class);
+        $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
 
         $this->registerSearchBindings();
     }

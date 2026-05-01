@@ -108,7 +108,7 @@ AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarizati
 
 # FAQ/RAG Configuration
 AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
-AI_FAQ_DOCS_PATH=                    # Custom documentation path (default: resources/docs)
+AI_FAQ_DOCS_PATH=                    # Optional extra documentation root (default scan: docs/rag + active Modules/*/docs/rag; see docs/README.md)
 AI_FAQ_VECTOR_STORE=filesystem       # Vector store type (memory, filesystem)
 AI_FAQ_MAX_DOCS=5                    # Max documents to retrieve
 AI_FAQ_MIN_SIMILARITY=0.7            # Minimum similarity score

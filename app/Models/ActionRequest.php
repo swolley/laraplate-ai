@@ -35,19 +35,18 @@ final class ActionRequest extends Model
 
     private bool $softDeletesEnabled = false;
 
-    private bool $versionStrategy = false;
-
     public function getRules(): array
     {
         $rules = parent::getRules();
         $rules[Model::DEFAULT_RULE] = array_merge($rules[Model::DEFAULT_RULE], [
-            'conversation_id' => ['required', 'exists:ai_conversations,id'],
+            'conversation_id' => ['nullable', 'exists:ai_conversations,id'],
             'status' => ['required', 'string', 'max:255'],
         ]);
         $rules['create'] = array_merge($rules['create'], [
             'user_id' => ['required', 'exists:users,id'],
             'tool_name' => ['required', 'string', 'max:255'],
-            'tool_args' => ['required', 'array'],
+            // Validated from raw attributes: array-cast columns are JSON strings before insert.
+            'tool_args' => ['required', 'json'],
             'risk_level' => ['required', 'string', 'max:255'],
         ]);
 

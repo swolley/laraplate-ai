@@ -7,18 +7,21 @@ namespace Modules\AI\Services;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\Tools\ToolRegistry;
 use NeuronAI\Chat\Messages\Stream\Chunks\TextChunk;
 use NeuronAI\Chat\Messages\UserMessage;
+use Override;
 
-final class ChatService
+class ChatService implements IChatService
 {
     /**
      * Create a new conversation for a user.
      */
+    #[Override]
     public function createConversation(
         \Modules\Core\Models\User $user,
         ?string $title = null,
@@ -36,6 +39,7 @@ final class ChatService
     /**
      * Send a message in a conversation and get AI response.
      */
+    #[Override]
     public function sendMessage(
         Conversation $conversation,
         string $userMessage,
@@ -160,6 +164,7 @@ final class ChatService
      *
      * @param  callable(string): void  $on_chunk
      */
+    #[Override]
     public function sendMessageStream(
         Conversation $conversation,
         string $user_message,
@@ -227,7 +232,12 @@ final class ChatService
         return $agent;
     }
 
-    private function getDocumentationService(): DocumentationService
+    /**
+     * Resolved from the container; return type is mixed so tests may bind Mockery doubles.
+     *
+     * @return DocumentationService
+     */
+    private function getDocumentationService(): mixed
     {
         return resolve(DocumentationService::class);
     }
@@ -242,12 +252,22 @@ final class ChatService
         return resolve(ActionRequestService::class);
     }
 
-    private function getMemoryService(): MemoryService
+    /**
+     * Resolved from the container; return type is mixed so tests may bind Mockery doubles.
+     *
+     * @return MemoryService
+     */
+    private function getMemoryService(): mixed
     {
         return resolve(MemoryService::class);
     }
 
-    private function getGuardrailsService(): GuardrailsService
+    /**
+     * Resolved from the container; return type is mixed so tests may bind Mockery doubles.
+     *
+     * @return GuardrailsService
+     */
+    private function getGuardrailsService(): mixed
     {
         return resolve(GuardrailsService::class);
     }
@@ -272,7 +292,6 @@ final class ChatService
             return;
         }
 
-        $this->buildAgent($conversation);
         $memory_service->createSummarySnapshot($conversation);
     }
 

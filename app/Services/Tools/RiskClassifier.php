@@ -29,17 +29,41 @@ final class RiskClassifier
      */
     public function classifyRisk(string $tool_name, array $args, ?string $config_risk = null): string
     {
-        if ($config_risk !== null && in_array($config_risk, ['low', 'medium', 'high'], true)) {
-            return $config_risk;
+        $resolved = $this->resolveConfiguredRisk($config_risk);
+        if ($resolved !== null) {
+            return $resolved;
         }
 
         $configured = $this->tool_definitions[$tool_name]['risk_level'] ?? null;
-
-        if ($configured !== null && in_array($configured, ['low', 'medium', 'high'], true)) {
-            return $configured;
+        $configured_string = is_string($configured) ? $configured : null;
+        $resolved = $this->resolveConfiguredRisk($configured_string);
+        if ($resolved !== null) {
+            return $resolved;
         }
 
         return $this->heuristicRisk($tool_name);
+    }
+
+    /**
+     * Normalize deployment / override risk labels. Unknown values are ignored so heuristics can apply.
+     *
+     * @return 'low'|'medium'|'high'|'unknown'|null null when the label should be ignored
+     */
+    private function resolveConfiguredRisk(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (in_array($value, ['low', 'medium', 'high'], true)) {
+            return $value;
+        }
+
+        if ($value === 'unknown') {
+            return 'unknown';
+        }
+
+        return null;
     }
 
     private function heuristicRisk(string $tool_name): string

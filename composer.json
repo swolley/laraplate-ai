@@ -61,7 +61,8 @@
       "pint --parallel --test",
       "rector --dry-run"
     ],
-    "test:unit": "pest --parallel --coverage --exactly=100",
+    "test:unit": "vendor/bin/pest --coverage --exactly=100",
+    "test:unit:parallel": "vendor/bin/pest --parallel --coverage --exactly=100",
     "test:types": "phpstan",
     "test:refactor": "rector",
     "test:licenses": "@php vendor/bin/check-licenses",
@@ -95,7 +96,10 @@
       "Modules\\AI\\": "app/",
       "Modules\\AI\\Database\\Factories\\": "database/factories/",
       "Modules\\AI\\Database\\Seeders\\": "database/seeders/"
-    }
+    },
+    "files": [
+      "app/Helpers/helpers.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {

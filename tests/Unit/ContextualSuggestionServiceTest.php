@@ -56,6 +56,7 @@ it('getPendingSuggestions returns collection from DB', function (): void {
     $user = User::factory()->create();
     ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['page' => 'unit-test'],
         'suggestion' => 'Pending suggestion',
     ]);
 
@@ -70,6 +71,7 @@ it('dismissSuggestion calls dismiss on the model', function (): void {
     $user = User::factory()->create();
     $suggestion = ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['page' => 'unit-test'],
         'suggestion' => 'To dismiss',
     ]);
 

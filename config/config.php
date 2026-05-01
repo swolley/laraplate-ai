@@ -42,7 +42,8 @@ return [
         ],
         'faq' => [
             'enabled' => env('AI_FAQ_ENABLED', true),
-            'documentation_path' => env('AI_FAQ_DOCS_PATH'), // null = resource_path('docs')
+            // Optional extra root for app-level custom docs. Default scan always includes `docs/rag` and active `Modules/*/docs/rag` (see `docs/README.md`).
+            'documentation_path' => env('AI_FAQ_DOCS_PATH'),
             'vector_store' => env('AI_FAQ_VECTOR_STORE', 'filesystem'), // memory (testing only), filesystem
             'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.json')
             'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),

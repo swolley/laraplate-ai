@@ -33,6 +33,7 @@ it('updates dismissed_at when dismissed', function (): void {
     $user = User::factory()->create();
     $suggestion = ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Test suggestion',
     ]);
 
@@ -48,6 +49,7 @@ it('belongs to user', function (): void {
     $user = User::factory()->create();
     $suggestion = ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Test suggestion',
     ]);
 
@@ -60,10 +62,12 @@ it('filters by forUser scope', function (): void {
     $user2 = User::factory()->create();
     ContextualSuggestion::query()->create([
         'user_id' => $user1->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Suggestion 1',
     ]);
     ContextualSuggestion::query()->create([
         'user_id' => $user2->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Suggestion 2',
     ]);
 
@@ -75,10 +79,12 @@ it('filters by notDismissed scope', function (): void {
     $user = User::factory()->create();
     ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Not dismissed',
     ]);
     ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Dismissed',
         'dismissed_at' => now(),
     ]);
@@ -90,6 +96,7 @@ it('filters by recent scope', function (): void {
     $user = User::factory()->create();
     ContextualSuggestion::query()->create([
         'user_id' => $user->id,
+        'context' => ['source' => 'unit-test'],
         'suggestion' => 'Recent',
     ]);
 

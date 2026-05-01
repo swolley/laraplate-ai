@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\Conversation;
+use Modules\AI\Models\ConversationSummary;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
@@ -144,7 +145,7 @@ it('applyInputGuardrails returns message unchanged when guardrails disabled', fu
 it('applyInputGuardrails calls GuardrailsService when guardrails enabled', function (): void {
     config()->set('ai.features.guardrails.enabled', true);
 
-    $guardrailsMock = Mockery::mock(GuardrailsService::class);
+    $guardrailsMock = Mockery::mock(new GuardrailsService);
     $guardrailsMock->shouldReceive('checkPromptInjection')
         ->once()
         ->with('User input')
@@ -163,7 +164,7 @@ it('sendMessage uses RAG path when DocumentationService available and question d
     config()->set('ai.features.faq.question_detection.enabled', true);
     app()->setLocale('en');
 
-    $docServiceMock = Mockery::mock(DocumentationService::class);
+    $docServiceMock = Mockery::mock(new DocumentationService);
     $docServiceMock->shouldReceive('isAvailable')->andReturn(true);
     $docServiceMock->shouldReceive('answerQuestion')
         ->once()
@@ -171,7 +172,7 @@ it('sendMessage uses RAG path when DocumentationService available and question d
         ->andReturn(['answer' => 'RAG answer', 'citations' => []]);
     app()->instance(DocumentationService::class, $docServiceMock);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('shouldSummarize')->andReturn(false);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -191,7 +192,7 @@ it('sendMessage uses RAG path when context has use_rag true', function (): void 
     config()->set('ai.features.guardrails.enabled', false);
     config()->set('ai.features.faq.question_detection.enabled', false);
 
-    $docServiceMock = Mockery::mock(DocumentationService::class);
+    $docServiceMock = Mockery::mock(new DocumentationService);
     $docServiceMock->shouldReceive('isAvailable')->andReturn(true);
     $docServiceMock->shouldReceive('answerQuestion')
         ->once()
@@ -199,7 +200,7 @@ it('sendMessage uses RAG path when context has use_rag true', function (): void 
         ->andReturn(['answer' => 'RAG reply', 'citations' => []]);
     app()->instance(DocumentationService::class, $docServiceMock);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('shouldSummarize')->andReturn(false);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -228,12 +229,12 @@ it('sendMessage via agent returns assistant message when RAG not applicable', fu
         ->with(Mockery::type(NeuronAI\Chat\Messages\UserMessage::class))
         ->andReturn($mockAgentHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     $memoryMock->shouldReceive('shouldSummarize')->andReturn(false);
     app()->instance(MemoryService::class, $memoryMock);
 
-    $docMock = Mockery::mock(DocumentationService::class);
+    $docMock = Mockery::mock(new DocumentationService);
     $docMock->shouldReceive('isAvailable')->andReturn(false);
     app()->instance(DocumentationService::class, $docMock);
 
@@ -261,12 +262,12 @@ it('sendMessage calls checkAndCreateSummaryIfNeeded', function (): void {
     $mockAgent = Mockery::mock(ChatAgent::class);
     $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     $memoryMock->shouldReceive('shouldSummarize')->once()->andReturn(false);
     app()->instance(MemoryService::class, $memoryMock);
 
-    $docMock = Mockery::mock(DocumentationService::class);
+    $docMock = Mockery::mock(new DocumentationService);
     $docMock->shouldReceive('isAvailable')->andReturn(false);
     app()->instance(DocumentationService::class, $docMock);
 
@@ -287,11 +288,11 @@ it('sendMessage throws on agent error', function (): void {
     $mockAgent->shouldReceive('chat')
         ->andThrow(new Exception('Provider error'));
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
-    $docMock = Mockery::mock(DocumentationService::class);
+    $docMock = Mockery::mock(new DocumentationService);
     $docMock->shouldReceive('isAvailable')->andReturn(false);
     app()->instance(DocumentationService::class, $docMock);
 
@@ -322,7 +323,7 @@ it('sendMessageStream streams chunks and returns message', function (): void {
         ->with(Mockery::type(NeuronAI\Chat\Messages\UserMessage::class))
         ->andReturn($streamHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -368,7 +369,7 @@ it('sendMessageStream skips empty and non-TextChunk chunks', function (): void {
     $mockAgent = Mockery::mock(ChatAgent::class);
     $mockAgent->shouldReceive('stream')->andReturn($streamHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -393,7 +394,7 @@ it('sendMessageStream throws on error', function (): void {
     $mockAgent = Mockery::mock(ChatAgent::class);
     $mockAgent->shouldReceive('stream')->andThrow(new Exception('Stream error'));
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -417,7 +418,7 @@ it('sendMessageWithTools without tools enabled returns agent response', function
     $mockAgent = Mockery::mock(ChatAgent::class);
     $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -447,7 +448,7 @@ it('sendMessageWithTools with tools enabled returns result', function (): void {
     $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
     $mockAgent->shouldReceive('addTool')->atLeast()->once();
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -473,6 +474,8 @@ it('sendMessageWithTools with tools enabled returns result', function (): void {
 it('sendMessage triggers summary creation when shouldSummarize is true', function (): void {
     config()->set('ai.features.guardrails.enabled', false);
     config()->set('ai.features.faq.question_detection.enabled', false);
+    config()->set('ai.features.chat.enable_summary', true);
+    config()->set('ai.features.chat.summary_threshold', 1);
 
     $user = User::factory()->create();
     $conversation = Conversation::query()->create(['user_id' => $user->id]);
@@ -484,15 +487,23 @@ it('sendMessage triggers summary creation when shouldSummarize is true', functio
     $mockAgent = Mockery::mock(ChatAgent::class);
     $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     $memoryMock->shouldReceive('shouldSummarize')->once()->andReturn(true);
     $memoryMock->shouldReceive('createSummarySnapshot')
         ->once()
-        ->with(Mockery::type(Conversation::class));
+        ->with(Mockery::type(Conversation::class))
+        ->andReturnUsing(function (Conversation $conv): ConversationSummary {
+            return ConversationSummary::query()->create([
+                'conversation_id' => $conv->id,
+                'summary' => 'stub',
+                'facts' => [],
+                'message_count' => $conv->messages()->count(),
+            ]);
+        });
     app()->instance(MemoryService::class, $memoryMock);
 
-    $docMock = Mockery::mock(DocumentationService::class);
+    $docMock = Mockery::mock(new DocumentationService);
     $docMock->shouldReceive('isAvailable')->andReturn(false);
     app()->instance(DocumentationService::class, $docMock);
 
@@ -515,7 +526,7 @@ it('sendMessageWithTools throws on error', function (): void {
     $mockAgent->shouldReceive('chat')->andThrow(new Exception('Tool error'));
     $mockAgent->shouldReceive('addTool');
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')->andReturn(null);
     app()->instance(MemoryService::class, $memoryMock);
 
@@ -566,7 +577,7 @@ it('buildAgent appends memory context to system prompt when available', function
         'memory_enabled' => true,
     ]);
 
-    $memoryMock = Mockery::mock(MemoryService::class);
+    $memoryMock = Mockery::mock(new MemoryService);
     $memoryMock->shouldReceive('getContextForNewMessage')
         ->once()
         ->with(Mockery::type(Conversation::class))

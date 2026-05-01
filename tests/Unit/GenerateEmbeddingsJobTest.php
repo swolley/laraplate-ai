@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
-use Modules\AI\Services\EmbeddingService;
 use NeuronAI\RAG\Document;
 
 beforeEach(function (): void {
@@ -43,11 +43,11 @@ it('returns early when prepareDataToEmbed returns empty', function (): void {
     $model->shouldReceive('getTable')->andReturn('test');
     $model->shouldReceive('prepareDataToEmbed')->andReturn(null);
 
-    $embeddingService = Mockery::mock(EmbeddingService::class);
-    $embeddingService->shouldNotReceive('embedDocument');
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldNotReceive('embedDocument');
 
     $job = new GenerateEmbeddingsJob($model);
-    $job->handle($embeddingService);
+    $job->handle($embedding_service);
 });
 
 it('returns early when prepareDataToEmbed returns empty string', function (): void {
@@ -56,11 +56,11 @@ it('returns early when prepareDataToEmbed returns empty string', function (): vo
     $model->shouldReceive('getTable')->andReturn('test');
     $model->shouldReceive('prepareDataToEmbed')->andReturn('');
 
-    $embeddingService = Mockery::mock(EmbeddingService::class);
-    $embeddingService->shouldNotReceive('embedDocument');
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldNotReceive('embedDocument');
 
     $job = new GenerateEmbeddingsJob($model);
-    $job->handle($embeddingService);
+    $job->handle($embedding_service);
 });
 
 it('processes embeddings and creates records', function (): void {
@@ -79,14 +79,14 @@ it('processes embeddings and creates records', function (): void {
     $document = new Document('');
     $document->embedding = [0.1, 0.2];
 
-    $embeddingService = Mockery::mock(EmbeddingService::class);
-    $embeddingService->shouldReceive('embedDocument')
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedDocument')
         ->once()
         ->with('Some text to embed')
         ->andReturn([$document]);
 
     $job = new GenerateEmbeddingsJob($model);
-    $job->handle($embeddingService);
+    $job->handle($embedding_service);
 });
 
 it('failed logs error', function (): void {

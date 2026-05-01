@@ -13,15 +13,15 @@ use Modules\AI\Http\Requests\InsertConversationRequest;
 use Modules\AI\Http\Requests\ListConversationsRequest;
 use Modules\AI\Http\Requests\ListMessagesRequest;
 use Modules\AI\Http\Requests\SendMessageRequest;
+use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\Conversation;
-use Modules\AI\Services\ChatService;
 use Modules\Core\Helpers\ResponseBuilder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class ChatController extends Controller
 {
     public function __construct(
-        private readonly ChatService $chatService,
+        private readonly IChatService $chatService,
     ) {}
 
     /**

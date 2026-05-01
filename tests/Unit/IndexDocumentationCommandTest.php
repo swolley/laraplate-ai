@@ -43,7 +43,7 @@ it('calls documentationService indexDocuments and shows count', function (): voi
     $mock = Mockery::mock(DocumentationService::class);
     $mock->shouldReceive('indexDocuments')
         ->once()
-        ->with(null)
+        ->with(null, false)
         ->andReturn(42);
     app()->instance(DocumentationService::class, $mock);
 
@@ -57,10 +57,29 @@ it('calls documentationService indexDocuments and shows count', function (): voi
         ->and($tester->getDisplay())->toContain('42');
 });
 
+it('passes full flag to documentationService', function (): void {
+    $mock = Mockery::mock(DocumentationService::class);
+    $mock->shouldReceive('indexDocuments')
+        ->once()
+        ->with(null, true)
+        ->andReturn(3);
+    app()->instance(DocumentationService::class, $mock);
+
+    $command = new IndexDocumentationCommand;
+    $command->setLaravel(app());
+
+    $tester = new CommandTester($command);
+    $tester->execute(['--full' => true]);
+
+    expect($tester->getStatusCode())->toBe(IndexDocumentationCommand::SUCCESS)
+        ->and($tester->getDisplay())->toContain('3');
+});
+
 it('returns failure on exception', function (): void {
     $mock = Mockery::mock(DocumentationService::class);
     $mock->shouldReceive('indexDocuments')
         ->once()
+        ->with(null, false)
         ->andThrow(new Exception('Indexing error'));
     app()->instance(DocumentationService::class, $mock);
 

@@ -79,21 +79,15 @@ it('appendCitationsToAnswer returns answer unchanged for empty citations', funct
     expect($result)->toBe('Plain answer');
 });
 
-it('getDocumentationPath uses config', function (): void {
-    config()->set('ai.features.faq.documentation_path', '/custom/docs/path');
-
-    $service = new DocumentationService;
-    $method = new ReflectionMethod($service, 'getDocumentationPath');
-
-    $result = $method->invoke($service);
-
-    expect($result)->toBe('/custom/docs/path');
-});
-
 it('indexDocuments indexes documents and returns count', function (): void {
     $tmpDir = sys_get_temp_dir() . '/ai-docs-' . uniqid();
     mkdir($tmpDir, 0755, true);
     file_put_contents($tmpDir . '/readme.md', "# Test Doc\n\nSome content for indexing.");
+
+    $tmpStore = sys_get_temp_dir() . '/ai-vs-' . uniqid() . '.store';
+    config()->set('ai.features.faq.vector_store', 'filesystem');
+    config()->set('ai.features.faq.vector_store_path', $tmpStore);
+    @unlink($tmpStore);
 
     $agentMock = Mockery::mock(DocumentationAgent::class);
     $agentMock->shouldReceive('addDocuments')
@@ -108,6 +102,79 @@ it('indexDocuments indexes documents and returns count', function (): void {
     } finally {
         unlink($tmpDir . '/readme.md');
         rmdir($tmpDir);
+        @unlink($tmpStore);
+    }
+});
+
+it('indexDocuments uses reindexBySource when vector store driver is memory', function (): void {
+    $tmpDir = sys_get_temp_dir() . '/ai-docs-mem-' . uniqid();
+    mkdir($tmpDir, 0755, true);
+    file_put_contents($tmpDir . '/readme.md', "# Doc\n\nParagraph.");
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $agentMock = Mockery::mock(DocumentationAgent::class);
+    $agentMock->shouldReceive('reindexBySource')
+        ->with(Mockery::on(fn ($docs): bool => is_array($docs) && count($docs) >= 1))
+        ->once();
+    $agentMock->shouldNotReceive('addDocuments');
+
+    $service = new DocumentationService(fn () => $agentMock);
+
+    try {
+        expect($service->indexDocuments($tmpDir))->toBeGreaterThan(0);
+    } finally {
+        unlink($tmpDir . '/readme.md');
+        rmdir($tmpDir);
+    }
+});
+
+it('indexDocuments with full rebuild uses addDocuments on memory driver', function (): void {
+    $tmpDir = sys_get_temp_dir() . '/ai-docs-full-' . uniqid();
+    mkdir($tmpDir, 0755, true);
+    file_put_contents($tmpDir . '/readme.md', "# Doc\n\nBody.");
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $agentMock = Mockery::mock(DocumentationAgent::class);
+    $agentMock->shouldReceive('addDocuments')
+        ->with(Mockery::on(fn ($docs): bool => is_array($docs) && count($docs) >= 1))
+        ->once();
+    $agentMock->shouldNotReceive('reindexBySource');
+
+    $service = new DocumentationService(fn () => $agentMock);
+
+    try {
+        expect($service->indexDocuments($tmpDir, true))->toBeGreaterThan(0);
+    } finally {
+        unlink($tmpDir . '/readme.md');
+        rmdir($tmpDir);
+    }
+});
+
+it('indexDocuments with full rebuild removes filesystem vector store file before indexing', function (): void {
+    $tmpDir = sys_get_temp_dir() . '/ai-docs-fsfull-' . uniqid();
+    mkdir($tmpDir, 0755, true);
+    file_put_contents($tmpDir . '/readme.md', "# Doc\n\nMore.");
+
+    $tmpStore = sys_get_temp_dir() . '/ai-vs-full-' . uniqid() . '.store';
+    file_put_contents($tmpStore, "stale\n");
+
+    config()->set('ai.features.faq.vector_store', 'filesystem');
+    config()->set('ai.features.faq.vector_store_path', $tmpStore);
+
+    $agentMock = Mockery::mock(DocumentationAgent::class);
+    $agentMock->shouldReceive('addDocuments')->once();
+
+    $service = new DocumentationService(fn () => $agentMock);
+
+    try {
+        $service->indexDocuments($tmpDir, true);
+        expect(file_exists($tmpStore))->toBeFalse();
+    } finally {
+        unlink($tmpDir . '/readme.md');
+        rmdir($tmpDir);
+        @unlink($tmpStore);
     }
 });
 

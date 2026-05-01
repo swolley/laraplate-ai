@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Tests\Unit;
 
+use Override;
 use Modules\Core\Models\User;
 
 class AdminUser extends User
 {
-    public function hasRole(array|string $roles): bool
+    #[Override]
+    public function hasRole($roles, ?string $guard = null): bool
     {
         return true;
     }

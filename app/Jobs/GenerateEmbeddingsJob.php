@@ -15,7 +15,7 @@ use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
-use Modules\AI\Services\EmbeddingService;
+use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
@@ -68,7 +68,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      *
      * @codeCoverageIgnore
      */
-    public function handle(EmbeddingService $embedding_service): void
+    public function handle(IEmbeddingService $embedding_service): void
     {
         $data = $this->model->prepareDataToEmbed();
 
