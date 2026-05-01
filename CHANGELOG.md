@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- Add Laraplate help command for interactive RAG assistance
+
+## [2.2.0] - 2026-05-01
+
+### 🚀 Features
+
 - Introduce chat and embedding service contracts with implementations
 
 ## [2.1.1] - 2026-04-23

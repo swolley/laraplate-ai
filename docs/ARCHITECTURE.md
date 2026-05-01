@@ -43,12 +43,14 @@ The AI Module provides AI-powered features through a layered architecture:
 
 ### Core Components
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| `ChatController` | `Http/Controllers/ChatController.php` | HTTP layer |
-| `ChatService` | `Services/ChatService.php` | Business logic |
-| `Conversation` | `Models/Conversation.php` | Conversation persistence |
-| `Message` | `Models/Message.php` | Message persistence |
+
+| Component        | File                                  | Purpose                  |
+| ---------------- | ------------------------------------- | ------------------------ |
+| `ChatController` | `Http/Controllers/ChatController.php` | HTTP layer               |
+| `ChatService`    | `Services/ChatService.php`            | Business logic           |
+| `Conversation`   | `Models/Conversation.php`             | Conversation persistence |
+| `Message`        | `Models/Message.php`                  | Message persistence      |
+
 
 ### Message Flow
 
@@ -93,6 +95,7 @@ ChatService::sendMessage()
 ```
 
 **When to use Non-Streaming:**
+
 - Job/Queue processing (no SSE support)
 - API integrations expecting JSON response
 - Automated testing
@@ -151,11 +154,13 @@ if ($should_use_rag && $documentation_service->isAvailable()) {
 
 ### Risk Levels & Status Flow
 
-| Risk Level | Initial Status | User Action Required | Execution |
-|------------|---------------|---------------------|-----------|
-| `low` | `approved` | None | Immediate (via job) |
-| `medium` | `pending_user_confirmation` | User confirms | After confirmation |
-| `high` | `pending_admin_approval` | Admin approves | After approval |
+
+| Risk Level | Initial Status              | User Action Required | Execution           |
+| ---------- | --------------------------- | -------------------- | ------------------- |
+| `low`      | `approved`                  | None                 | Immediate (via job) |
+| `medium`   | `pending_user_confirmation` | User confirms        | After confirmation  |
+| `high`     | `pending_admin_approval`    | Admin approves       | After approval      |
+
 
 ### ActionRequest Status Transitions
 
@@ -229,9 +234,10 @@ public function sendMessageWithTools(
 
 ### Current Status: NOT EXPOSED
 
-**`sendMessageWithTools()` is NOT called by any controller or route.**
+`**sendMessageWithTools()` is NOT called by any controller or route.**
 
 This means:
+
 1. Tools can be registered but never invoked
 2. ActionRequests are never created via API
 3. The entire tool system is dormant
@@ -241,14 +247,12 @@ This means:
 The tool system was designed for:
 
 1. **AI-triggered actions** - LLM can propose actions like:
-   - "Create a new content"
-   - "Update user settings"
-   - "Send an email"
-
+  - "Create a new content"
+  - "Update user settings"
+  - "Send an email"
 2. **Human-in-the-loop** - Medium/high risk actions require approval:
-   - User sees: "AI wants to delete this record. Confirm?"
-   - Admin sees: "AI wants to change system settings. Approve?"
-
+  - User sees: "AI wants to delete this record. Confirm?"
+  - Admin sees: "AI wants to change system settings. Approve?"
 3. **Audit trail** - All AI-triggered actions are logged as ActionRequest records
 
 ### To Activate Tool System
@@ -256,6 +260,7 @@ The tool system was designed for:
 You need to:
 
 1. **Create endpoint** for tool-enabled chat:
+
 ```php
 // ChatController
 public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
@@ -277,7 +282,8 @@ public function sendMessageWithTools(SendMessageRequest $request, Conversation $
 }
 ```
 
-2. **Create endpoint** for action confirmation/approval:
+1. **Create endpoint** for action confirmation/approval:
+
 ```php
 public function confirmAction(ActionRequest $actionRequest): JsonResponse
 {
@@ -292,7 +298,8 @@ public function approveAction(ActionRequest $actionRequest): JsonResponse
 }
 ```
 
-3. **Register tools** in a ServiceProvider:
+1. **Register tools** in a ServiceProvider:
+
 ```php
 // AIServiceProvider
 public function boot(): void
@@ -499,34 +506,40 @@ All routes are prefixed with `/crud/` following the application's CRUD conventio
 
 ### Chat Routes
 
-| Method | Path | Controller Method | Purpose |
-|--------|------|-------------------|---------|
-| GET | `/crud/select/conversations` | `listConversations` | List user's conversations |
-| POST | `/crud/insert/conversations` | `insertConversation` | Create conversation |
-| GET | `/crud/detail/conversations/{conversation}` | `detailConversation` | Get conversation details |
-| DELETE | `/crud/delete/conversations/{conversation}` | `deleteConversation` | Delete conversation |
-| GET | `/crud/list/conversations/{conversation}/messages` | `listMessages` | List messages |
-| POST | `/crud/stream/conversations/{conversation}/messages` | `streamMessage` | Send message (SSE streaming) |
-| POST | `/crud/insert/conversations/{conversation}/messages` | `insertMessage` | Send message (JSON response) |
-| POST | `/crud/insert/conversations/{conversation}/messages-with-tools` | `sendMessageWithTools` | Send message with tool support |
+
+| Method | Path                                                            | Controller Method      | Purpose                        |
+| ------ | --------------------------------------------------------------- | ---------------------- | ------------------------------ |
+| GET    | `/crud/select/conversations`                                    | `listConversations`    | List user's conversations      |
+| POST   | `/crud/insert/conversations`                                    | `insertConversation`   | Create conversation            |
+| GET    | `/crud/detail/conversations/{conversation}`                     | `detailConversation`   | Get conversation details       |
+| DELETE | `/crud/delete/conversations/{conversation}`                     | `deleteConversation`   | Delete conversation            |
+| GET    | `/crud/list/conversations/{conversation}/messages`              | `listMessages`         | List messages                  |
+| POST   | `/crud/stream/conversations/{conversation}/messages`            | `streamMessage`        | Send message (SSE streaming)   |
+| POST   | `/crud/insert/conversations/{conversation}/messages`            | `insertMessage`        | Send message (JSON response)   |
+| POST   | `/crud/insert/conversations/{conversation}/messages-with-tools` | `sendMessageWithTools` | Send message with tool support |
+
 
 ### Action Request Routes (Tool Execution)
 
-| Method | Path | Controller Method | Purpose |
-|--------|------|-------------------|---------|
-| GET | `/crud/select/action-requests` | `list` | List user's action requests (admins see all pending) |
-| GET | `/crud/detail/action-requests/{actionRequest}` | `detail` | Get action request details |
-| POST | `/crud/update/action-requests/{actionRequest}/confirm` | `confirm` | Confirm medium-risk action (user) |
-| POST | `/crud/update/action-requests/{actionRequest}/approve` | `approve` | Approve high-risk action (admin) |
-| POST | `/crud/update/action-requests/{actionRequest}/reject` | `reject` | Reject action request |
+
+| Method | Path                                                   | Controller Method | Purpose                                              |
+| ------ | ------------------------------------------------------ | ----------------- | ---------------------------------------------------- |
+| GET    | `/crud/select/action-requests`                         | `list`            | List user's action requests (admins see all pending) |
+| GET    | `/crud/detail/action-requests/{actionRequest}`         | `detail`          | Get action request details                           |
+| POST   | `/crud/update/action-requests/{actionRequest}/confirm` | `confirm`         | Confirm medium-risk action (user)                    |
+| POST   | `/crud/update/action-requests/{actionRequest}/approve` | `approve`         | Approve high-risk action (admin)                     |
+| POST   | `/crud/update/action-requests/{actionRequest}/reject`  | `reject`          | Reject action request                                |
+
 
 ### Suggestion Routes
 
-| Method | Path | Controller Method | Purpose |
-|--------|------|-------------------|---------|
-| GET | `/crud/select/suggestions` | `listSuggestions` | List pending suggestions |
-| POST | `/crud/insert/suggestions` | `generateSuggestion` | Generate new suggestion |
-| POST | `/crud/update/suggestions/{suggestion}/dismiss` | `dismissSuggestion` | Dismiss suggestion |
+
+| Method | Path                                            | Controller Method    | Purpose                  |
+| ------ | ----------------------------------------------- | -------------------- | ------------------------ |
+| GET    | `/crud/select/suggestions`                      | `listSuggestions`    | List pending suggestions |
+| POST   | `/crud/insert/suggestions`                      | `generateSuggestion` | Generate new suggestion  |
+| POST   | `/crud/update/suggestions/{suggestion}/dismiss` | `dismissSuggestion`  | Dismiss suggestion       |
+
 
 ### Authorization
 
@@ -545,23 +558,26 @@ if ($conversation->user_id !== Auth::id()) {
 
 ### Feature Status
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Chat (streaming) | ✅ **Active** | Primary use case via `streamMessage` |
-| Chat (non-streaming) | ✅ **Active** | Available via `insertMessage` for jobs/APIs |
-| Chat with Tools | ✅ **Active** | Available via `sendMessageWithTools` |
-| RAG/FAQ | ✅ **Active** | Automatic when question detected |
-| Memory/Summarization | ✅ **Active** | Configurable via `AI_CHAT_ENABLE_SUMMARY` |
-| Guardrails | ✅ **Active** | Configurable via `AI_GUARDRAILS_ENABLED` |
-| Contextual Suggestions | ✅ **Active** | Routes exposed, configurable |
-| Tool System | ✅ **Active** | API exposed, needs tool registration |
-| ActionRequests | ✅ **Active** | Full CRUD with confirm/approve/reject |
+
+| Feature                | Status       | Notes                                       |
+| ---------------------- | ------------ | ------------------------------------------- |
+| Chat (streaming)       | ✅ **Active** | Primary use case via `streamMessage`        |
+| Chat (non-streaming)   | ✅ **Active** | Available via `insertMessage` for jobs/APIs |
+| Chat with Tools        | ✅ **Active** | Available via `sendMessageWithTools`        |
+| RAG/FAQ                | ✅ **Active** | Automatic when question detected            |
+| Memory/Summarization   | ✅ **Active** | Configurable via `AI_CHAT_ENABLE_SUMMARY`   |
+| Guardrails             | ✅ **Active** | Configurable via `AI_GUARDRAILS_ENABLED`    |
+| Contextual Suggestions | ✅ **Active** | Routes exposed, configurable                |
+| Tool System            | ✅ **Active** | API exposed, needs tool registration        |
+| ActionRequests         | ✅ **Active** | Full CRUD with confirm/approve/reject       |
+
 
 ### Tool System - How It Works
 
 The tool system allows AI to propose actions that require human approval:
 
 **Risk Levels:**
+
 - `low`: Auto-executed immediately
 - `medium`: Requires user confirmation
 - `high`: Requires admin approval
@@ -585,15 +601,19 @@ $registry->register(
 ```
 
 **What's Still Needed:**
+
 1. Frontend UI for action confirmation dialogs
 2. Filament panel for admin approval queue
 3. Tool definitions for your specific use cases
 
 ### When to Use Non-Streaming (`insertMessage`)
 
-| Use Case | Why Non-Streaming? |
-|----------|-------------------|
-| Background jobs | Queue workers don't support SSE |
-| API integrations | External systems expect JSON response |
+
+| Use Case          | Why Non-Streaming?                    |
+| ----------------- | ------------------------------------- |
+| Background jobs   | Queue workers don't support SSE       |
+| API integrations  | External systems expect JSON response |
 | Automated testing | Easier to assert on complete response |
-| Retry logic | Simpler to retry failed requests |
+| Retry logic       | Simpler to retry failed requests      |
+
+

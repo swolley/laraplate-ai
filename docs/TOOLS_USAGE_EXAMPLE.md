@@ -6,12 +6,14 @@ This document shows how `sendMessageWithTools` is used end-to-end and why it is 
 
 ## Why Non-Streaming?
 
-| Aspect | Explanation |
-|--------|-------------|
-| **LLM response type** | The LLM returns either **plain text** or **tool calls** (function invocations). Tool calls are a structured payload, not a stream of tokens. |
-| **API design** | `generateTextOrReturnFunctionCalled()` returns either `string` or `FunctionInfo[]` — a complete response, not a stream. |
-| **User flow** | After the response you may need to show **confirmation UI** (e.g. "AI wants to create X. Confirm?"). That requires a full JSON response with `message` + `action_requests`. |
+
+| Aspect                | Explanation                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LLM response type** | The LLM returns either **plain text** or **tool calls** (function invocations). Tool calls are a structured payload, not a stream of tokens.                                                       |
+| **API design**        | `generateTextOrReturnFunctionCalled()` returns either `string` or `FunctionInfo[]` — a complete response, not a stream.                                                                            |
+| **User flow**         | After the response you may need to show **confirmation UI** (e.g. "AI wants to create X. Confirm?"). That requires a full JSON response with `message` + `action_requests`.                        |
 | **Streaming + tools** | Streaming tool calls would require a different protocol (e.g. stream chunks that indicate "tool_call_start", "tool_call_args", "tool_call_end"). Not supported by the current LLPhant/OpenAI flow. |
+
 
 So: **use streaming for plain chat** (`streamMessage`), **use non-streaming for tool-enabled chat** (`sendMessageWithTools`).
 
@@ -224,11 +226,13 @@ curl -X POST "https://yourapp.com/crud/update/action-requests/2/approve" \
 
 ## When to Use Stream vs Tools
 
-| Use case | Endpoint | Reason |
-|----------|----------|--------|
-| Normal chat, no actions | `POST .../messages` (stream) | Better UX: text appears as it’s generated. |
+
+| Use case                          | Endpoint                                    | Reason                                                                             |
+| --------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Normal chat, no actions           | `POST .../messages` (stream)                | Better UX: text appears as it’s generated.                                         |
 | Chat where AI can trigger actions | `POST .../messages-with-tools` (non-stream) | You need full response with `message` + `action_requests` to show confirmation UI. |
-| FAQ / documentation (no tools) | `POST .../messages` (insertMessage) | RAG is implemented there; no tools needed. |
+| FAQ / documentation (no tools)    | `POST .../messages` (insertMessage)         | RAG is implemented there; no tools needed.                                         |
+
 
 Summary:
 
@@ -308,3 +312,4 @@ function ChatInput({ conversationId, useTools }) {
 - It is **non-streaming** because the server must return a single JSON response with both the assistant message and the list of action requests.
 - Frontend flow: send message → get `{ message, action_requests }` → show message and, if any, confirmation UI → call confirm/approve/reject endpoints.
 - Use **streaming** for normal chat without tools; use **messages-with-tools** when you need tools and confirmation.
+

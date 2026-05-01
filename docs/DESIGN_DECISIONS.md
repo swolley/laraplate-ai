@@ -18,13 +18,15 @@ This document explains the reasoning behind key architectural decisions and answ
 
 ### When `insertMessage` Would Be Useful
 
-| Use Case | Why Non-Streaming? |
-|----------|-------------------|
-| Background jobs | Queue workers don't support SSE |
-| API integrations | External systems expect JSON response |
-| Automated testing | Easier to assert on complete response |
-| Retry logic | Simpler to retry failed requests |
-| Mobile apps | Some mobile HTTP clients struggle with SSE |
+
+| Use Case          | Why Non-Streaming?                         |
+| ----------------- | ------------------------------------------ |
+| Background jobs   | Queue workers don't support SSE            |
+| API integrations  | External systems expect JSON response      |
+| Automated testing | Easier to assert on complete response      |
+| Retry logic       | Simpler to retry failed requests           |
+| Mobile apps       | Some mobile HTTP clients struggle with SSE |
+
 
 ### Recommendation
 
@@ -100,11 +102,13 @@ ActionRequests are created **only** when:
 
 ### Risk Levels Explained
 
-| Level | Status After Creation | User Action | Example Tools |
-|-------|----------------------|-------------|---------------|
-| `low` | `approved` | None (auto-execute) | Read data, search, format text |
-| `medium` | `pending_user_confirmation` | User confirms | Create content, send email |
-| `high` | `pending_admin_approval` | Admin approves | Delete data, change settings, financial |
+
+| Level    | Status After Creation       | User Action         | Example Tools                           |
+| -------- | --------------------------- | ------------------- | --------------------------------------- |
+| `low`    | `approved`                  | None (auto-execute) | Read data, search, format text          |
+| `medium` | `pending_user_confirmation` | User confirms       | Create content, send email              |
+| `high`   | `pending_admin_approval`    | Admin approves      | Delete data, change settings, financial |
+
 
 ### Why Isn't It Exposed Yet?
 
@@ -124,6 +128,7 @@ It was built as infrastructure for future features, not for immediate use.
 ### Current Design: No
 
 ActionRequests are **separate entities** from Messages:
+
 - `ai_messages` table: conversation history
 - `ai_action_requests` table: tool execution audit log
 
@@ -141,6 +146,7 @@ Assistant: ✅ Created blog post #123: "All About Cats"
 ```
 
 This would require:
+
 1. Adding action results as new messages
 2. Real-time UI updates when actions complete
 3. Showing action status in message metadata
@@ -179,10 +185,12 @@ Message 5: User confirms action          ← via separate endpoint
 
 ### Reason: Different Response Structures
 
-| Method | Returns | Use Case |
-|--------|---------|----------|
-| `sendMessage` | `Message` | Simple chat, RAG-enabled Q&A |
+
+| Method                 | Returns                        | Use Case                         |
+| ---------------------- | ------------------------------ | -------------------------------- |
+| `sendMessage`          | `Message`                      | Simple chat, RAG-enabled Q&A     |
 | `sendMessageWithTools` | `{message, action_requests[]}` | AI agents with tool capabilities |
+
 
 ### Why Not Merge Them?
 
@@ -244,6 +252,7 @@ This would require refactoring `sendMessageStream` significantly.
 ### Purpose
 
 Prevent context window overflow in long conversations by:
+
 1. Summarizing older messages
 2. Extracting key facts
 3. Using summary as context for new messages
@@ -277,6 +286,7 @@ $conversation->memory_enabled = false; // Disable (also clears existing summary)
 ### Yes - Internal Use Only
 
 The module is designed for:
+
 1. **Event-driven integration** - Embeddings, translations triggered by model events
 2. **Job processing** - Background AI tasks
 3. **Internal services** - Use `ChatService` directly in your code
@@ -313,18 +323,20 @@ No HTTP endpoint needed - use services directly.
 
 ## Summary: Feature Status
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `streamMessage` | ✅ Active | Primary chat use case, SSE streaming |
-| `insertMessage` | ✅ Active | For jobs, APIs, testing - JSON response |
+
+| Component              | Status   | Notes                                       |
+| ---------------------- | -------- | ------------------------------------------- |
+| `streamMessage`        | ✅ Active | Primary chat use case, SSE streaming        |
+| `insertMessage`        | ✅ Active | For jobs, APIs, testing - JSON response     |
 | `sendMessageWithTools` | 🔮 Ready | Infrastructure complete, needs API exposure |
-| ActionRequest system | 🔮 Ready | Infrastructure complete, needs API exposure |
-| Embedding system | ✅ Active | Powers vector search |
-| Translation system | ✅ Active | Automatic translations |
-| RAG/FAQ | ✅ Active | Automatic question detection + answer |
+| ActionRequest system   | 🔮 Ready | Infrastructure complete, needs API exposure |
+| Embedding system       | ✅ Active | Powers vector search                        |
+| Translation system     | ✅ Active | Automatic translations                      |
+| RAG/FAQ                | ✅ Active | Automatic question detection + answer       |
 | Contextual suggestions | ✅ Active | Proactive AI suggestions with rate limiting |
-| Memory/Summary | ✅ Active | Enable via `AI_CHAT_ENABLE_SUMMARY=true` |
-| Guardrails | ✅ Active | Enable via `AI_GUARDRAILS_ENABLED=true` |
+| Memory/Summary         | ✅ Active | Enable via `AI_CHAT_ENABLE_SUMMARY=true`    |
+| Guardrails             | ✅ Active | Enable via `AI_GUARDRAILS_ENABLED=true`     |
+
 
 ### Key Design Principles
 
@@ -333,3 +345,4 @@ No HTTP endpoint needed - use services directly.
 3. **Human-in-the-Loop** - Tool system requires confirmation for medium/high risk actions
 4. **Configurable Everything** - All features can be enabled/disabled via env vars
 5. **Graceful Degradation** - App works normally when AI module is disabled
+

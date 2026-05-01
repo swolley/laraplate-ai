@@ -9,7 +9,7 @@ if (! function_exists('rag_paths')) {
      * Rules:
      * - Native Laraplate modules (same vendor as laraplate-ai): only docs/rag
      * - App and non-native modules: docs/rag + configured relative subpaths
-     * - Configured absolute paths are always appended when existing
+     * - Configured absolute paths are appended when they exist and are not under a native module path
      *
      * @return list<string>
      */

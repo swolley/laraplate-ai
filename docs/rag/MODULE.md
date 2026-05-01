@@ -1,73 +1,91 @@
-# Modulo AI — ricerca intelligente, conversazione e supporto semantico
+# AI module — RAG, tools, and assistant orchestration
 
-## In parole semplici
+## Purpose
 
-Il modulo **AI** aggiunge a Laraplate capacità legate a **modelli linguistici**, **embedding** (rappresentazioni vettoriali del testo) e **ricerca avanzata**. Non “sostituisce” il database relazionale: lo affianca per compiti come capire l’intento di una query, riordinare i risultati per rilevanza (reranking) o offrire **chat** contestuali con allegato supporto documentale (RAG) dove configurato.
+`AI` provides documentation intelligence for Laraplate: ingest docs, index them for semantic retrieval, answer user questions with RAG, and orchestrate tool-assisted conversations with approval controls.
 
-Il modulo è registrato con **priorità alta** (`module.json`, priorità 999) così da poter **sovrascrivere** i binding di ricerca definiti nel Core quando la funzionalità è attiva.
+## Core capabilities
 
-## A chi serve
+### RAG ingestion and indexing lifecycle
 
-- **Sviluppatore**: integra provider LLM, gestisce conversazioni, messaggi, job di embedding e orchestrazione ricerca; consulta `Modules/AI/docs/ARCHITECTURE.md` per diagrammi di flusso e dettagli API.
-- **Utente tecnico**: abilita/disabilita feature via configurazione (`config/ai.php` e flag come `ai.features.search_orchestration.enabled`), monitora code e costi dei provider esterni.
-- **Utente business**: interagisce con assistenti o ricerca “intelligente” nell’interfaccia; non deve preoccuparsi dei dettagli di streaming SSE o dei token, ma deve sapere che le risposte sono **probabilistiche** e vanno validate per decisioni critiche.
+- Reads documentation files from roots resolved by `rag_paths()` (or explicit CLI `--path`).
+- Splits documents into chunks and stores vectors in configured vector store backend.
+- Supports incremental reindex-by-source and full rebuild (`--full`) modes.
+- Keeps source prefixes to improve citation traceability by module/path.
 
-## Funzionalità principali
+### Question answering
 
-### Arricchimento del motore di ricerca (integrazione Core)
+- Uses retrieval + LLM response generation through `DocumentationService::answerQuestion`.
+- Returns normalized output with answer + structured citations.
+- Can append formatted citation section in final answer.
 
-Nel `AIServiceProvider`, se l’orchestrazione di ricerca è abilitata, Laravel riceve implementazioni concrete per i contratti definiti nel Core:
+### Chat orchestration
 
-| Contratto Core | Implementazione AI (tipica) | Ruolo |
-|----------------|-----------------------------|--------|
-| `ITextEmbedder` | `SearchEmbedder` | Trasforma testo e query in vettori per similarità semantica |
-| `IQueryIntentParser` | `LlmQueryIntentParser` | Interpreta la domanda dell’utente (es. filtri impliciti) |
-| `ISearchPlanner` | `SearchOrchestratorAgent` | Pianifica passi di ricerca (query classiche + semantica) |
-| `IReranker` | `CrossEncoderService` | Riordina i candidati per rilevanza fine |
+- `ChatService` handles normal conversation, RAG-triggered responses, and stream mode.
+- Question-detection rules can auto-route suitable prompts through FAQ/RAG path.
+- Memory and guardrails services participate when enabled by configuration.
 
-Effetto pratico: le schermate o le API che usano il sistema di ricerca unificato del Core possono **migliorare qualità e recall** senza riscrivere i consumer: cambiano i binding dietro le quinte.
+### Tools ecosystem
 
-### Chat, messaggi e (opzionalmente) RAG
+- Tool registry exposes executable tools to the AI agent.
+- Tools are wrapped with risk-aware policy logic.
+- Agent can choose tool execution or direct response depending on prompt and available capabilities.
 
-Il modulo gestisce **conversazioni** e **messaggi** persistiti, con supporto a:
+### Approvals flow for tools
 
-- Risposte **in streaming** (SSE) per UX fluida nelle UI moderne.
-- Risposte **non streaming** per job, test o integrazioni che richiedono JSON completo.
+- Medium/high-risk tool calls can be converted to `ActionRequest` items instead of immediate execution.
+- Pending requests are returned to caller as structured metadata.
+- Approval outcome controls whether tool execution proceeds or remains blocked.
 
-Quando il modulo RAG/documentazione è disponibile e la domanda è classificabile come tale, il flusso può arricchire la risposta con **citazioni** a frammenti documentali: utile per help desk interno o knowledge base.
+## Developer-facing CLI
 
-### Tool e azioni strutturate (ActionRequest)
+### Documentation indexing
 
-È presente un sottosistema per **richieste di azione** orchestrate dal modello (tool calling). La documentazione in `Modules/AI/docs/ARCHITECTURE.md` indica che **parte del percorso non è ancora esposta** come API pubblica stabile: uno sviluppatore deve verificare nel codice lo stato attuale degli endpoint prima di integrare client esterni.
+- `php artisan ai:index-docs`
+- `php artisan ai:index-docs --path=/some/path`
+- `php artisan ai:index-docs --full`
 
-### Traduzione e memoria
+### Terminal help assistant
 
-Il modulo include servizi per **traduzione automatica** e meccanismi di **memoria / riassunto** conversazionale (vedi indice in `ARCHITECTURE.md`). L’obiettivo è mantenere contesto lungo senza superare i limiti di finestra del modello.
+- `php artisan ai:laraplate-help` opens interactive REPL chat over RAG.
+- `php artisan ai:laraplate-help --question="..."` executes one-shot query.
 
-## Come si usa in pratica
+## Configuration surfaces
 
-1. **Configurazione**: impostare chiavi e endpoint dei provider (OpenAI, Anthropic, Ollama, Mistral, ecc.) nelle variabili d’ambiente previste dal progetto; verificare limiti di rate e logging.
-2. **Ricerca**: assicurarsi che `ai.features.search_orchestration.enabled` sia coerente con l’ambiente (in sviluppo si può disattivare per ridurre costi o dipendenze esterne).
-3. **Chat in produzione**: eseguire worker di coda per job di embedding e task asincroni; non invocare embedding sincroni nelle richieste HTTP ad alto traffico.
-4. **Compliance**: definire policy su dati personali nei prompt, retention conversazioni e anonimizzazione log.
+Important groups include:
 
-## Dipendenze
+- `ai.features.faq.*` for RAG enablement, max docs, vector store behavior.
+- `ai.features.tools.*` for tools and approval pipeline.
+- `ai.features.guardrails.*` for prompt-injection and input hardening behavior.
+- `ai.features.search_orchestration.*` for AI-driven search planner/reranking bindings.
+- `AI_FAQ_DOCS_PATH` / `ai.features.faq.documentation_path` for extra documentation roots.
 
-- **Core**: fornisce contratti di ricerca (`Modules\Core\Search\Contracts\...`) e infrastruttura comune.
-- Provider esterni (LLM, API embedding): necessitano connettività e budget operativo.
+## Operational guidance
 
-## Approfondimenti
+### When to reindex
 
-Per implementatori, oltre a questo sommario in italiano:
+- Reindex after major docs updates, module feature changes, or terminology redesign.
+- Use `--full` when source mapping changed significantly or stale vectors are suspected.
 
-- `Modules/AI/docs/ARCHITECTURE.md` — flussi chat, streaming, RAG, stato delle API.
-- `Modules/AI/docs/DESIGN_DECISIONS.md` — scelte progettuali.
-- `Modules/AI/docs/TOOLS_USAGE_EXAMPLE.md` — esempi d’uso dei tool dove applicabile.
+### Common failure modes
 
-## Indicizzare la documentazione di tutti i moduli (RAG)
+- RAG unavailable: index missing or vector store path not initialized.
+- Empty/weak answers: low-quality docs, missing sections, wrong root coverage.
+- Tool calls pending forever: approval workflow not completed in caller layer.
+- Slow responses: high top-k settings, large context, or provider latency.
 
-Il comando `php artisan ai:index-docs` indicizza **un albero di file** alla volta. La convenzione del repository è documentata in `docs/README.md`; per copie opzionali sotto `docs/rag/` vedi `docs/rag/README.md`. Senza `--path`, i documenti RAG dei moduli attivi vengono inclusi automaticamente da `Modules/{Nome}/docs/rag/`.
+## Security boundaries
 
-## Limiti da comunicare agli stakeholder
+- Do not expose sensitive credentials or internals in indexed docs.
+- Treat tool execution as privileged: keep approval and risk policies enabled in production.
+- Keep guardrails enabled where user input can be untrusted.
 
-Le risposte generate da modelli AI possono essere **imprecise** o **obsolete**. Per decisioni legali, mediche, di sicurezza o finanziarie materiali, il modulo va considerato un **supporto**, non un’unica fonte di verità.
+## FAQ prompts for RAG
+
+- How does `ai:index-docs --full` differ from incremental indexing?
+- How does the system decide between direct answer and tool invocation?
+- What happens when a tool call requires approval?
+- How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
+- Why is the assistant saying RAG is unavailable?
+- How do I use `ai:laraplate-help` in REPL versus one-shot mode?
+
