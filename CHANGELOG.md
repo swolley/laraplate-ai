@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- Introduce chat and embedding service contracts with implementations
+
+## [2.1.1] - 2026-04-23
+
 ### 🚜 Refactor
 
 - Enhance models and migrations for improved structure and functionality
