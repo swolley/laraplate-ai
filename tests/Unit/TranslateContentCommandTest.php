@@ -2,25 +2,45 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Console\TranslateContentCommand;
+use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Jobs\TranslateModelJob;
+use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Stubs\TranslatableTestModel;
-use Stubs\TranslatableTestModelA;
-use Stubs\TranslatableTestModelB;
 use Symfony\Component\Console\Tester\CommandTester;
 
+/**
+ * @param  list<class-string>  $model_list
+ */
+function translate_content_command_with_models(array $model_list): TranslateContentCommand
+{
+    $resolver = new class ($model_list) implements ITranslatableModelClassNames {
+        public function __construct(private readonly array $model_list) {}
+
+        /**
+         * @return list<class-string>
+         */
+        public function all(): array
+        {
+            return $this->model_list;
+        }
+    };
+
+    return new TranslateContentCommand($resolver);
+}
+
 beforeEach(function (): void {
-    Config::set('_test_models', [TranslatableTestModel::class]);
     Queue::fake();
 });
 
-it('returns failure when model type not found', function (): void {
-    Config::set('_test_models', []);
+it('binds default translatable model class names resolver', function (): void {
+    expect(app(ITranslatableModelClassNames::class))->toBeInstanceOf(DiscoveryTranslatableModelClassNames::class);
+});
 
-    $command = new TranslateContentCommand;
+it('returns failure when model type not found', function (): void {
+    $command = translate_content_command_with_models([]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);
@@ -30,9 +50,10 @@ it('returns failure when model type not found', function (): void {
 });
 
 it('returns failure when multiple models found', function (): void {
-    Config::set('_test_models', [TranslatableTestModelA::class, TranslatableTestModelB::class]);
-
-    $command = new TranslateContentCommand;
+    $command = translate_content_command_with_models([
+        'StubNamespace\\Alpha\\TranslatableTestModel',
+        'StubNamespace\\Beta\\TranslatableTestModel',
+    ]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);
@@ -46,8 +67,16 @@ it('returns success with no models to translate', function (): void {
         $table->id();
         $table->timestamps();
     });
+    Schema::create('test_translatable_model_translations', function ($table): void {
+        $table->id();
+        $table->unsignedBigInteger('translatable_test_model_id');
+        $table->string('locale', 10);
+        $table->text('title')->nullable();
+        $table->text('content')->nullable();
+        $table->timestamps();
+    });
 
-    $command = new TranslateContentCommand;
+    $command = translate_content_command_with_models([TranslatableTestModel::class]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);
@@ -62,10 +91,24 @@ it('dispatches TranslateModelJob for each model', function (): void {
         $table->id();
         $table->timestamps();
     });
+    Schema::create('test_translatable_model_translations', function ($table): void {
+        $table->id();
+        $table->unsignedBigInteger('translatable_test_model_id');
+        $table->string('locale', 10);
+        $table->text('title')->nullable();
+        $table->text('content')->nullable();
+        $table->timestamps();
+    });
 
-    TranslatableTestModel::query()->create([]);
+    $model = TranslatableTestModel::query()->create([]);
+    \Stubs\TranslatableTestModelTranslation::query()->create([
+        'translatable_test_model_id' => $model->id,
+        'locale' => config('app.locale'),
+        'title' => 'Default title',
+        'content' => 'Default content',
+    ]);
 
-    $command = new TranslateContentCommand;
+    $command = translate_content_command_with_models([TranslatableTestModel::class]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);

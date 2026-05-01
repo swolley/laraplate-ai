@@ -6,9 +6,9 @@ namespace Modules\AI\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
-use Modules\Core\Helpers\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
 use Override;
 
@@ -32,10 +32,15 @@ final class TranslateContentCommand extends Command
     #[Override]
     protected $description = 'Translate content, categories, or tags to other locales <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
+    public function __construct(private ITranslatableModelClassNames $translatable_model_class_names)
+    {
+        parent::__construct();
+    }
+
     /**
      * Execute the console command.
      *
-     * @codeCoverageIgnore Depends on Core module (models(), HasTranslations, LocaleContext)
+     * @codeCoverageIgnore Depends on Core module (HasTranslations, LocaleContext)
      */
     public function handle(): int
     {
@@ -48,7 +53,7 @@ final class TranslateContentCommand extends Command
 
         $locales = $all_locales ? LocaleContext::getAvailable() : ($locale ? [$locale] : []);
 
-        $translatable_models = models(true, filter: fn (string $model): bool => class_uses_trait($model, HasTranslations::class));
+        $translatable_models = $this->translatable_model_class_names->all();
 
         if (! Str::contains($model_type, '\\')) {
             $model_type = '\\' . $model_type;

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\AI\Tests\Unit\TranslatableModelStub;
+use Modules\AI\Tests\Unit\TranslatableModelStubTranslation;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
 use Modules\Core\Helpers\HasTranslations;
@@ -71,6 +72,11 @@ it('registers translation for indexing when model is Searchable', function (): v
         {
             return true;
         }
+
+        protected static function getTranslationModelClass(): string
+        {
+            return TranslatableModelStubTranslation::class;
+        }
     };
     $model->id = 1;
 
@@ -84,5 +90,5 @@ it('registers translation for indexing when model is Searchable', function (): v
 
     $cached = Cache::get($cacheKey);
     expect($cached)->toBeInstanceOf(ModelRequiresIndexing::class)
-        ->and($cached->requiredPreProcessing)->toContain('translation');
+        ->and($cached->required_pre_processing)->toContain('translation');
 });

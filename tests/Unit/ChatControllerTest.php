@@ -153,10 +153,12 @@ it('streamMessage returns StreamedResponse and invokes on_chunk callback', funct
 
     expect($response)->toBeInstanceOf(Symfony\Component\HttpFoundation\StreamedResponse::class);
 
-    // StreamedResponse uses ob_flush in the controller; nested output buffers often lose SSE lines.
-    // We assert the stream completes; chunk encoding is covered implicitly via the mock invoking on_chunk.
+    // StreamedResponse uses ob_flush in the controller; keep two nested buffers so
+    // flushes stay in-memory and do not pollute test output.
+    ob_start();
     ob_start();
     $response->sendContent();
+    ob_end_clean();
     ob_end_clean();
 });
 

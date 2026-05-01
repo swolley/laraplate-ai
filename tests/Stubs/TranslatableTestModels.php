@@ -6,6 +6,7 @@ namespace Stubs;
 
 use Illuminate\Database\Eloquent\Model;
 use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Services\Translation\Definitions\ITranslated;
 use Override;
 
 class TranslatableTestModel extends Model
@@ -39,4 +40,18 @@ class TranslatableTestModelB extends TranslatableTestModel
 
     #[Override]
     protected $table = 'test_translatable_b';
+}
+
+class TranslatableTestModelTranslation extends Model implements ITranslated
+{
+    #[Override]
+    protected $table = 'test_translatable_model_translations';
+
+    #[Override]
+    protected $fillable = [
+        'translatable_test_model_id',
+        'locale',
+        'title',
+        'content',
+    ];
 }

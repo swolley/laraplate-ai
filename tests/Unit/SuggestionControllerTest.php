@@ -111,7 +111,7 @@ it('generateSuggestion returns null when no suggestion generated', function (): 
 
     $data = $response->getData(true);
     expect($response->getStatusCode())->toBe(200)
-        ->and($data['data'])->toBeNull();
+        ->and($data['data'])->toBe([]);
 });
 
 it('dismissSuggestion returns unauthorized when no user', function (): void {

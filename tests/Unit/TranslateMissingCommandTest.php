@@ -2,24 +2,39 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Console\TranslateMissingCommand;
+use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Stubs\TranslatableMissingTestModel;
-use Stubs\TranslatableMissingTestModelA;
-use Stubs\TranslatableMissingTestModelB;
 use Symfony\Component\Console\Tester\CommandTester;
 
+/**
+ * @param  list<class-string>  $model_list
+ */
+function translate_missing_command_with_models(array $model_list): TranslateMissingCommand
+{
+    $resolver = new class ($model_list) implements ITranslatableModelClassNames {
+        public function __construct(private readonly array $model_list) {}
+
+        /**
+         * @return list<class-string>
+         */
+        public function all(): array
+        {
+            return $this->model_list;
+        }
+    };
+
+    return new TranslateMissingCommand($resolver);
+}
+
 beforeEach(function (): void {
-    Config::set('_test_models', [TranslatableMissingTestModel::class]);
     Queue::fake();
 });
 
 it('returns failure when model type not found', function (): void {
-    Config::set('_test_models', []);
-
-    $command = new TranslateMissingCommand;
+    $command = translate_missing_command_with_models([]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);
@@ -29,9 +44,10 @@ it('returns failure when model type not found', function (): void {
 });
 
 it('returns failure when multiple models found', function (): void {
-    Config::set('_test_models', [TranslatableMissingTestModelA::class, TranslatableMissingTestModelB::class]);
-
-    $command = new TranslateMissingCommand;
+    $command = translate_missing_command_with_models([
+        'StubNamespace\\Alpha\\TranslatableMissingTestModel',
+        'StubNamespace\\Beta\\TranslatableMissingTestModel',
+    ]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);
@@ -52,7 +68,7 @@ it('returns success with no missing translations', function (): void {
         $table->timestamps();
     });
 
-    $command = new TranslateMissingCommand;
+    $command = translate_missing_command_with_models([TranslatableMissingTestModel::class]);
     $command->setLaravel(app());
 
     $tester = new CommandTester($command);

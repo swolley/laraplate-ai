@@ -6,7 +6,9 @@ namespace Modules\AI\Providers;
 
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
+use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Services\ChatService;
+use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\LlmQueryIntentParser;
@@ -34,6 +36,7 @@ class AIServiceProvider extends ModuleServiceProvider
 
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
+        $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
 
         $this->registerSearchBindings();
     }

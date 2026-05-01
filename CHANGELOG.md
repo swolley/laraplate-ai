@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- Implement translatable model class names interface and update translation commands
+
+## [2.3.0] - 2026-05-01
+
+### 🚀 Features
+
 - Add Laraplate help command for interactive RAG assistance
 
 ## [2.2.0] - 2026-05-01

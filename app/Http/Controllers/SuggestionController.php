@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,12 +38,7 @@ final class SuggestionController extends Controller
         $suggestions = $this->suggestionService->getPendingSuggestions($user);
 
         return new ResponseBuilder($request)
-            ->setData($suggestions->map(static fn (ContextualSuggestion $s): array => [
-                'id' => $s->id,
-                'suggestion' => $s->suggestion,
-                'context' => $s->context,
-                'created_at' => $s->created_at?->toIso8601String(),
-            ]))
+            ->setData($suggestions)
             ->setCurrentRecords($suggestions->count())
             ->json();
     }
@@ -67,7 +63,7 @@ final class SuggestionController extends Controller
 
         if (! $suggestion instanceof ContextualSuggestion) {
             return new ResponseBuilder($request)
-                ->setData(null)
+                ->setData(new JsonResource(null))
                 ->json();
         }
 
