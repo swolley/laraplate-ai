@@ -36,9 +36,4 @@ final class EventServiceProvider extends ServiceProvider
      */
     #[Override]
     protected static $shouldDiscoverEvents = true;
-
-    /**
-     * Configure the proper event listeners for email verification.
-     */
-    protected function configureEmailVerification(): void {}
 }
