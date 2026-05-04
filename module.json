@@ -10,7 +10,7 @@
         "translation",
         "machine-learning"
     ],
-    "priority": 999,
+    "priority": 99,
     "providers": [
         "Modules\\AI\\Providers\\AIServiceProvider"
     ],
