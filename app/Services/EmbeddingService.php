@@ -7,9 +7,10 @@ namespace Modules\AI\Services;
 use Closure;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
 use Modules\AI\Contracts\IEmbeddingService;
+use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
-use NeuronAI\RAG\Splitter\SentenceTextSplitter;
+use NeuronAI\RAG\Splitter\SplitterInterface;
 use Override;
 
 final readonly class EmbeddingService implements IEmbeddingService
@@ -19,6 +20,7 @@ final readonly class EmbeddingService implements IEmbeddingService
      */
     public function __construct(
         private ?Closure $providerFactory = null,
+        private ?SplitterInterface $splitter = null,
     ) {}
 
     /**
@@ -37,7 +39,7 @@ final readonly class EmbeddingService implements IEmbeddingService
         $document->sourceType = 'inline';
         $document->sourceName = 'document';
 
-        $splitter = new SentenceTextSplitter;
+        $splitter = $this->splitter ?? SplitterFactory::make();
         $chunks = $splitter->splitDocument($document);
 
         $generator = $this->getProvider();

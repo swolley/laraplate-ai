@@ -7,10 +7,11 @@ namespace Modules\AI\Services;
 use Closure;
 use Illuminate\Support\Str;
 use Modules\AI\Ai\Agents\DocumentationAgent;
+use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\FileDocumentReader;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
-use NeuronAI\RAG\Splitter\SentenceTextSplitter;
+use NeuronAI\RAG\Splitter\SplitterInterface;
 
 final readonly class DocumentationService
 {
@@ -19,6 +20,7 @@ final readonly class DocumentationService
      */
     public function __construct(
         private readonly ?Closure $agentFactory = null,
+        private readonly ?SplitterInterface $splitter = null,
     ) {}
 
     /**
@@ -175,7 +177,7 @@ final readonly class DocumentationService
             return 0;
         }
 
-        $splitter = new SentenceTextSplitter;
+        $splitter = $this->splitter ?? SplitterFactory::make();
         $split_documents = [];
 
         foreach ($documents as $document) {

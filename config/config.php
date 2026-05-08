@@ -57,6 +57,13 @@ return [
                 // ],
             ],
             'format_citations' => env('AI_FAQ_FORMAT_CITATIONS', true), // Append markdown citations to answers
+            'splitter' => [
+                // Driver options: markdown_aware (default, preserves mermaid/code/tables), sentence, delimiter
+                'driver' => env('AI_FAQ_SPLITTER', 'markdown_aware'),
+                'max_words' => (int) env('AI_FAQ_SPLITTER_MAX_WORDS', 250),
+                'overlap_words' => (int) env('AI_FAQ_SPLITTER_OVERLAP', 0),
+                'prepend_heading_breadcrumb' => env('AI_FAQ_SPLITTER_HEADING_BREADCRUMB', true),
+            ],
         ],
         'tools' => [
             'enabled' => env('AI_TOOLS_ENABLED', true),

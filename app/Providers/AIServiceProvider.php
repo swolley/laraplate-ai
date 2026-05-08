@@ -8,9 +8,10 @@ use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Services\ChatService;
-use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
-use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\CrossEncoderService;
+use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
+use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
+use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
@@ -19,6 +20,7 @@ use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
 use Modules\Core\Search\Contracts\ISearchPlanner;
 use Modules\Core\Search\Contracts\ITextEmbedder;
+use NeuronAI\RAG\Splitter\SplitterInterface;
 use Override;
 
 class AIServiceProvider extends ModuleServiceProvider
@@ -37,6 +39,8 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
+
+        $this->app->bind(SplitterInterface::class, static fn (): SplitterInterface => SplitterFactory::make());
 
         $this->registerSearchBindings();
     }

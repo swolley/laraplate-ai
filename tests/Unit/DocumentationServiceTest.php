@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Agents\DocumentationAgent;
+use Modules\AI\Services\Documentation\Chunking\MarkdownAwareSplitter;
 use Modules\AI\Services\DocumentationService;
 use NeuronAI\Chat\Messages\UserMessage;
+use NeuronAI\RAG\Document;
+use NeuronAI\RAG\Splitter\SplitterInterface;
 
 it('indexDocuments returns 0 for invalid path', function (): void {
     $service = new DocumentationService;
@@ -77,6 +80,101 @@ it('appendCitationsToAnswer returns answer unchanged for empty citations', funct
     $result = $method->invoke($service, 'Plain answer', []);
 
     expect($result)->toBe('Plain answer');
+});
+
+it('preserves a mermaid block intact when indexing markdown documentation', function (): void {
+    $tmpDir = sys_get_temp_dir() . '/ai-docs-mermaid-' . uniqid();
+    mkdir($tmpDir, 0755, true);
+
+    $mermaid = "```mermaid\nflowchart LR\n  A --> B\n  B --> C\n  C --> D\n```";
+    $body = "# Module diagram\n\nDescription paragraph one.\n\n" . $mermaid . "\n\nFurther paragraph after the diagram.";
+
+    file_put_contents($tmpDir . '/diagram.md', $body);
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+    config()->set('ai.features.faq.splitter.driver', 'markdown_aware');
+    config()->set('ai.features.faq.splitter.max_words', 250);
+    config()->set('ai.features.faq.splitter.prepend_heading_breadcrumb', false);
+
+    /** @var array<int, Document> $captured */
+    $captured = [];
+    $agentMock = Mockery::mock(DocumentationAgent::class);
+    $agentMock->shouldReceive('reindexBySource')
+        ->with(Mockery::on(function (array $docs) use (&$captured): bool {
+            $captured = $docs;
+
+            return true;
+        }))
+        ->once();
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agentMock);
+
+    try {
+        expect($service->indexDocuments($tmpDir))->toBeGreaterThan(0);
+
+        $mermaid_chunks = array_filter(
+            $captured,
+            static fn (Document $document): bool => str_contains((string) $document->getContent(), '```mermaid'),
+        );
+
+        expect($mermaid_chunks)->toHaveCount(1);
+
+        $first = array_values($mermaid_chunks)[0];
+        $content = (string) $first->getContent();
+
+        expect(substr_count($content, '```'))->toBe(2);
+        expect($content)->toContain('A --> B');
+        expect($content)->toContain('C --> D');
+    } finally {
+        unlink($tmpDir . '/diagram.md');
+        rmdir($tmpDir);
+    }
+});
+
+it('honors a custom SplitterInterface passed to the constructor', function (): void {
+    $tmpDir = sys_get_temp_dir() . '/ai-docs-splitter-' . uniqid();
+    mkdir($tmpDir, 0755, true);
+    file_put_contents($tmpDir . '/readme.md', "# Title\n\nContent.");
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $splitterCalls = 0;
+    $customSplitter = new class($splitterCalls) implements SplitterInterface
+    {
+        public function __construct(public int &$calls) {}
+
+        public function splitDocument(Document $document): array
+        {
+            $this->calls++;
+
+            return [$document];
+        }
+
+        public function splitDocuments(array $documents): array
+        {
+            $out = [];
+
+            foreach ($documents as $document) {
+                $out = array_merge($out, $this->splitDocument($document));
+            }
+
+            return $out;
+        }
+    };
+
+    $agentMock = Mockery::mock(DocumentationAgent::class);
+    $agentMock->shouldReceive('reindexBySource')->once();
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agentMock, $customSplitter);
+
+    try {
+        $service->indexDocuments($tmpDir);
+
+        expect($splitterCalls)->toBeGreaterThanOrEqual(1);
+    } finally {
+        unlink($tmpDir . '/readme.md');
+        rmdir($tmpDir);
+    }
 });
 
 it('indexDocuments indexes documents and returns count', function (): void {
