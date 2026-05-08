@@ -4,6 +4,48 @@
 
 `AI` provides documentation intelligence for Laraplate: ingest docs, index them for semantic retrieval, answer user questions with RAG, and orchestrate tool-assisted conversations with approval controls.
 
+### Module boundaries
+
+HTTP controllers and Artisan commands call **facade-level services** (`ChatService`, `DocumentationService`, `EmbeddingService`). RAG uses **NeuronAI** `DocumentationAgent` (extends `RAG`) with a pluggable vector store (`FileVectorStore` or `MemoryVectorStore`) and the embeddings provider from `EmbeddingsProviderFactory`. When **search orchestration** is enabled, the provider registers AI implementations for Core search contracts (`IReranker`, `ISearchPlanner`, `IQueryIntentParser`, `ITextEmbedder`). Document chunking goes through `SplitterInterface`, bound by default to `MarkdownAwareSplitter` via `SplitterFactory` so fenced blocks (including Mermaid in indexed docs) stay intact.
+
+```mermaid
+flowchart TB
+  subgraph entry [Entry points]
+    Http[Http Controllers]
+    Artisan[Artisan commands]
+  end
+  subgraph services [Application services]
+    ChatSvc[ChatService]
+    DocSvc[DocumentationService]
+    EmbSvc[EmbeddingService]
+  end
+  subgraph neuron [NeuronAI]
+    ChatAgent[ChatAgent]
+    DocAgent[DocumentationAgent extends RAG]
+    EmbProv[EmbeddingsProviderFactory]
+  end
+  subgraph ragPersist [RAG persistence]
+    VecStore[FileVectorStore or MemoryVectorStore]
+  end
+  subgraph coreSearch [Optional Core search bindings]
+    Rerank[CrossEncoderService IReranker]
+    Planner[SearchOrchestratorAgent ISearchPlanner]
+    Intent[LlmQueryIntentParser IQueryIntentParser]
+    Embedder[SearchEmbedder ITextEmbedder]
+  end
+  Prov[AIServiceProvider]
+
+  Http --> ChatSvc
+  Artisan --> DocSvc
+  DocSvc --> DocAgent
+  DocAgent --> EmbProv
+  DocAgent --> VecStore
+  EmbSvc --> EmbProv
+  ChatSvc --> ChatAgent
+  ChatSvc --> DocSvc
+  Prov -.->|search orchestration enabled| coreSearch
+```
+
 ## Core capabilities
 
 ### RAG ingestion and indexing lifecycle
@@ -13,17 +55,90 @@
 - Supports incremental reindex-by-source and full rebuild (`--full`) modes.
 - Keeps source prefixes to improve citation traceability by module/path.
 
+#### RAG indexing pipeline
+
+`indexDocuments()` resolves one or more roots: either the CLI `--path` with a synthetic prefix, or every directory returned by `rag_paths()` with prefixes such as `faq-module-{Name}` or `faq-app-rag`. `FileDocumentReader` walks each root and builds one `Document` per file (`sourceName` includes the prefix). `SplitterInterface` (default `MarkdownAwareSplitter` from `SplitterFactory`) splits each document into chunks. If the configured vector store already holds data and `--full` was not passed, `DocumentationAgent::reindexBySource()` updates chunks per logical source; otherwise `addDocuments()` appends. A full rebuild deletes the filesystem store file or resets the in-memory singleton when the driver is `memory`.
+
+```mermaid
+flowchart LR
+  subgraph roots [Roots]
+    RagPaths["rag_paths()"]
+    CliPath["CLI --path"]
+  end
+  Reader[FileDocumentReader]
+  Splitter[SplitterInterface via SplitterFactory]
+  Agent[DocumentationAgent]
+  Reindex["reindexBySource"]
+  AddDocs["addDocuments"]
+  Store[Vector store filesystem or memory]
+
+  RagPaths --> Reader
+  CliPath --> Reader
+  Reader --> Splitter
+  Splitter --> Agent
+  Agent --> Reindex
+  Agent --> AddDocs
+  Reindex --> Store
+  AddDocs --> Store
+```
+
 ### Question answering
 
 - Uses retrieval + LLM response generation through `DocumentationService::answerQuestion`.
 - Returns normalized output with answer + structured citations.
 - Can append formatted citation section in final answer.
 
+#### RAG question answering flow
+
+`answerQuestion()` instantiates `DocumentationAgent::make()` with `topK` from `ai.features.faq.max_documents`. The agent runs Neuron RAG retrieval over the vector store, then the LLM produces the assistant message. If the message exposes `getCitations()`, each citation is mapped to `source`, `excerpt`, and `score`. When `ai.features.faq.format_citations` is true, a markdown **Sources** block is appended to the answer string returned to callers.
+
+```mermaid
+flowchart TB
+  Q[User question string]
+  DocSvc[DocumentationService.answerQuestion]
+  Agent[DocumentationAgent]
+  Retrieve[Vector similarity retrieval]
+  Llm[LLM provider]
+  Cit[getCitations optional]
+  Out["array answer plus citations"]
+
+  Q --> DocSvc
+  DocSvc --> Agent
+  Agent --> Retrieve
+  Retrieve --> Llm
+  Llm --> Cit
+  Cit --> Out
+```
+
 ### Chat orchestration
 
 - `ChatService` handles normal conversation, RAG-triggered responses, and stream mode.
 - Question-detection rules can auto-route suitable prompts through FAQ/RAG path.
 - Memory and guardrails services participate when enabled by configuration.
+
+#### Chat path: RAG vs direct agent
+
+Incoming text passes through input guardrails when enabled. For `sendMessage()`, the service checks explicit `use_rag` in context or heuristics via `looksLikeQuestion()`. If RAG should run and `DocumentationService::isAvailable()` is true, the flow uses `answerQuestion()` and stores citations on the assistant `Message` metadata. Otherwise `ChatAgent` handles the turn with the normal LLM stack. Optional conversation summarization runs after responses when configured.
+
+```mermaid
+flowchart TB
+  UserMsg[User message]
+  Guard[GuardrailsService optional]
+  Branch{useRag or looksLikeQuestion}
+  Avail{DocumentationService.isAvailable}
+  RAG[DocumentationService.answerQuestion]
+  Agent[ChatAgent chat]
+  Save[Conversation.addMessage assistant]
+
+  UserMsg --> Guard
+  Guard --> Branch
+  Branch -->|yes| Avail
+  Branch -->|no| Agent
+  Avail -->|yes| RAG
+  Avail -->|no| Agent
+  RAG --> Save
+  Agent --> Save
+```
 
 ### Tools ecosystem
 
@@ -36,6 +151,32 @@
 - Medium/high-risk tool calls can be converted to `ActionRequest` items instead of immediate execution.
 - Pending requests are returned to caller as structured metadata.
 - Approval outcome controls whether tool execution proceeds or remains blocked.
+
+#### Tools and approval wiring
+
+`ToolRegistry::register()` stores `ToolDefinition` entries (name, parameters, handler, risk level). `getAllNeuronToolsWithApproval()` builds Neuron `Tool` instances: **low** risk keeps the original handler; **medium** or **high** wraps the callable so it calls `ActionRequestService::createRequest()` and returns a pending message to the model instead of executing. `RiskClassifier` merges config overrides from `ai.features.tools.definitions.{name}.risk_level`. The caller receives `action_requests` alongside the assistant message for UI or jobs to approve and replay execution.
+
+```mermaid
+flowchart TB
+  Reg[ToolRegistry]
+  Def[ToolDefinition DTOs]
+  Wrap[getAllNeuronToolsWithApproval]
+  Risk[RiskClassifier]
+  Low{risk low}
+  MedHigh{medium or high}
+  Exec[Direct handler callable]
+  AR[ActionRequestService.createRequest]
+  Pending[Pending message to LLM]
+
+  Reg --> Def
+  Def --> Wrap
+  Wrap --> Risk
+  Risk --> Low
+  Low -->|yes| Exec
+  Low -->|no| MedHigh
+  MedHigh --> AR
+  AR --> Pending
+```
 
 ## Developer-facing CLI
 
@@ -54,11 +195,27 @@
 
 Important groups include:
 
-- `ai.features.faq.*` for RAG enablement, max docs, vector store behavior.
+- `ai.features.faq.*` for RAG enablement, max docs, vector store behavior, and **splitter** (`driver`, `max_words`, `overlap_words`, `prepend_heading_breadcrumb`).
 - `ai.features.tools.*` for tools and approval pipeline.
 - `ai.features.guardrails.*` for prompt-injection and input hardening behavior.
 - `ai.features.search_orchestration.*` for AI-driven search planner/reranking bindings.
 - `AI_FAQ_DOCS_PATH` / `ai.features.faq.documentation_path` for extra documentation roots.
+
+#### Service container bindings relevant to RAG
+
+`AIServiceProvider` registers singletons for `IChatService`, `IEmbeddingService`, and `ITranslatableModelClassNames`. `SplitterInterface` is **bound** (not singleton) to `SplitterFactory::make()` so each resolution reads current config—useful in tests that swap `ai.features.faq.splitter.driver` between `markdown_aware`, `sentence`, and `delimiter`.
+
+```mermaid
+flowchart LR
+  SP[AIServiceProvider]
+  Chat[IChatService to ChatService]
+  Emb[IEmbeddingService to EmbeddingService]
+  Split[SplitterInterface bind SplitterFactory.make]
+
+  SP --> Chat
+  SP --> Emb
+  SP --> Split
+```
 
 ## Operational guidance
 
@@ -88,4 +245,3 @@ Important groups include:
 - How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
 - Why is the assistant saying RAG is unavailable?
 - How do I use `ai:laraplate-help` in REPL versus one-shot mode?
-
