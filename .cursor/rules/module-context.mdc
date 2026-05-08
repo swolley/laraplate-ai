@@ -1,0 +1,14 @@
+---
+alwaysApply: false
+---
+
+# AI module context (caveman)
+
+- Path: Modules/AI only.
+- Root rules = base law. Always follow.
+- This file = extra AI law.
+
+- Work on AI features, AI flows, AI tests.
+- Keep AI isolated. No cross-module edits unless user asks.
+- Reuse Core services when possible.
+- If unsure, ask user before broad refactor.
