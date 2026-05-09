@@ -25,7 +25,9 @@ final class HandleModelIndexingListener
         $this->saveEventToCache($event);
 
         // Dispatch only the embeddings job, NOT IndexInSearchJob
-        if ($event->sync) {
+        // When sync=true in a web context, force async to avoid blocking the HTTP response.
+        // When sync=true in CLI context, execute synchronously as requested.
+        if ($event->sync && app()->runningInConsole()) {
             app()->call([new GenerateEmbeddingsJob($event->model), 'handle']);
         } else {
             dispatch(new GenerateEmbeddingsJob($event->model));

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
@@ -14,6 +15,16 @@ beforeEach(function (): void {
     Config::set('ai.features.embeddings.enabled', true);
     Queue::fake();
 });
+
+/**
+ * Helper to override the runningInConsole flag on the Application instance.
+ */
+function setRunningInConsole(Application $app, bool $value): void
+{
+    $prop = new ReflectionProperty(Application::class, 'isRunningInConsole');
+    $prop->setAccessible(true);
+    $prop->setValue($app, $value);
+}
 
 it('does nothing when embeddings feature disabled', function (): void {
     Config::set('ai.features.embeddings.enabled', false);
@@ -52,7 +63,8 @@ it('dispatches GenerateEmbeddingsJob for async', function (): void {
     expect($event->required_pre_processing)->toContain('embeddings');
 });
 
-it('runs GenerateEmbeddingsJob sync when event sync is true', function (): void {
+it('runs GenerateEmbeddingsJob sync when event sync is true in CLI context', function (): void {
+    // Tests run in CLI context (runningInConsole() === true), so sync=true executes inline.
     $model = new SearchableModelStub;
     $model->id = 1;
 
@@ -72,5 +84,40 @@ it('adds embeddings to required pre-processing', function (): void {
     $listener = new HandleModelIndexingListener();
     $listener->handle($event);
 
+    expect($event->required_pre_processing)->toContain('embeddings');
+});
+
+// Property 19: Web-context sync indexing is always dispatched asynchronously
+// Validates: Requirements 14.1
+it('dispatches GenerateEmbeddingsJob async when sync=true in web context', function (): void {
+    // Feature: performance-optimization, Property 19: Web-context sync indexing is always dispatched asynchronously
+    setRunningInConsole($this->app, false);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new ModelRequiresIndexing($model, true);
+    $listener = new HandleModelIndexingListener();
+    $listener->handle($event);
+
+    Queue::assertPushed(GenerateEmbeddingsJob::class);
+    expect($event->required_pre_processing)->toContain('embeddings');
+});
+
+// Property 20: CLI-context sync indexing executes synchronously
+// Validates: Requirements 14.2
+it('executes GenerateEmbeddingsJob synchronously when sync=true in CLI context', function (): void {
+    // Feature: performance-optimization, Property 20: CLI-context sync indexing executes synchronously
+    setRunningInConsole($this->app, true);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new ModelRequiresIndexing($model, true);
+    $listener = new HandleModelIndexingListener();
+    $listener->handle($event);
+
+    // Sync execution does not push to the queue.
+    Queue::assertNothingPushed();
     expect($event->required_pre_processing)->toContain('embeddings');
 });
