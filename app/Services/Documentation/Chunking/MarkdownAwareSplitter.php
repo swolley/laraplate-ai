@@ -162,7 +162,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
      */
     private function isTableStart(array $lines, int $i, int $n): bool
     {
-        if ($i + 1 >= $n) {
+        if ($n <= $i + 1) {
             return false;
         }
 
@@ -188,6 +188,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
         $chunks = [];
         $current = [];
         $current_words = 0;
+
         /** @var list<array{level: int, content: string}> $heading_stack */
         $heading_stack = [];
 
@@ -221,7 +222,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
                     continue;
                 }
 
-                if ($current !== [] && $current_words + $block_words > $this->maxWords) {
+                if ($current !== [] && $this->maxWords < $current_words + $block_words) {
                     $chunks[] = $this->finalizeChunk($current, $heading_stack);
                     $current = [];
                     $current_words = 0;
@@ -250,7 +251,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
                 continue;
             }
 
-            if ($current !== [] && $current_words + $block_words > $this->maxWords) {
+            if ($current !== [] && $this->maxWords < $current_words + $block_words) {
                 $chunks[] = $this->finalizeChunk($current, $heading_stack);
                 $current = [];
                 $current_words = 0;
@@ -272,7 +273,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
      */
     private function hasContentBlock(array $blocks): bool
     {
-        return array_any($blocks, fn($block): bool => $block['type'] !== 'heading');
+        return array_any($blocks, static fn (array $block): bool => $block['type'] !== 'heading');
     }
 
     /**
@@ -348,6 +349,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
         $sentences = array_values(array_filter(array_map(mb_trim(...), $sentences), static fn (string $sentence): bool => $sentence !== ''));
 
         $chunks = [];
+
         /** @var list<string> $current_words */
         $current_words = [];
 
@@ -355,7 +357,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
             $words = preg_split('/\s+/u', $sentence) ?: [];
             $words = array_values(array_filter($words, static fn (string $word): bool => $word !== ''));
 
-            if (count($words) > $this->maxWords) {
+            if ($this->maxWords < count($words)) {
                 if ($current_words !== []) {
                     $chunks[] = implode(' ', $current_words);
                     $current_words = [];
@@ -368,7 +370,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
                 continue;
             }
 
-            if (count($current_words) + count($words) > $this->maxWords) {
+            if ($this->maxWords < count($current_words) + count($words)) {
                 $chunks[] = implode(' ', $current_words);
                 $current_words = $words;
 

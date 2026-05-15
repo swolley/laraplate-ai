@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚜 Refactor
+
+- Improve string handling and condition checks in helper and splitter classes
+
 ## [2.7.0] - 2026-05-15
 
 ### 🚀 Features

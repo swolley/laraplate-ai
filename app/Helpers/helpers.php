@@ -55,7 +55,7 @@ if (! function_exists('rag_paths')) {
         $configured = config('ai.features.faq.documentation_path');
         $configured_paths = [];
 
-        if (is_string($configured) && trim($configured) !== '') {
+        if (is_string($configured) && mb_trim($configured) !== '') {
             $configured_paths = preg_split('/[\r\n,;]+/', $configured) ?: [];
         }
 
@@ -71,7 +71,7 @@ if (! function_exists('rag_paths')) {
                 continue;
             }
 
-            $configured_path = trim($configured_path);
+            $configured_path = mb_trim($configured_path);
 
             if ($configured_path === '') {
                 continue;
@@ -83,7 +83,7 @@ if (! function_exists('rag_paths')) {
                 continue;
             }
 
-            $relative_subpaths[] = trim($configured_path, '/');
+            $relative_subpaths[] = mb_trim($configured_path, '/');
         }
 
         // Convention default.
@@ -105,7 +105,7 @@ if (! function_exists('rag_paths')) {
                 $module_vendor = (string) ($module->getComposerAttr('vendor', ''));
 
                 if ($native_vendor !== '' && $module_vendor === $native_vendor) {
-                    $native_module_paths[] = rtrim($module_path, '/');
+                    $native_module_paths[] = mb_rtrim($module_path, '/');
                 }
 
                 $subpaths = [$default_subpath];
@@ -154,8 +154,8 @@ if (! function_exists('rag_paths')) {
                 continue;
             }
 
-            $normalized_absolute = rtrim(normalize_path($absolute_path), '/');
-            $is_native_module_path = array_any($native_module_paths, fn($native_module_path): bool => $normalized_absolute === $native_module_path
+            $normalized_absolute = mb_rtrim(normalize_path($absolute_path), '/');
+            $is_native_module_path = array_any($native_module_paths, static fn (string $native_module_path): bool => $normalized_absolute === $native_module_path
                 || str_starts_with($normalized_absolute, $native_module_path . '/'));
 
             if (! $is_native_module_path) {
