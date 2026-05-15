@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- Enhance AI module with new enums, migrations, and updates to models and routes
+
+## [2.6.0] - 2026-05-09
+
+### 🚀 Features
+
 - Enhance HandleModelIndexingListener to handle sync events differently based on context
 
 ### 📚 Documentation

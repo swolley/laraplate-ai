@@ -12,7 +12,7 @@ use Modules\Core\Search\Contracts\IQueryIntentParser;
  * Delegates to LlmSearchService for structured extraction of keywords,
  * date filters, and expanded query from raw user input.
  */
-final class LlmQueryIntentParser implements IQueryIntentParser
+final readonly class LlmQueryIntentParser implements IQueryIntentParser
 {
     public function __construct(
         private LlmSearchService $llm,

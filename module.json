@@ -14,5 +14,8 @@
     "providers": [
         "Modules\\AI\\Providers\\AIServiceProvider"
     ],
-    "files": []
+    "files": [],
+    "requires": [
+        "Core"
+    ]
 }

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Modules\AI\Enums\AITables;
 use Modules\AI\Models\Conversation;
 use Modules\Core\Models\User;
 
@@ -30,7 +31,7 @@ test('it can create a conversation', function (): void {
             'system_message' => 'You are a helpful assistant.',
         ]);
 
-    $this->assertDatabaseHas('ai_conversations', [
+    $this->assertDatabaseHas(AITables::Conversations->value, [
         'user_id' => $user->id,
         'title' => 'Test conversation',
     ]);
@@ -57,15 +58,15 @@ test('it can send and store messages for a conversation', function (): void {
     $conversation->addMessage('assistant', 'I am fine, thank you!');
 
     // Ci devono essere due messaggi: user e assistant.
-    $this->assertDatabaseCount('ai_messages', 2);
+    $this->assertDatabaseCount(AITables::Messages->value, 2);
 
-    $this->assertDatabaseHas('ai_messages', [
+    $this->assertDatabaseHas(AITables::Messages->value, [
         'conversation_id' => $conversation->id,
         'role' => 'user',
         'content' => 'Hello, how are you?',
     ]);
 
-    $this->assertDatabaseHas('ai_messages', [
+    $this->assertDatabaseHas(AITables::Messages->value, [
         'conversation_id' => $conversation->id,
         'role' => 'assistant',
         'content' => 'I am fine, thank you!',

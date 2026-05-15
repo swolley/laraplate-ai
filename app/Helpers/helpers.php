@@ -37,7 +37,7 @@ if (! function_exists('rag_paths')) {
         }
 
         if ($native_vendor === '') {
-            $native_vendor = (string) (config('ai.vendor') ?? '');
+            $native_vendor = (string) (config('ai.vendor', ''));
         }
 
         if ($native_vendor === '') {
@@ -155,16 +155,8 @@ if (! function_exists('rag_paths')) {
             }
 
             $normalized_absolute = rtrim(normalize_path($absolute_path), '/');
-            $is_native_module_path = false;
-
-            foreach ($native_module_paths as $native_module_path) {
-                if ($normalized_absolute === $native_module_path
-                    || str_starts_with($normalized_absolute, $native_module_path . '/')) {
-                    $is_native_module_path = true;
-
-                    break;
-                }
-            }
+            $is_native_module_path = array_any($native_module_paths, fn($native_module_path): bool => $normalized_absolute === $native_module_path
+                || str_starts_with($normalized_absolute, $native_module_path . '/'));
 
             if (! $is_native_module_path) {
                 $rag_paths[] = $absolute_path;

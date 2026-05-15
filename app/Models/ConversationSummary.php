@@ -5,16 +5,18 @@ declare(strict_types=1);
 namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @mixin \Eloquent
  * @mixin IdeHelperConversationSummary
  */
 final class ConversationSummary extends Model
 {
     #[Override]
-    protected $table = 'ai_conversation_summaries';
+    protected $table = AITables::ConversationSummaries->value;
 
     #[Override]
     protected $fillable = [
@@ -23,10 +25,6 @@ final class ConversationSummary extends Model
         'facts',
         'message_count',
     ];
-
-    private bool $softDeletesEnabled = false;
-
-    private bool $versionStrategy = false;
 
     public function conversation(): BelongsTo
     {

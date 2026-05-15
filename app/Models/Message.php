@@ -7,16 +7,18 @@ namespace Modules\AI\Models;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @mixin \Eloquent
  * @mixin IdeHelperMessage
  */
 final class Message extends Model
 {
     #[Override]
-    protected $table = 'ai_messages';
+    protected $table = AITables::Messages->value;
 
     #[Override]
     protected $fillable = [
@@ -26,10 +28,6 @@ final class Message extends Model
         'metadata',
         'token_count',
     ];
-
-    private bool $softDeletesEnabled = false;
-
-    private bool $versionStrategy = false;
 
     /**
      * Get the conversation that owns the message.

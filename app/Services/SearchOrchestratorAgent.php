@@ -14,7 +14,7 @@ use Throwable;
  * Falls back to rule-based heuristics when the LLM call fails
  * or returns an invalid plan.
  */
-final class SearchOrchestratorAgent implements ISearchPlanner
+final readonly class SearchOrchestratorAgent implements ISearchPlanner
 {
     public function __construct(
         private LlmSearchService $llm,

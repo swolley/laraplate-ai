@@ -14,7 +14,7 @@ use Modules\Core\Search\Contracts\IReranker;
  *
  * @implements IReranker
  */
-final class CrossEncoderService implements IReranker
+final readonly class CrossEncoderService implements IReranker
 {
     private string $endpoint;
 

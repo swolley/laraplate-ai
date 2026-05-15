@@ -23,10 +23,10 @@ final class IntelligentSearchAction
     private int $cache_ttl = 600;
 
     public function __construct(
-        private ISearchPlanner $planner,
-        private IQueryIntentParser $intent_parser,
-        private ?ITextEmbedder $embedder,
-        private EnsembleSearchService $ensemble,
+        private readonly ISearchPlanner $planner,
+        private readonly IQueryIntentParser $intent_parser,
+        private readonly ?ITextEmbedder $embedder,
+        private readonly EnsembleSearchService $ensemble,
     ) {}
 
     /**
@@ -96,7 +96,7 @@ final class IntelligentSearchAction
      */
     private function shouldEmbed(array $plan): bool
     {
-        if ($this->embedder === null) {
+        if (!$this->embedder instanceof \Modules\Core\Search\Contracts\ITextEmbedder) {
             return false;
         }
 

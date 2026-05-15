@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\AI\Enums\AITables;
+use Modules\Core\Enums\CoreTables;
 use Modules\Core\Helpers\MigrateUtils;
 
 return new class extends Migration
@@ -14,9 +16,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('ai_contextual_suggestions', function (Blueprint $table): void {
+        $table_name = AITables::ContextualSuggestions->value;
+        Schema::create($table_name, function (Blueprint $table) use ($table_name): void {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained(CoreTables::Users->value, 'id', "{$table_name}_user_id_FK")->cascadeOnDelete();
             $table->json('context')->comment('UI context (page, action, data)');
             $table->text('suggestion')->comment('AI-generated suggestion text');
             $table->timestamp('dismissed_at')->nullable()->comment('When user dismissed the suggestion');
@@ -27,7 +30,7 @@ return new class extends Migration
                 hasSoftDelete: true,
             );
 
-            $table->index(['user_id', 'created_at']);
+            $table->index(['user_id', 'created_at'], "{$table_name}_user_created_IDX");
         });
     }
 
@@ -36,6 +39,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('ai_contextual_suggestions');
+        Schema::dropIfExists(AITables::ContextualSuggestions->value);
     }
 };

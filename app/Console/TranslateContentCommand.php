@@ -32,7 +32,7 @@ final class TranslateContentCommand extends Command
     #[Override]
     protected $description = 'Translate content, categories, or tags to other locales <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
-    public function __construct(private ITranslatableModelClassNames $translatable_model_class_names)
+    public function __construct(private readonly ITranslatableModelClassNames $translatable_model_class_names)
     {
         parent::__construct();
     }

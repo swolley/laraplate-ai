@@ -12,7 +12,7 @@ use Modules\Core\Search\Contracts\ITextEmbedder;
  * Adapts the existing EmbeddingService to the ITextEmbedder contract
  * expected by the Core search infrastructure.
  */
-final class SearchEmbedder implements ITextEmbedder
+final readonly class SearchEmbedder implements ITextEmbedder
 {
     public function __construct(
         private EmbeddingService $embeddingService,

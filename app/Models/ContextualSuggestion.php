@@ -6,17 +6,19 @@ namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @mixin \Eloquent
  * @mixin IdeHelperContextualSuggestion
  */
 final class ContextualSuggestion extends Model
 {
     #[Override]
-    protected $table = 'ai_contextual_suggestions';
+    protected $table = AITables::ContextualSuggestions->value;
 
     #[Override]
     protected $fillable = [
@@ -25,10 +27,6 @@ final class ContextualSuggestion extends Model
         'suggestion',
         'dismissed_at',
     ];
-
-    private bool $softDeletesEnabled = false;
-
-    private bool $versionStrategy = false;
 
     public function user(): BelongsTo
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Helpers\MigrateUtils;
 
 return new class extends Migration
@@ -15,7 +16,7 @@ return new class extends Migration
     public function up(): void
     {
         // Add memory fields to conversations
-        Schema::table('ai_conversations', function (Blueprint $table): void {
+        Schema::table(AITables::Conversations->value, function (Blueprint $table): void {
             $table->boolean('memory_enabled')->default(true)->after('metadata')
                 ->comment('Whether memory/summary is enabled for this conversation');
             $table->text('summary')->nullable()->after('memory_enabled')
@@ -29,9 +30,10 @@ return new class extends Migration
         });
 
         // Create summaries table for historical snapshots
-        Schema::create('ai_conversation_summaries', function (Blueprint $table): void {
+        $table_name = AITables::ConversationSummaries->value;
+        Schema::create($table_name, function (Blueprint $table) use ($table_name): void {
             $table->id();
-            $table->foreignId('conversation_id')->constrained('ai_conversations')->cascadeOnDelete();
+            $table->foreignId('conversation_id')->constrained(AITables::Conversations->value, 'id', "{$table_name}_conversation_id_FK")->cascadeOnDelete();
             $table->text('summary')->comment('Summary text at this point in time');
             $table->json('facts')->nullable()->comment('Extracted key facts from conversation');
             $table->unsignedInteger('message_count')->comment('Number of messages when summary was created');
@@ -42,7 +44,7 @@ return new class extends Migration
                 hasSoftDelete: true,
             );
 
-            $table->index('conversation_id');
+            $table->index('conversation_id', "{$table_name}_conversation_id_IDX");
         });
     }
 
@@ -51,9 +53,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('ai_conversation_summaries');
+        Schema::dropIfExists(AITables::ConversationSummaries->value);
 
-        Schema::table('ai_conversations', function (Blueprint $table): void {
+        Schema::table(AITables::Conversations->value, function (Blueprint $table): void {
             $table->dropColumn(['memory_enabled', 'summary']);
         });
     }

@@ -6,6 +6,7 @@ namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use NeuronAI\Chat\Enums\MessageRole;
@@ -13,12 +14,13 @@ use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
 /**
+ * @mixin \Eloquent
  * @mixin IdeHelperConversation
  */
 final class Conversation extends Model
 {
     #[Override]
-    protected $table = 'ai_conversations';
+    protected $table = AITables::Conversations->value;
 
     #[Override]
     protected $fillable = [
@@ -29,10 +31,6 @@ final class Conversation extends Model
         'memory_enabled',
         'summary',
     ];
-
-    private bool $softDeletesEnabled = false;
-
-    private bool $versionStrategy = false;
 
     /**
      * Get the user that owns the conversation.

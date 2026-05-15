@@ -3,21 +3,24 @@
 declare(strict_types=1);
 
 namespace Modules\AI\Models;
+use Modules\Core\Enums\CoreTables;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\AI\Enums\AITables;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @mixin \Eloquent
  * @mixin IdeHelperActionRequest
  */
 final class ActionRequest extends Model
 {
     #[Override]
-    protected $table = 'ai_action_requests';
+    protected $table = AITables::ActionRequests->value;
 
     #[Override]
     protected $fillable = [
@@ -33,17 +36,15 @@ final class ActionRequest extends Model
         'executed_at',
     ];
 
-    private bool $softDeletesEnabled = false;
-
     public function getRules(): array
     {
         $rules = parent::getRules();
         $rules[Model::DEFAULT_RULE] = array_merge($rules[Model::DEFAULT_RULE], [
-            'conversation_id' => ['nullable', 'exists:ai_conversations,id'],
+            'conversation_id' => ['nullable', 'exists:'.AITables::Conversations->value.',id'],
             'status' => ['required', 'string', 'max:255'],
         ]);
         $rules['create'] = array_merge($rules['create'], [
-            'user_id' => ['required', 'exists:users,id'],
+            'user_id' => ['required', 'exists:'.CoreTables::Users->value.',id'],
             'tool_name' => ['required', 'string', 'max:255'],
             // Validated from raw attributes: array-cast columns are JSON strings before insert.
             'tool_args' => ['required', 'json'],

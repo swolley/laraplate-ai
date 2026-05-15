@@ -220,7 +220,6 @@ class ChatService implements IChatService
             $system_prompt = ($system_prompt ? $system_prompt . "\n\n" : '') . $memory_context;
         }
 
-        /** @var ChatAgent $agent */
         $agent = ChatAgent::make($provider ?? config('ai.features.chat.default_provider'), $system_prompt);
 
         $previous_messages = $conversation->getMessagesForNeuron();

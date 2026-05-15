@@ -25,12 +25,10 @@ final class MarkdownAwareSplitter extends AbstractSplitter
 {
     public function __construct(
         private readonly int $maxWords = 250,
-        private readonly int $overlapWords = 0,
+        int $overlapWords = 0,
         private readonly bool $prependHeadingBreadcrumb = true,
     ) {
-        if ($overlapWords >= $maxWords) {
-            throw new InvalidArgumentException('Overlap must be less than maxWords.');
-        }
+        throw_if($overlapWords >= $maxWords, InvalidArgumentException::class, 'Overlap must be less than maxWords.');
     }
 
     /**
@@ -39,7 +37,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
     #[Override]
     public function splitDocument(Document $document): array
     {
-        $content = (string) $document->getContent();
+        $content = $document->getContent();
 
         if (mb_trim($content) === '') {
             return [];
@@ -274,13 +272,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
      */
     private function hasContentBlock(array $blocks): bool
     {
-        foreach ($blocks as $block) {
-            if ($block['type'] !== 'heading') {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($blocks, fn($block): bool => $block['type'] !== 'heading');
     }
 
     /**

@@ -16,7 +16,7 @@ use NeuronAI\Chat\Messages\UserMessage;
 class LlmSearchService
 {
     public function __construct(
-        private ?string $provider = null,
+        private readonly ?string $provider = null,
     ) {}
 
     /**

@@ -19,8 +19,8 @@ final readonly class DocumentationService
      * @param  Closure(): DocumentationAgent|null  $agentFactory  Optional factory for testing
      */
     public function __construct(
-        private readonly ?Closure $agentFactory = null,
-        private readonly ?SplitterInterface $splitter = null,
+        private ?Closure $agentFactory = null,
+        private ?SplitterInterface $splitter = null,
     ) {}
 
     /**
@@ -138,7 +138,7 @@ final readonly class DocumentationService
 
         $roots = [];
 
-        foreach ((array) rag_paths(onlyActive: true, prioritySort: true) as $path) {
+        foreach (rag_paths(onlyActive: true, prioritySort: true) as $path) {
             $path = (string) $path;
 
             $roots[] = [
