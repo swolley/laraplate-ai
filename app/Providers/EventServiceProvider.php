@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace Modules\AI\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Modules\AI\Listeners\HandleModificationApprovedTranslationListener;
+use Modules\AI\Listeners\HandleModificationModerationListener;
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\Core\Events\ModelRequiresIndexing;
+use Modules\Core\Events\ModificationApproved;
+use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Events\TranslatedModelSaved;
 use Override;
 
@@ -22,18 +26,19 @@ final class EventServiceProvider extends ServiceProvider
     #[Override]
     protected $listen = [
         ModelRequiresIndexing::class => [
-            HandleModelIndexingListener::class, // Executes first
+            HandleModelIndexingListener::class,
         ],
         TranslatedModelSaved::class => [
             HandleModelTranslationListener::class,
         ],
+        ModificationRequiresModeration::class => [
+            HandleModificationModerationListener::class,
+        ],
+        ModificationApproved::class => [
+            HandleModificationApprovedTranslationListener::class,
+        ],
     ];
 
-    /**
-     * Indicates if events should be discovered.
-     *
-     * @var bool
-     */
     #[Override]
     protected static $shouldDiscoverEvents = true;
 }

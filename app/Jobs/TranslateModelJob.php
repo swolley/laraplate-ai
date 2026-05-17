@@ -74,7 +74,7 @@ final class TranslateModelJob implements ShouldQueue
         }
 
         $default_locale = config('app.locale');
-        $default_translation = $model->getTranslation($default_locale);
+        $default_translation = $this->resolveSourceTranslation($model, $default_locale);
 
         if (! $default_translation) {
             Log::warning('Default translation not found', [
@@ -111,6 +111,22 @@ final class TranslateModelJob implements ShouldQueue
         if (class_uses_trait($model, Searchable::class)) {
             event(new ModelPreProcessingCompleted($model, 'translation'));
         }
+    }
+
+    /**
+     * @param  Model&HasTranslations  $model
+     */
+    private function resolveSourceTranslation(Model $model, string $default_locale): ?Model
+    {
+        if (method_exists($model, 'getOriginalTranslation')) {
+            $original = $model->getOriginalTranslation();
+
+            if ($original !== null) {
+                return $original;
+            }
+        }
+
+        return $model->getTranslation($default_locale);
     }
 
     /**

@@ -19,6 +19,9 @@ use Override;
  */
 final class Conversation extends Model
 {
+    /**
+     * @var string
+     */
     #[Override]
     protected $table = AITables::Conversations->value;
 

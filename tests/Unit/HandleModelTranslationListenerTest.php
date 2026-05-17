@@ -63,6 +63,8 @@ it('registers translation for indexing when model is Searchable', function (): v
         use Illuminate\Database\Eloquent\Factories\HasFactory;
         use Modules\Core\Search\Traits\Searchable;
 
+        protected bool $auto_translate_enabled = true;
+
         public function getTable(): string
         {
             return 'test_searchable_translatable';

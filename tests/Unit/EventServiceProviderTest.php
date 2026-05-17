@@ -42,7 +42,7 @@ it('has exactly two event mappings in listen array', function (): void {
     $property = $reflection->getProperty('listen');
     $listen = $property->getValue($provider);
 
-    expect($listen)->toHaveCount(2)
+    expect($listen)->toHaveCount(4)
         ->and(array_keys($listen))->toContain(ModelRequiresIndexing::class)
         ->and(array_keys($listen))->toContain(TranslatedModelSaved::class);
 });

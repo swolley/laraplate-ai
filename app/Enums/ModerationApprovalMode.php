@@ -1,0 +1,18 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\AI\Enums;
+
+enum ModerationApprovalMode: string
+{
+    case Threshold = 'threshold';
+    case Dual = 'dual';
+
+    public static function fromConfig(): self
+    {
+        $raw = (string) config('ai.features.moderation.approval_mode', 'threshold');
+
+        return self::tryFrom($raw) ?? self::Threshold;
+    }
+}

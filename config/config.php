@@ -93,6 +93,15 @@ return [
             'cooldown_minutes' => (int) env('AI_CONTEXTUAL_SUGGESTIONS_COOLDOWN', 5), // Min minutes between suggestions
             'cache_ttl' => (int) env('AI_CONTEXTUAL_SUGGESTIONS_CACHE_TTL', 3600), // Cache duration in seconds
         ],
+        'moderation' => [
+            'enabled' => env('AI_MODERATION_ENABLED', env('AI_COMMENT_MODERATION_ENABLED', true)),
+            'approval_mode' => env('AI_MODERATION_APPROVAL_MODE', env('AI_COMMENT_APPROVAL_MODE', 'threshold')),
+            'ai_participates_in_approvals' => env('AI_MODERATION_AI_VOTES', env('AI_COMMENT_AI_VOTES', true)),
+            'approve_confidence_threshold' => (float) env('AI_MODERATION_APPROVE_THRESHOLD', env('AI_COMMENT_MOD_APPROVE_THRESHOLD', 0.85)),
+            'reject_confidence_threshold' => (float) env('AI_MODERATION_REJECT_THRESHOLD', env('AI_COMMENT_MOD_REJECT_THRESHOLD', 0.85)),
+            'queue' => env('AI_MODERATION_QUEUE', env('AI_COMMENT_MOD_QUEUE', 'default')),
+            'provider' => env('AI_MODERATION_PROVIDER', env('AI_COMMENT_MOD_PROVIDER')),
+        ],
     ],
 
     'providers' => [

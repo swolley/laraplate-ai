@@ -13,6 +13,8 @@ class TranslatableModelStub extends Model
     use HasFactory;
     use HasTranslations;
 
+    protected bool $auto_translate_enabled = true;
+
     public function getTable(): string
     {
         return 'test_translatable';

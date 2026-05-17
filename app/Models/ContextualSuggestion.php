@@ -17,6 +17,9 @@ use Override;
  */
 final class ContextualSuggestion extends Model
 {
+    /**
+     * @var string
+     */
     #[Override]
     protected $table = AITables::ContextualSuggestions->value;
 

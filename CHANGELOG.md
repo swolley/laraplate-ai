@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- Implement AI moderation and translation workflows
+
+## [2.8.1] - 2026-05-15
+
 ### 🚜 Refactor
 
 - Improve string handling and condition checks in helper and splitter classes

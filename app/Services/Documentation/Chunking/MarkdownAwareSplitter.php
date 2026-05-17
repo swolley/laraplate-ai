@@ -25,10 +25,10 @@ final class MarkdownAwareSplitter extends AbstractSplitter
 {
     public function __construct(
         private readonly int $maxWords = 250,
-        int $overlapWords = 0,
+        private readonly int $overlapWords = 0,
         private readonly bool $prependHeadingBreadcrumb = true,
     ) {
-        throw_if($overlapWords >= $maxWords, InvalidArgumentException::class, 'Overlap must be less than maxWords.');
+        throw_if($this->overlapWords >= $this->maxWords, InvalidArgumentException::class, 'Overlap must be less than maxWords.');
     }
 
     /**

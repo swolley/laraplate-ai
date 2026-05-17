@@ -17,6 +17,9 @@ use Override;
  */
 final class Message extends Model
 {
+    /**
+     * @var string
+     */
     #[Override]
     protected $table = AITables::Messages->value;
 

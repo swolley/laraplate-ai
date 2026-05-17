@@ -27,7 +27,7 @@ final class ExecuteActionRequestJob implements ShouldQueue
 
     public function handle(ActionRequestService $actionRequestService): void
     {
-        $request = $this->actionRequest->fresh();
+        $request = ActionRequest::query()->find($this->actionRequest->getKey());
 
         if ($request === null || ! in_array($request->status, ['approved', 'executing'], true)) {
             return;

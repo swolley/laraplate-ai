@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Core integration (indexing & moderation)](#core-integration-indexing--moderation)
 - [Chat System](#chat-system)
 - [Tool System (ActionRequest)](#tool-system-actionrequest)
 - [Embedding & RAG System](#embedding--rag-system)
@@ -36,6 +37,17 @@ The AI Module provides AI-powered features through a layered architecture:
 │  OpenAIChat, OllamaChat, MistralChat, AnthropicChat             │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Core integration (indexing & moderation)
+
+Cross-module pipelines are documented with **Mermaid** diagrams in dedicated guides (keep this file for in-module features: chat, RAG, tools).
+
+| Pipeline | Canonical doc |
+|----------|----------------|
+| Search indexing, embeddings, `IndexInSearchJob` | [Core: EVENT_ORCHESTRATION §1](../../Core/docs/EVENT_ORCHESTRATION.md#1-search-indexing-embeddings--translations) · [AI: SEARCH_AND_TRANSLATION](./SEARCH_AND_TRANSLATION.md) |
+| Modification moderation, registry, votes | [Core: EVENT_ORCHESTRATION §2](../../Core/docs/EVENT_ORCHESTRATION.md#2-modification-moderation-approvals--optional-ai) · [AI: MODERATION](./MODERATION.md) · [CMS: COMMENT_MODERATION](../../CMS/docs/COMMENT_MODERATION.md) |
 
 ---
 
@@ -323,35 +335,21 @@ public function boot(): void
 
 ## Embedding & RAG System
 
-### Embedding Generation Flow
+### Embedding generation flow
 
-```
-Model saved with Searchable trait
-        │
-        ▼
-ModelRequiresIndexing event
-        │
-        ▼
-HandleModelIndexingListener (AI module)
-        │
-        ├─► Adds 'embeddings' to required_pre_processing
-        │
-        └─► Dispatches GenerateEmbeddingsJob
-                    │
-                    ▼
-            EmbeddingService::embedDocument()
-                    │
-                    ├─► Split document into chunks
-                    │
-                    ├─► Generate embeddings via provider
-                    │
-                    └─► Store embeddings in model
-                            │
-                            ▼
-                    ModelPreProcessingCompleted event
-                            │
-                            ▼
-                    Core finalizes indexing
+> **Full workflow (sequence + state diagrams):** [SEARCH_AND_TRANSLATION.md](./SEARCH_AND_TRANSLATION.md) · [Core EVENT_ORCHESTRATION](../../Core/docs/EVENT_ORCHESTRATION.md#1-search-indexing-embeddings--translations)
+
+```mermaid
+sequenceDiagram
+    participant M as Searchable model
+    participant AI as HandleModelIndexingListener
+    participant J as GenerateEmbeddingsJob
+    participant C as Core Finalize + IndexInSearchJob
+
+    M->>AI: ModelRequiresIndexing
+    AI->>J: GenerateEmbeddingsJob
+    J->>C: ModelPreProcessingCompleted(embeddings)
+    C->>C: IndexInSearchJob
 ```
 
 ### RAG (Documentation Search) Flow
@@ -396,31 +394,19 @@ ChatService::sendMessage()
 
 ## Translation System
 
-### Automatic Translation Flow
+### Automatic translation flow
 
-```
-Model saved with HasTranslations trait
-        │
-        ▼
-TranslatedModelSaved event
-        │
-        ▼
-HandleModelTranslationListener (AI module)
-        │
-        └─► Dispatches TranslateModelJob
-                    │
-                    ▼
-            TranslationService::translate()
-                    │
-                    ├─► AI provider (OpenAI/Ollama/Mistral)
-                    │
-                    └─► OR DeepL (professional service)
-                            │
-                            ▼
-                    Model translations updated
-                            │
-                            ▼
-                    ModelPreProcessingCompleted event (if searchable)
+> **Full workflow:** [SEARCH_AND_TRANSLATION.md](./SEARCH_AND_TRANSLATION.md#2-automatic-translation)
+
+```mermaid
+sequenceDiagram
+    participant M as HasTranslations model
+    participant AI as HandleModelTranslationListener
+    participant J as TranslateModelJob
+
+    M->>AI: TranslatedModelSaved
+    AI->>J: TranslateModelJob
+    Note over J: May register translation pre-processing if Searchable + indexing pending
 ```
 
 ---

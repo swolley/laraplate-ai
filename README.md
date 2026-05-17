@@ -227,37 +227,28 @@ The AI Module includes built-in features such as:
 
 ## Architecture
 
-### Event-Driven Integration
+### Event-driven integration
 
-The AI module integrates with Core through a clean event-driven architecture:
+Core is the **event bus**; this module registers AI listeners and jobs. Full diagrams (Mermaid) and class maps:
 
-1. **Model Indexing Flow:**
-   ```
-   Searchable trait → ModelRequiresIndexing event
-   ↓
-   HandleModelIndexingListener (AI) → adds 'embeddings' to required_pre_processing
-   ↓
-   GenerateEmbeddingsJob → ModelPreProcessingCompleted('embeddings')
-   ↓
-   FinalizeModelIndexingListener (Core) → checks all pre-processing completed
-   ↓
-   IndexInSearchJob → model indexed in search engine
-   ```
+| Topic | Document |
+|-------|----------|
+| **Overview** (indexing + moderation, comparison, extension) | [Modules/Core/docs/EVENT_ORCHESTRATION.md](../Core/docs/EVENT_ORCHESTRATION.md) |
+| **Embeddings, Elasticsearch, translations** | [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md) |
+| **Modification moderation (AI vote)** | [docs/MODERATION.md](docs/MODERATION.md) |
+| Chat, RAG, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 
-2. **Translation Flow:**
-   ```
-   HasTranslations trait → TranslatedModelSaved event
-   ↓
-   HandleModelTranslationListener (AI) → TranslateModelJob
-   ↓
-   If model is searchable → registers 'translation' in ModelRequiresIndexing
-   ↓
-   TranslateModelJob → ModelPreProcessingCompleted('translation')
-   ↓
-   FinalizeModelIndexingListener (Core) → finalizes indexing
-   ```
+```mermaid
+flowchart LR
+    Core[Core events]
+    AI[AI listeners / jobs]
+    CMS[CMS adapters]
+    Core --> AI
+    CMS --> Core
+    AI -.->|no import| CMS
+```
 
-### Decoupling Strategy
+### Decoupling strategy
 
 - **Core** never imports classes from **AI**
 - **AI** listens to events from **Core**

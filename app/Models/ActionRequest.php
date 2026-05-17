@@ -3,12 +3,12 @@
 declare(strict_types=1);
 
 namespace Modules\AI\Models;
-use Modules\Core\Enums\CoreTables;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\AI\Enums\AITables;
+use Modules\Core\Enums\CoreTables;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
@@ -19,6 +19,9 @@ use Override;
  */
 final class ActionRequest extends Model
 {
+    /**
+     * @var string
+     */
     #[Override]
     protected $table = AITables::ActionRequests->value;
 
@@ -40,11 +43,11 @@ final class ActionRequest extends Model
     {
         $rules = parent::getRules();
         $rules[Model::DEFAULT_RULE] = array_merge($rules[Model::DEFAULT_RULE], [
-            'conversation_id' => ['nullable', 'exists:'.AITables::Conversations->value.',id'],
+            'conversation_id' => ['nullable', 'exists:' . AITables::Conversations->value . ',id'],
             'status' => ['required', 'string', 'max:255'],
         ]);
         $rules['create'] = array_merge($rules['create'], [
-            'user_id' => ['required', 'exists:'.CoreTables::Users->value.',id'],
+            'user_id' => ['required', 'exists:' . CoreTables::Users->value . ',id'],
             'tool_name' => ['required', 'string', 'max:255'],
             // Validated from raw attributes: array-cast columns are JSON strings before insert.
             'tool_args' => ['required', 'json'],

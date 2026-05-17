@@ -33,13 +33,15 @@ final class HandleModelTranslationListener
 
     private function shouldHandle(Model $model): bool
     {
-        // Check if AI translation feature is enabled
         if (! config('ai.features.translation.enabled', true)) {
             return false;
         }
 
-        // Check if model has HasTranslations trait
-        return class_uses_trait($model, HasTranslations::class);
+        if (! class_uses_trait($model, HasTranslations::class)) {
+            return false;
+        }
+
+        return $model->autoTranslateEnabledBySettings();
     }
 
     private function registerTranslationForIndexing(Model $model): void
