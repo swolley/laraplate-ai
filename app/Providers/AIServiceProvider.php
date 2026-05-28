@@ -41,6 +41,12 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
 
         $this->app->bind(SplitterInterface::class, static fn (): SplitterInterface => SplitterFactory::make());
+    }
+
+    #[Override]
+    public function boot(): void
+    {
+        parent::boot();
 
         $this->registerSearchBindings();
     }

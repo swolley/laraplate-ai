@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- *(config)* Update AIServiceProvider and configuration settings
+
+### 🚜 Refactor
+
+- *(tests)* Add integration tests and enhance testing structure for AI module
+
+## [2.9.0] - 2026-05-17
+
+### 🚀 Features
+
 - Implement AI moderation and translation workflows
 
 ## [2.8.1] - 2026-05-15
