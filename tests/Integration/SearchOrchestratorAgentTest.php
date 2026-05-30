@@ -28,6 +28,8 @@ it('implements ISearchPlanner contract', function (): void {
 });
 
 it('fallbackPlan returns valid structure', function (): void {
+    config()->set('search.vector_search.enabled', true);
+
     $llm = Mockery::mock(LlmSearchService::class);
     $agent = new SearchOrchestratorAgent($llm);
     $plan = $agent->fallbackPlan('test');
