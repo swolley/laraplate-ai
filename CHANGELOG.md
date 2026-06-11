@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 📚 Documentation
+
+- *(docs)* Add glossaries for AI module and RAG documentation
+
+### 🧪 Testing
+
+- *(integration)* Enable vector search in fallbackPlan test
+
+## [2.10.0] - 2026-05-28
+
 ### 🚀 Features
 
 - *(config)* Update AIServiceProvider and configuration settings
