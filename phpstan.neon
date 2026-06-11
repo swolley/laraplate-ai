@@ -1,7 +1,7 @@
 includes:
-    - vendor/larastan/larastan/extension.neon
-    - vendor/nesbot/carbon/extension.neon
-    - vendor/phpstan/phpstan/conf/bleedingEdge.neon
+    - ../../vendor/larastan/larastan/extension.neon
+    - ../../vendor/nesbot/carbon/extension.neon
+    - ../../vendor/phpstan/phpstan/conf/bleedingEdge.neon
 
 parameters:
     # Livello di analisi (0-9, max = 9)
