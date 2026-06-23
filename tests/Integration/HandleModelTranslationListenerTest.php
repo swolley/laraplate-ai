@@ -12,7 +12,7 @@ use Modules\AI\Tests\Unit\TranslatableModelStub;
 use Modules\AI\Tests\Unit\TranslatableModelStubTranslation;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 
 beforeEach(function (): void {
     Config::set('ai.features.translation.enabled', true);

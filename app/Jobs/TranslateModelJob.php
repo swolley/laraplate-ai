@@ -15,7 +15,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
 use Modules\Core\Search\Traits\Searchable;
 

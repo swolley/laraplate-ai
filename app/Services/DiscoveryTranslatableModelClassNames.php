@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services;
 
 use Modules\AI\Contracts\ITranslatableModelClassNames;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 use Override;
 
 final class DiscoveryTranslatableModelClassNames implements ITranslatableModelClassNames

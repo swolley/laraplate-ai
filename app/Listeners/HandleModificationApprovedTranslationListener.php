@@ -7,7 +7,7 @@ namespace Modules\AI\Listeners;
 use Illuminate\Database\Eloquent\Model;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\Core\Events\ModificationApproved;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 
 final class HandleModificationApprovedTranslationListener
 {

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
 
 final class HandleModelTranslationListener

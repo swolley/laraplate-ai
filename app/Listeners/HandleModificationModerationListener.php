@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\Core\Events\ModificationRequiresModeration;
-use Modules\Core\Helpers\HasApprovals;
+use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\Modification;
 use Modules\Core\Services\ModerationAdapterRegistry;
 

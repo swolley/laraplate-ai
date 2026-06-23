@@ -6,7 +6,7 @@ namespace Modules\AI\Tests\Unit;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Modules\Core\Helpers\HasTranslations;
+use Modules\Core\Models\Concerns\HasTranslations;
 
 class TranslatableModelStub extends Model
 {
