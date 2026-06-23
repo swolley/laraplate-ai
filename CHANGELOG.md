@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚜 Refactor
+
+- *(ai)* Update Core model concern imports
+
+## [2.11.0] - 2026-06-11
+
 ### 📚 Documentation
 
 - *(docs)* Add glossaries for AI module and RAG documentation
