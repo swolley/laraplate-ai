@@ -6,7 +6,7 @@
 
 ### Module boundaries
 
-HTTP controllers and Artisan commands call **facade-level services** (`ChatService`, `DocumentationService`, `EmbeddingService`). RAG uses **NeuronAI** `DocumentationAgent` (extends `RAG`) with a pluggable vector store (`FileVectorStore` or `MemoryVectorStore`) and the embeddings provider from `EmbeddingsProviderFactory`. When **search orchestration** is enabled, the provider registers AI implementations for Core search contracts (`IReranker`, `ISearchPlanner`, `IQueryIntentParser`, `ITextEmbedder`). Document chunking goes through `SplitterInterface`, bound by default to `MarkdownAwareSplitter` via `SplitterFactory` so fenced blocks (including Mermaid in indexed docs) stay intact.
+HTTP controllers and Artisan commands call **facade-level services** (`ChatService`, `DocumentationService`, `EmbeddingService`). RAG uses **NeuronAI** `DocumentationAgent` (extends `RAG`) with a pluggable vector store (`FileVectorStore`, `MemoryVectorStore`, or `ElasticsearchRagVectorStore`) and the embeddings provider from `EmbeddingsProviderFactory`. When **search orchestration** is enabled, the provider registers AI implementations for Core search contracts (`IReranker`, `ISearchPlanner`, `IQueryIntentParser`, `ITextEmbedder`). Document chunking goes through `SplitterInterface`, bound by default to `MarkdownAwareSplitter` via `SplitterFactory` so fenced blocks (including Mermaid in indexed docs) stay intact.
 
 ```mermaid
 flowchart TB
@@ -25,7 +25,7 @@ flowchart TB
     EmbProv[EmbeddingsProviderFactory]
   end
   subgraph ragPersist [RAG persistence]
-    VecStore[FileVectorStore or MemoryVectorStore]
+    VecStore[FileVectorStore, MemoryVectorStore, or ElasticsearchRagVectorStore]
   end
   subgraph coreSearch [Optional Core search bindings]
     Rerank[CrossEncoderService IReranker]
