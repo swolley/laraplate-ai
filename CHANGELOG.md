@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- *(ai)* Add RAG elasticsearch index command and coverage
+
+## [2.12.0] - 2026-06-27
+
+### 🚀 Features
+
 - *(ai)* Expand AI services and introduce domain exceptions
 
 ## [2.11.1] - 2026-06-23

@@ -7,6 +7,7 @@ namespace Modules\AI\Services;
 use Closure;
 use Illuminate\Support\Str;
 use Modules\AI\Ai\Agents\DocumentationAgent;
+use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\FileDocumentReader;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -91,6 +92,10 @@ final readonly class DocumentationService
             $path = $this->getFilesystemVectorStoreFilePath();
 
             return file_exists($path);
+        }
+
+        if ($store_driver === 'elasticsearch') {
+            return ElasticsearchRagVectorStore::fromConfig(1)->hasDocuments();
         }
 
         return true;
@@ -240,6 +245,10 @@ final readonly class DocumentationService
             return true;
         }
 
+        if ($driver === 'elasticsearch') {
+            return ElasticsearchRagVectorStore::fromConfig(1)->hasDocuments();
+        }
+
         return $this->filesystemVectorStoreHasData();
     }
 
@@ -265,6 +274,12 @@ final readonly class DocumentationService
     {
         if ($driver === 'memory') {
             DocumentationAgent::resetSharedMemoryVectorStore();
+
+            return;
+        }
+
+        if ($driver === 'elasticsearch') {
+            ElasticsearchRagVectorStore::fromConfig(1)->clearIndex();
 
             return;
         }

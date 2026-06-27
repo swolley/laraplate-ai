@@ -6,6 +6,7 @@ namespace Modules\AI\Ai\Agents;
 
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
 use Modules\AI\Ai\Providers\ProviderFactory;
+use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\RAG;
@@ -77,6 +78,7 @@ PROMPT;
 
         return match ($driver) {
             'memory' => self::$shared_memory_store ??= new MemoryVectorStore($this->topK),
+            'elasticsearch' => ElasticsearchRagVectorStore::fromConfig($this->topK),
             default => new FileVectorStore(
                 directory: dirname($this->getStorePath()),
                 topK: $this->topK,

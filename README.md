@@ -192,7 +192,8 @@ The AI Module includes built-in features such as:
     - Vector similarity search for relevant context
     - Automatic question detection (locale-aware)
     - Citations in responses with source attribution
-    - Command: `php artisan ai:index-docs`
+    - Commands: `php artisan ai:index-docs`, `php artisan ai:create-rag-es-index`
+    - **Production multi-instance:** set `AI_FAQ_VECTOR_STORE=elasticsearch`, create the index with `ai:create-rag-es-index`, align `AI_FAQ_ES_EMBEDDING_DIMS` with your embeddings model, then index docs once from any replica or CI. See `Modules/AI/docs/rag/DEPLOYMENT.md`.
 
 -   **Tool/Function Calling:**
     - Register custom tools with `ToolRegistry`
