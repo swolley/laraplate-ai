@@ -3,20 +3,9 @@
 declare(strict_types=1);
 
 use Elastic\Elasticsearch\Client;
-use Elastic\Elasticsearch\Response\Elasticsearch;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use NeuronAI\Exceptions\VectorStoreException;
 use NeuronAI\RAG\Document;
-
-/**
- * @param  array<string, mixed>  $payload
- */
-function make_es_response(array $payload): Elasticsearch
-{
-    return new Elasticsearch(
-        new GuzzleHttp\Psr7\Response(200, [], (string) json_encode($payload, JSON_THROW_ON_ERROR)),
-    );
-}
 
 function make_rag_vector_store(Client $client): ElasticsearchRagVectorStore
 {
@@ -44,7 +33,7 @@ test('similarity search maps knn hits to neuron documents', function (): void {
                 && $params['body']['knn']['k'] === 2
                 && $params['body']['knn']['field'] === 'embedding';
         }))
-        ->andReturn(make_es_response([
+        ->andReturn(make_elasticsearch_response([
             'hits' => [
                 'hits' => [
                     [
@@ -97,7 +86,7 @@ test('add documents sends bulk index operations', function (): void {
                 && ($body[1]['content'] ?? null) === 'Chunk body'
                 && ($body[1]['sourceType'] ?? null) === 'file';
         }))
-        ->andReturn(make_es_response(['errors' => false]));
+        ->andReturn(make_elasticsearch_response(['errors' => false]));
 
     $document = new Document('Chunk body');
     $document->sourceType = 'file';
@@ -122,7 +111,7 @@ test('delete by source type and name issues delete by query', function (): void 
                 && ($must[0]['term']['sourceType'] ?? null) === 'file'
                 && ($must[1]['term']['sourceName'] ?? null) === 'faq-module-AI';
         }))
-        ->andReturn(make_es_response(['deleted' => 1]));
+        ->andReturn(make_elasticsearch_response(['deleted' => 1]));
 
     $store = make_rag_vector_store($client);
     $store->deleteBy('file', 'faq-module-AI');
@@ -140,7 +129,7 @@ test('delete by source type only matches file vector store semantics', function 
             return count($must) === 1
                 && ($must[0]['term']['sourceType'] ?? null) === 'file';
         }))
-        ->andReturn(make_es_response(['deleted' => 2]));
+        ->andReturn(make_elasticsearch_response(['deleted' => 2]));
 
     $store = make_rag_vector_store($client);
     $store->deleteBy('file', null);

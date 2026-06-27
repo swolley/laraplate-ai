@@ -82,7 +82,9 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
     public function indexExists(): bool
     {
         try {
-            return $this->client->indices()->exists(['index' => $this->index])->asBool();
+            $this->client->count(['index' => $this->index]);
+
+            return true;
         } catch (Throwable $throwable) {
             Log::warning('Elasticsearch RAG index exists check failed', [
                 'index' => $this->index,
@@ -95,10 +97,6 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 
     public function hasDocuments(): bool
     {
-        if (! $this->indexExists()) {
-            return false;
-        }
-
         try {
             $response = $this->client->count(['index' => $this->index])->asArray();
             $count = $response['count'] ?? 0;
