@@ -13,3 +13,5 @@ require_once __DIR__ . '/Stubs/TranslatableTestModels.php';
 require_once __DIR__ . '/Stubs/TranslatableMissingTestModels.php';
 
 require_once __DIR__ . '/Stubs/TranslateModelJobStub.php';
+
+require_once __DIR__ . '/support/elasticsearch-response.php';
