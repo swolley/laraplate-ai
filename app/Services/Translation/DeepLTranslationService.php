@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
-use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\AI\Exceptions\TranslationException;
+use Modules\Core\Exceptions\ConfigurationException;
+use Throwable;
+
+use function ai_config_string;
 
 final class DeepLTranslationService implements TranslationServiceInterface
 {
@@ -16,9 +20,9 @@ final class DeepLTranslationService implements TranslationServiceInterface
 
     public function __construct()
     {
-        $this->api_key = config('core.deepl_api_key', '');
+        $this->api_key = ai_config_string('core.deepl_api_key');
 
-        throw_if($this->api_key === '' || $this->api_key === '0', Exception::class, 'DeepL API key is not configured');
+        throw_if($this->api_key === '' || $this->api_key === '0', ConfigurationException::class, 'DeepL API key is not configured');
 
         // Use pro API if key starts with specific pattern
         if (str_starts_with($this->api_key, 'fx-')) {
@@ -43,9 +47,7 @@ final class DeepLTranslationService implements TranslationServiceInterface
                 ]);
 
             if ($response->successful()) {
-                $data = $response->json();
-
-                return $data['translations'][0]['text'] ?? $text;
+                return $this->extractSingleTranslation($response->json(), $text);
             }
 
             Log::warning('DeepL translation failed', [
@@ -53,8 +55,8 @@ final class DeepLTranslationService implements TranslationServiceInterface
                 'body' => $response->body(),
             ]);
 
-            throw new Exception('DeepL translation failed: ' . $response->status());
-        } catch (Exception $e) {
+            throw new TranslationException('DeepL translation failed: ' . $response->status(), $response->status());
+        } catch (Throwable $e) {
             Log::error('DeepL translation error', [
                 'error' => $e->getMessage(),
                 'from' => $from_locale,
@@ -65,6 +67,10 @@ final class DeepLTranslationService implements TranslationServiceInterface
         }
     }
 
+    /**
+     * @param  list<string>  $texts
+     * @return list<string>
+     */
     public function translateBatch(array $texts, string $from_locale, string $to_locale): array
     {
         if ($texts === []) {
@@ -82,14 +88,7 @@ final class DeepLTranslationService implements TranslationServiceInterface
                 ]);
 
             if ($response->successful()) {
-                $data = $response->json();
-                $translations = [];
-
-                foreach ($data['translations'] ?? [] as $index => $translation) {
-                    $translations[$index] = $translation['text'] ?? $texts[$index] ?? '';
-                }
-
-                return $translations;
+                return $this->extractBatchTranslations($response->json(), $texts);
             }
 
             Log::warning('DeepL batch translation failed', [
@@ -97,8 +96,8 @@ final class DeepLTranslationService implements TranslationServiceInterface
                 'body' => $response->body(),
             ]);
 
-            throw new Exception('DeepL batch translation failed: ' . $response->status());
-        } catch (Exception $e) {
+            throw new TranslationException('DeepL batch translation failed: ' . $response->status(), $response->status());
+        } catch (Throwable $e) {
             Log::error('DeepL batch translation error', [
                 'error' => $e->getMessage(),
                 'from' => $from_locale,
@@ -126,5 +125,51 @@ final class DeepLTranslationService implements TranslationServiceInterface
             'zh' => 'ZH',
             default => mb_strtoupper($locale),
         };
+    }
+
+    private function extractSingleTranslation(mixed $payload, string $fallback): string
+    {
+        $translations = $this->parseTranslations($payload);
+
+        return $translations[0] ?? $fallback;
+    }
+
+    /**
+     * @param  list<string>  $fallback_texts
+     * @return list<string>
+     */
+    private function extractBatchTranslations(mixed $payload, array $fallback_texts): array
+    {
+        $translations = $this->parseTranslations($payload);
+        $results = [];
+
+        foreach ($fallback_texts as $index => $fallback_text) {
+            $results[] = $translations[$index] ?? $fallback_text;
+        }
+
+        return $results;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseTranslations(mixed $payload): array
+    {
+        if (! is_array($payload) || ! isset($payload['translations']) || ! is_array($payload['translations'])) {
+            return [];
+        }
+
+        $translations = [];
+
+        foreach ($payload['translations'] as $translation) {
+            if (! is_array($translation)) {
+                continue;
+            }
+
+            $text = $translation['text'] ?? null;
+            $translations[] = is_string($text) ? $text : '';
+        }
+
+        return $translations;
     }
 }

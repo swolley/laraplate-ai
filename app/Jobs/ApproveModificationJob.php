@@ -22,6 +22,10 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 use Throwable;
 
+use function ai_config_bool;
+use function ai_config_float;
+use function ai_config_int;
+
 final class ApproveModificationJob implements ShouldQueue
 {
     use Dispatchable;
@@ -39,11 +43,11 @@ final class ApproveModificationJob implements ShouldQueue
     ): void {
         $modification = $this->modification->fresh();
 
-        if ($modification === null || ! $modification->active) {
+        if (! $modification instanceof Modification || ! $modification->active) {
             return;
         }
 
-        $system_user_id = (int) config('ai.features.moderation.system_user_id');
+        $system_user_id = ai_config_int('ai.features.moderation.system_user_id');
 
         if ($system_user_id <= 0) {
             return;
@@ -60,7 +64,7 @@ final class ApproveModificationJob implements ShouldQueue
             /** @var User $system_user */
             $system_user = User::query()->findOrFail($system_user_id);
 
-            if (! config('ai.features.moderation.ai_participates_in_approvals', true)) {
+            if (! ai_config_bool('ai.features.moderation.ai_participates_in_approvals', true)) {
                 return;
             }
 
@@ -76,9 +80,7 @@ final class ApproveModificationJob implements ShouldQueue
         } catch (Throwable) {
             $this->applyUncertainFallback($modification, User::query()->find($system_user_id));
         } finally {
-            if ($modification !== null) {
-                event(new ModificationPreProcessingCompleted($modification, 'ai_approval'));
-            }
+            event(new ModificationPreProcessingCompleted($modification, 'ai_approval'));
         }
     }
 
@@ -87,8 +89,8 @@ final class ApproveModificationJob implements ShouldQueue
         User $system_user,
         ModerationResult $result,
     ): void {
-        $approve_threshold = (float) config('ai.features.moderation.approve_confidence_threshold', 0.85);
-        $reject_threshold = (float) config('ai.features.moderation.reject_confidence_threshold', 0.85);
+        $approve_threshold = ai_config_float('ai.features.moderation.approve_confidence_threshold', 0.85);
+        $reject_threshold = ai_config_float('ai.features.moderation.reject_confidence_threshold', 0.85);
 
         if ($result->safeToAutoApprove && $result->confidence >= $approve_threshold) {
             $modification->approvers_required = 1;
@@ -257,7 +259,7 @@ final class ApproveModificationJob implements ShouldQueue
             'status' => $status,
             'verdict' => $result?->verdict->value,
             'confidence' => $result?->confidence,
-            'categories' => $result?->categories ?? [],
+            'categories' => $result !== null ? $result->categories : [],
             'reason' => $result?->reason,
             'analyzed_at' => now()->toIso8601String(),
         ], $extra);

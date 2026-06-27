@@ -7,12 +7,12 @@ namespace Modules\AI\Services;
 use Illuminate\Support\Facades\Http;
 use Modules\Core\Search\Contracts\IReranker;
 
+use function ai_config_string;
+
 /**
  * HTTP client for a Python cross-encoder microservice.
  *
  * Sends query-document pairs and receives relevance scores in [0, 1].
- *
- * @implements IReranker
  */
 final readonly class CrossEncoderService implements IReranker
 {
@@ -20,9 +20,13 @@ final readonly class CrossEncoderService implements IReranker
 
     public function __construct(?string $endpoint = null)
     {
-        $this->endpoint = $endpoint ?? (string) config('ai.providers.cross_encoder.endpoint', 'http://127.0.0.1:8001/score');
+        $this->endpoint = $endpoint ?? ai_config_string('ai.providers.cross_encoder.endpoint', 'http://127.0.0.1:8001/score');
     }
 
+    /**
+     * @param  list<array{query: string, text: string}>  $pairs
+     * @return list<float>
+     */
     public function score(array $pairs): array
     {
         if ($pairs === []) {
@@ -39,15 +43,36 @@ final readonly class CrossEncoderService implements IReranker
             return array_fill(0, count($pairs), 0.0);
         }
 
-        $data = $response->json();
+        $scores = $this->parseScores($response->json(), count($pairs));
 
-        if (! isset($data['scores'])) {
-            return array_fill(0, count($pairs), 0.0);
+        return $scores;
+    }
+
+    /**
+     * @return list<float>
+     */
+    private function parseScores(mixed $payload, int $expected_count): array
+    {
+        if (! is_array($payload) || ! isset($payload['scores']) || ! is_array($payload['scores'])) {
+            return array_fill(0, $expected_count, 0.0);
         }
 
-        return array_map(
-            static fn (mixed $s): float => max(0.0, min(1.0, (float) $s)),
-            $data['scores'],
-        );
+        $scores = [];
+
+        foreach ($payload['scores'] as $score) {
+            if (! is_int($score) && ! is_float($score)) {
+                $scores[] = 0.0;
+
+                continue;
+            }
+
+            $scores[] = max(0.0, min(1.0, (float) $score));
+        }
+
+        if (count($scores) < $expected_count) {
+            return array_pad($scores, $expected_count, 0.0);
+        }
+
+        return array_slice($scores, 0, $expected_count);
     }
 }

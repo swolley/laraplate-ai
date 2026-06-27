@@ -10,6 +10,13 @@ use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @property int|null $id
+ * @property int $conversation_id
+ * @property string $summary
+ * @property array<int, string>|null $facts
+ * @property int $message_count
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
  * @mixin \Eloquent
  * @mixin IdeHelperConversationSummary
  */
@@ -29,6 +36,9 @@ final class ConversationSummary extends Model
         'message_count',
     ];
 
+    /**
+     * @return BelongsTo<Conversation, $this>
+     */
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);

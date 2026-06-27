@@ -14,6 +14,19 @@ use Modules\Core\Overrides\Model;
 use Override;
 
 /**
+ * @property int|null $id
+ * @property int|null $conversation_id
+ * @property int $user_id
+ * @property string $tool_name
+ * @property array<string, mixed>|null $tool_args
+ * @property string $risk_level
+ * @property string $status
+ * @property int|null $modification_id
+ * @property array<string, mixed>|null $result
+ * @property string|null $error
+ * @property \Illuminate\Support\Carbon|null $executed_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
  * @mixin \Eloquent
  * @mixin IdeHelperActionRequest
  */
@@ -39,6 +52,9 @@ final class ActionRequest extends Model
         'executed_at',
     ];
 
+    /**
+     * @return array<string, array<string, mixed>>
+     */
     public function getRules(): array
     {
         $rules = parent::getRules();
@@ -57,11 +73,17 @@ final class ActionRequest extends Model
         return $rules;
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsTo<Conversation, $this>
+     */
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
@@ -77,18 +99,30 @@ final class ActionRequest extends Model
         return $this->risk_level === 'medium';
     }
 
+    /**
+     * @param  Builder<ActionRequest>  $query
+     * @return Builder<ActionRequest>
+     */
     #[Scope]
     protected function pendingUserConfirmation(Builder $query): Builder
     {
         return $query->where('status', 'pending_user_confirmation');
     }
 
+    /**
+     * @param  Builder<ActionRequest>  $query
+     * @return Builder<ActionRequest>
+     */
     #[Scope]
     protected function pendingAdminApproval(Builder $query): Builder
     {
         return $query->where('status', 'pending_admin_approval');
     }
 
+    /**
+     * @param  Builder<ActionRequest>  $query
+     * @return Builder<ActionRequest>
+     */
     #[Scope]
     protected function forUser(Builder $query, int $userId): Builder
     {

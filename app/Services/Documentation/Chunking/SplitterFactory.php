@@ -8,6 +8,10 @@ use NeuronAI\RAG\Splitter\DelimiterTextSplitter;
 use NeuronAI\RAG\Splitter\SentenceTextSplitter;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 
+use function ai_config_bool;
+use function ai_config_int;
+use function ai_config_string;
+
 /**
  * Resolves the configured splitter implementation for documentation indexing.
  *
@@ -18,7 +22,7 @@ use NeuronAI\RAG\Splitter\SplitterInterface;
 final class SplitterFactory
 {
     /**
-     * @var array<int, string>
+     * @var list<string>
      */
     private const array SUPPORTED_DRIVERS = ['markdown_aware', 'sentence', 'delimiter'];
 
@@ -26,8 +30,8 @@ final class SplitterFactory
     {
         $driver = self::resolveDriver();
         $max_words = self::positiveIntConfig('ai.features.faq.splitter.max_words', 250);
-        $overlap_words = max(0, (int) config('ai.features.faq.splitter.overlap_words', 0));
-        $prepend_breadcrumb = (bool) config('ai.features.faq.splitter.prepend_heading_breadcrumb', true);
+        $overlap_words = max(0, ai_config_int('ai.features.faq.splitter.overlap_words', 0));
+        $prepend_breadcrumb = ai_config_bool('ai.features.faq.splitter.prepend_heading_breadcrumb', true);
 
         if ($overlap_words >= $max_words) {
             $overlap_words = 0;
@@ -42,7 +46,7 @@ final class SplitterFactory
 
     private static function resolveDriver(): string
     {
-        $driver = (string) config('ai.features.faq.splitter.driver', 'markdown_aware');
+        $driver = ai_config_string('ai.features.faq.splitter.driver', 'markdown_aware');
 
         if (! in_array($driver, self::SUPPORTED_DRIVERS, true)) {
             return 'markdown_aware';
@@ -53,7 +57,7 @@ final class SplitterFactory
 
     private static function positiveIntConfig(string $key, int $default): int
     {
-        $value = (int) config($key, $default);
+        $value = ai_config_int($key, $default);
 
         return $value > 0 ? $value : $default;
     }

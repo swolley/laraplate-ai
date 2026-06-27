@@ -7,6 +7,8 @@ namespace Modules\AI\Services;
 use Modules\AI\Ai\Agents\ChatAgent;
 use NeuronAI\Chat\Messages\UserMessage;
 
+use function ai_config_string;
+
 /**
  * Search-specific LLM service wrapping NeuronAI via ChatAgent.
  *
@@ -33,9 +35,7 @@ class LlmSearchService
             "Generate a search plan for: {$query}",
         ))->getMessage();
 
-        $content = $response->getContent();
-
-        return $this->parseJsonResponse($content);
+        return $this->parseJsonResponse($response->getContent() ?? '');
     }
 
     /**
@@ -49,27 +49,23 @@ class LlmSearchService
         $agent = $this->createAgent($system_prompt);
 
         $response = $agent->chat(new UserMessage($query))->getMessage();
-
-        $content = $response->getContent();
-
-        $parsed = $this->parseJsonResponse($content);
+        $parsed = $this->parseJsonResponse($response->getContent() ?? '');
 
         return [
-            'keywords' => $parsed['keywords'] ?? [],
-            'filters' => $parsed['filters'] ?? [],
+            'keywords' => $this->stringListValue($parsed, 'keywords'),
+            'filters' => $this->arrayValue($parsed, 'filters'),
             'query_expansion' => [
-                'must' => $parsed['query_expansion']['must'] ?? $query,
+                'must' => $this->expandedQueryValue($parsed, $query),
             ],
         ];
     }
 
     private function createAgent(string $system_prompt): ChatAgent
     {
-        $provider_name = $this->provider
-            ?? (string) config(
-                'ai.features.search_orchestration.default_provider',
-                config('ai.features.chat.default_provider', 'ollama'),
-            );
+        $provider_name = $this->provider ?? ai_config_string(
+            'ai.features.search_orchestration.default_provider',
+            ai_config_string('ai.features.chat.default_provider', 'ollama'),
+        );
 
         return ChatAgent::make($provider_name, $system_prompt);
     }
@@ -137,6 +133,71 @@ PROMPT;
             return [];
         }
 
+        /** @var array<string, mixed> $decoded */
         return $decoded;
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return list<string>
+     */
+    private function stringListValue(array $parsed, string $key): array
+    {
+        $value = $parsed[$key] ?? null;
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach ($value as $item) {
+            if (is_string($item) && $item !== '') {
+                $items[] = $item;
+
+                continue;
+            }
+
+            if (is_scalar($item)) {
+                $items[] = (string) $item;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function arrayValue(array $parsed, string $key): array
+    {
+        $value = $parsed[$key] ?? null;
+
+        return is_array($value) ? $value : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     */
+    private function expandedQueryValue(array $parsed, string $fallback): string
+    {
+        $expansion = $parsed['query_expansion'] ?? null;
+
+        if (! is_array($expansion)) {
+            return $fallback;
+        }
+
+        $must = $expansion['must'] ?? null;
+
+        if (is_string($must) && $must !== '') {
+            return $must;
+        }
+
+        if (is_scalar($must)) {
+            return (string) $must;
+        }
+
+        return $fallback;
     }
 }

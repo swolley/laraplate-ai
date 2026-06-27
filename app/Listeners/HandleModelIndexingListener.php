@@ -66,9 +66,17 @@ final class HandleModelIndexingListener
 
     private function saveEventToCache(ModelRequiresIndexing $event): void
     {
-        if (! $event->sync) {
-            $cache_key = "model_indexing:{$event->model->getTable()}:{$event->model->getKey()}";
-            Cache::put($cache_key, $event, now()->addMinutes(10));
+        if ($event->sync) {
+            return;
         }
+
+        $model_key = $event->model->getKey();
+
+        if (! is_int($model_key) && ! is_string($model_key)) {
+            return;
+        }
+
+        $cache_key = "model_indexing:{$event->model->getTable()}:{$model_key}";
+        Cache::put($cache_key, $event, now()->addMinutes(10));
     }
 }

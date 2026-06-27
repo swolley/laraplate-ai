@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\AI\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -14,6 +13,7 @@ use Modules\AI\Http\Requests\GenerateSuggestionRequest;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\AI\Services\ContextualSuggestionService;
 use Modules\Core\Helpers\ResponseBuilder;
+use Modules\Core\Models\User;
 
 final class SuggestionController extends Controller
 {
@@ -26,15 +26,7 @@ final class SuggestionController extends Controller
      */
     public function listSuggestions(Request $request): JsonResponse
     {
-        $user = Auth::user();
-
-        if ($user === null) {
-            return new ResponseBuilder($request)
-                ->setError('Unauthorized')
-                ->setStatus(Response::HTTP_UNAUTHORIZED)
-                ->json();
-        }
-
+        $user = $this->authenticatedUser();
         $suggestions = $this->suggestionService->getPendingSuggestions($user);
 
         return new ResponseBuilder($request)
@@ -48,22 +40,20 @@ final class SuggestionController extends Controller
      */
     public function generateSuggestion(GenerateSuggestionRequest $request): JsonResponse
     {
-        $user = Auth::user();
+        $user = $this->authenticatedUser();
+        $validated = $request->validated();
+        $context = $validated['context'] ?? null;
 
-        if ($user === null) {
-            return new ResponseBuilder($request)
-                ->setError('Unauthorized')
-                ->setStatus(Response::HTTP_UNAUTHORIZED)
-                ->json();
+        if (! is_array($context)) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'Invalid context payload.');
         }
 
-        $validated = $request->validated();
-
-        $suggestion = $this->suggestionService->generateSuggestion($user, $validated['context']);
+        /** @var array<string, mixed> $context */
+        $suggestion = $this->suggestionService->generateSuggestion($user, $context);
 
         if (! $suggestion instanceof ContextualSuggestion) {
             return new ResponseBuilder($request)
-                ->setData(new JsonResource(null))
+                ->setData(null)
                 ->json();
         }
 
@@ -83,14 +73,7 @@ final class SuggestionController extends Controller
      */
     public function dismissSuggestion(Request $request, ContextualSuggestion $suggestion): JsonResponse
     {
-        $user = Auth::user();
-
-        if ($user === null) {
-            return new ResponseBuilder($request)
-                ->setError('Unauthorized')
-                ->setStatus(Response::HTTP_UNAUTHORIZED)
-                ->json();
-        }
+        $user = $this->authenticatedUser();
 
         if ($suggestion->user_id !== $user->id) {
             return new ResponseBuilder($request)
@@ -104,5 +87,16 @@ final class SuggestionController extends Controller
         return new ResponseBuilder($request)
             ->setData(['success' => true])
             ->json();
+    }
+
+    private function authenticatedUser(): User
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $user;
     }
 }

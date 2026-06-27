@@ -20,6 +20,8 @@ class ChatService implements IChatService
 {
     /**
      * Create a new conversation for a user.
+     *
+     * @param  array<string, mixed>|null  $metadata
      */
     #[Override]
     public function createConversation(
@@ -38,6 +40,8 @@ class ChatService implements IChatService
 
     /**
      * Send a message in a conversation and get AI response.
+     *
+     * @param  array<string, mixed>|null  $context
      */
     #[Override]
     public function sendMessage(
@@ -65,7 +69,7 @@ class ChatService implements IChatService
 
             $agent = $this->buildAgent($conversation);
             $response = $agent->chat(new UserMessage($userMessage))->getMessage();
-            $message = $conversation->addMessage('assistant', $response->getContent());
+            $message = $conversation->addMessage('assistant', $this->assistantContent($response->getContent()));
             $this->checkAndCreateSummaryIfNeeded($conversation);
 
             return $message;
@@ -82,9 +86,8 @@ class ChatService implements IChatService
 
     /**
      * Send a message with tools support.
-     * Tool callables are wrapped with risk-based approval logic:
-     * - low risk: executed immediately by the agent
-     * - medium/high risk: ActionRequest created, tool returns a pending message to LLM.
+     *
+     * @param  array<string, mixed>|null  $context
      *
      * @return array{message: Message, action_requests: ActionRequest[]}
      */
@@ -104,7 +107,7 @@ class ChatService implements IChatService
                 $response = $agent->chat(new UserMessage($user_message))->getMessage();
 
                 return [
-                    'message' => $conversation->addMessage('assistant', $response->getContent()),
+                    'message' => $conversation->addMessage('assistant', $this->assistantContent($response->getContent())),
                     'action_requests' => [],
                 ];
             }
@@ -126,7 +129,7 @@ class ChatService implements IChatService
             }
 
             $response = $agent->chat(new UserMessage($user_message))->getMessage();
-            $response_text = $response->getContent();
+            $response_text = $this->assistantContent($response->getContent());
 
             if ($pending_requests === []) {
                 return [
@@ -162,6 +165,7 @@ class ChatService implements IChatService
     /**
      * Send a message with streaming response.
      *
+     * @param  array<string, mixed>|null  $context
      * @param  callable(string): void  $on_chunk
      */
     #[Override]
@@ -314,14 +318,17 @@ class ChatService implements IChatService
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     private function getQuestionWordsForLocale(string $locale): array
     {
         $configured = config('ai.features.faq.question_detection.words', []);
 
-        if (isset($configured[$locale])) {
-            return $configured[$locale];
+        if (is_array($configured) && isset($configured[$locale]) && is_array($configured[$locale])) {
+            return array_values(array_filter(
+                $configured[$locale],
+                static fn (mixed $word): bool => is_string($word) && $word !== '',
+            ));
         }
 
         $base_locale = explode('_', $locale)[0];
@@ -333,5 +340,10 @@ class ChatService implements IChatService
             'fr' => ['quoi', 'comment', 'pourquoi', 'quand', 'où', 'qui', 'quel', 'quelle', 'peux-tu', 'pourrais-tu', 'y a-t-il'],
             default => ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'can you', 'could you', 'is there', 'are there'],
         };
+    }
+
+    private function assistantContent(?string $content): string
+    {
+        return $content ?? '';
     }
 }

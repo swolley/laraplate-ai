@@ -16,11 +16,13 @@ final class RiskClassifier
      */
     public function __construct(?array $tool_definitions = null)
     {
-        $this->tool_definitions = $tool_definitions ?? (array) config('ai.features.tools.definitions', []);
+        $this->tool_definitions = $tool_definitions ?? $this->loadToolDefinitions();
     }
 
     /**
      * Classify risk for a tool call (low, medium, high).
+     *
+     * @param  array<string, mixed>  $args
      *
      * Priority:
      * 1. Explicit config_risk parameter (from ToolDefinition)
@@ -42,6 +44,21 @@ final class RiskClassifier
         }
 
         return $this->heuristicRisk($tool_name);
+    }
+
+    /**
+     * @return array<string, array{risk_level?: string}>
+     */
+    private function loadToolDefinitions(): array
+    {
+        $definitions = config('ai.features.tools.definitions', []);
+
+        if (! is_array($definitions)) {
+            return [];
+        }
+
+        /** @var array<string, array{risk_level?: string}> $definitions */
+        return $definitions;
     }
 
     /**

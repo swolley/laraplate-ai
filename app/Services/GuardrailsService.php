@@ -9,8 +9,13 @@ use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use JsonException;
+use Modules\AI\Exceptions\GuardrailViolationException;
 use Modules\AI\Ai\Agents\ChatAgent;
 use NeuronAI\Chat\Messages\UserMessage;
+
+use function ai_config_bool;
+use function ai_config_nullable_string;
+use function ai_config_string;
 
 /**
  * Service for applying guardrails to AI chat interactions.
@@ -38,11 +43,11 @@ PROMPT;
      * Check input for prompt injection.
      * Uses Lakera API if configured, otherwise falls back to LLM-based detection.
      *
-     * @throws Exception If prompt injection is detected
+     * @throws GuardrailViolationException If prompt injection is detected
      */
     public function checkPromptInjection(string $input): string
     {
-        if (! config('ai.features.guardrails.prompt_injection_detection', false)) {
+        if (! ai_config_bool('ai.features.guardrails.prompt_injection_detection', false)) {
             return $input;
         }
 
@@ -71,18 +76,18 @@ PROMPT;
 
     private function hasLakeraCredentials(): bool
     {
-        $api_key = config('ai.features.guardrails.lakera_api_key');
+        $api_key = ai_config_nullable_string('ai.features.guardrails.lakera_api_key');
 
         return $api_key !== null && $api_key !== '';
     }
 
     /**
-     * @throws Exception If prompt injection is detected
+     * @throws GuardrailViolationException If prompt injection is detected
      */
     private function checkViaLakera(string $input): void
     {
-        $api_key = (string) config('ai.features.guardrails.lakera_api_key');
-        $endpoint = (string) config('ai.features.guardrails.lakera_endpoint', 'https://api.lakera.ai/');
+        $api_key = ai_config_string('ai.features.guardrails.lakera_api_key');
+        $endpoint = ai_config_string('ai.features.guardrails.lakera_endpoint', 'https://api.lakera.ai/');
         $url = mb_rtrim($endpoint, '/') . '/v2/guard';
 
         try {
@@ -91,23 +96,17 @@ PROMPT;
                 ->post($url, ['input' => $input]);
 
             $response->throw();
-            $result = $response->json();
-
-            if (isset($result['results']) && is_array($result['results'])) {
-                foreach ($result['results'] as $check) {
-                    throw_if(($check['flagged'] ?? false) === true, Exception::class, 'Prompt injection detected by Lakera Guard.');
-                }
-            }
+            $this->assertLakeraSafe($response->json());
+        } catch (GuardrailViolationException $e) {
+            throw $e;
         } catch (Exception $e) {
-            throw_if(str_contains($e->getMessage(), 'Prompt injection detected'), $e);
-
             Log::warning('Lakera API check failed, falling back to LLM', ['error' => $e->getMessage()]);
             $this->checkViaLlmFallback($input);
         }
     }
 
     /**
-     * @throws Exception If prompt injection is detected
+     * @throws GuardrailViolationException If prompt injection is detected
      */
     private function checkViaLlmFallback(string $input): void
     {
@@ -118,13 +117,33 @@ PROMPT;
             $agent = $factory();
 
             $response = $agent->chat(new UserMessage($input));
-            $result = mb_strtolower(mb_trim($response->getMessage()->getContent()));
+            $result = mb_strtolower(mb_trim($response->getMessage()->getContent() ?? ''));
 
-            throw_if(str_contains($result, 'unsafe'), Exception::class, 'Prompt injection detected by LLM guardrail.');
+            throw_if(str_contains($result, 'unsafe'), GuardrailViolationException::class, 'Prompt injection detected by LLM guardrail.');
+        } catch (GuardrailViolationException $e) {
+            throw $e;
         } catch (Exception $e) {
-            throw_if(str_contains($e->getMessage(), 'Prompt injection detected'), $e);
-
             Log::warning('LLM guardrail check failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * @throws GuardrailViolationException If prompt injection is detected
+     */
+    private function assertLakeraSafe(mixed $result): void
+    {
+        if (! is_array($result) || ! isset($result['results']) || ! is_array($result['results'])) {
+            return;
+        }
+
+        foreach ($result['results'] as $check) {
+            if (! is_array($check)) {
+                continue;
+            }
+
+            $flagged = $check['flagged'] ?? false;
+
+            throw_if($flagged === true, GuardrailViolationException::class, 'Prompt injection detected by Lakera Guard.');
         }
     }
 }

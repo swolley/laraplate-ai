@@ -14,6 +14,15 @@ use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
 /**
+ * @property int|null $id
+ * @property int $user_id
+ * @property string|null $title
+ * @property string|null $system_message
+ * @property array<string, mixed>|null $metadata
+ * @property bool $memory_enabled
+ * @property string|null $summary
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
  * @mixin \Eloquent
  * @mixin IdeHelperConversation
  */
@@ -36,7 +45,7 @@ final class Conversation extends Model
     ];
 
     /**
-     * Get the user that owns the conversation.
+     * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {
@@ -44,7 +53,7 @@ final class Conversation extends Model
     }
 
     /**
-     * Get the messages for the conversation.
+     * @return HasMany<Message, $this>
      */
     public function messages(): HasMany
     {
@@ -52,7 +61,7 @@ final class Conversation extends Model
     }
 
     /**
-     * Get the summaries for the conversation.
+     * @return HasMany<ConversationSummary, $this>
      */
     public function summaries(): HasMany
     {
@@ -61,6 +70,8 @@ final class Conversation extends Model
 
     /**
      * Add a message to the conversation.
+     *
+     * @param  array<string, mixed>|null  $metadata
      */
     public function addMessage(string $role, string $content, ?array $metadata = null): Message
     {

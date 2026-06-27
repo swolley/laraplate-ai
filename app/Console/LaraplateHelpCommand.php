@@ -9,6 +9,8 @@ use Illuminate\Console\Command;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
+use function ai_config_bool;
+
 final class LaraplateHelpCommand extends Command
 {
     #[Override]
@@ -20,7 +22,7 @@ final class LaraplateHelpCommand extends Command
 
     public function handle(DocumentationService $documentationService): int
     {
-        if (! config('ai.features.faq.enabled', true)) {
+        if (! ai_config_bool('ai.features.faq.enabled', true)) {
             $this->warn('FAQ/RAG is disabled in config (ai.features.faq.enabled).');
 
             return self::FAILURE;
@@ -32,7 +34,8 @@ final class LaraplateHelpCommand extends Command
             return self::FAILURE;
         }
 
-        $question = (string) ($this->option('question') ?? '');
+        $question_option = $this->option('question');
+        $question = is_string($question_option) ? $question_option : '';
 
         if ($question !== '') {
             return $this->answerAndRender($documentationService, $question);
@@ -41,7 +44,12 @@ final class LaraplateHelpCommand extends Command
         $this->line('Laraplate help chat is ready. Type your question, or `exit` to quit.');
 
         while (true) {
-            $input = (string) $this->ask('You');
+            $input = $this->ask('You');
+
+            if (! is_string($input)) {
+                continue;
+            }
+
             $trimmed = mb_trim($input);
 
             if ($trimmed === '') {
@@ -72,21 +80,18 @@ final class LaraplateHelpCommand extends Command
             return self::FAILURE;
         }
 
-        $answer = (string) ($result['answer'] ?? '');
-        $citations = is_array($result['citations'] ?? null) ? $result['citations'] : [];
-
         $this->newLine();
         $this->line('<info>Assistant:</info>');
-        $this->line($answer !== '' ? $answer : '(empty answer)');
+        $this->line($result['answer'] !== '' ? $result['answer'] : '(empty answer)');
 
-        if ($citations !== []) {
+        if ($result['citations'] !== []) {
             $this->newLine();
             $this->line('<comment>Sources:</comment>');
 
-            foreach ($citations as $citation) {
-                $source = (string) ($citation['source'] ?? 'Unknown');
-                $score = $citation['score'] ?? null;
-                $score_label = is_numeric($score) ? sprintf(' (score: %.3f)', (float) $score) : '';
+            foreach ($result['citations'] as $citation) {
+                $source = $citation['source'];
+                $score = $citation['score'];
+                $score_label = is_float($score) ? sprintf(' (score: %.3f)', $score) : '';
                 $this->line('- ' . $source . $score_label);
             }
         }
@@ -96,4 +101,3 @@ final class LaraplateHelpCommand extends Command
         return self::SUCCESS;
     }
 }
-

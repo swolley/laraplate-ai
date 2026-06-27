@@ -74,6 +74,12 @@ final class TranslateContentCommand extends Command
 
         $model_class = head($model_class);
 
+        if (! is_string($model_class) || $model_class === '') {
+            $this->error("Invalid model type: {$model_type}. Not found or not translatable");
+
+            return Command::FAILURE;
+        }
+
         $query = $model_class::query();
 
         if ($model_id) {

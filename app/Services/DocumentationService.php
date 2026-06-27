@@ -13,6 +13,10 @@ use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 
+use function ai_config_bool;
+use function ai_config_int;
+use function ai_config_string;
+
 final readonly class DocumentationService
 {
     /**
@@ -45,35 +49,24 @@ final readonly class DocumentationService
     /**
      * Answer a question using RAG (vector search + LLM).
      *
-     * @return array{answer: string, citations: array<int, array{source: string, excerpt: string, score: float|null}>}
+     * @return array{answer: string, citations: list<array{source: string, excerpt: string, score: float|null}>}
      */
     public function answerQuestion(string $question): array
     {
         $factory = $this->agentFactory ?? fn (): DocumentationAgent => DocumentationAgent::make(
-            topK: (int) config('ai.features.faq.max_documents', 5),
+            topK: ai_config_int('ai.features.faq.max_documents', 5),
         );
 
         /** @var DocumentationAgent $agent */
         $agent = $factory();
 
         $response = $agent->chat(new UserMessage($question));
-        $answer = $response->getMessage()->getContent();
-
-        $citations = [];
-
-        if (method_exists($response->getMessage(), 'getCitations')) {
-            foreach ($response->getMessage()->getCitations() as $citation) {
-                $citations[] = [
-                    'source' => $citation->getSourceName() ?? 'Unknown',
-                    'excerpt' => Str::limit($citation->getContent() ?? '', 300),
-                    'score' => $citation->getScore(),
-                ];
-            }
-        }
+        $answer = $response->getMessage()->getContent() ?? '';
+        $citations = $this->buildCitations($response->getMessage());
 
         $formatted_answer = $answer;
 
-        if (config('ai.features.faq.format_citations', true) && $citations !== []) {
+        if (ai_config_bool('ai.features.faq.format_citations', true) && $citations !== []) {
             $formatted_answer = $this->appendCitationsToAnswer($answer, $citations);
         }
 
@@ -88,11 +81,11 @@ final readonly class DocumentationService
      */
     public function isAvailable(): bool
     {
-        if (! config('ai.features.faq.enabled', true)) {
+        if (! ai_config_bool('ai.features.faq.enabled', true)) {
             return false;
         }
 
-        $store_driver = (string) config('ai.features.faq.vector_store', 'filesystem');
+        $store_driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
 
         if ($store_driver === 'filesystem') {
             $path = $this->getFilesystemVectorStoreFilePath();
@@ -103,6 +96,9 @@ final readonly class DocumentationService
         return true;
     }
 
+    /**
+     * @param  list<array{source: string, excerpt: string, score: float|null}>  $citations
+     */
     private function appendCitationsToAnswer(string $answer, array $citations): string
     {
         if ($citations === []) {
@@ -113,11 +109,37 @@ final readonly class DocumentationService
 
         foreach ($citations as $index => $citation) {
             $number = $index + 1;
-            $source = $citation['source'] ?? 'Unknown';
+            $source = $citation['source'];
             $citation_lines[] = "[{$number}] {$source}";
         }
 
         return $answer . "\n\n---\n**Sources:**\n" . implode("\n", $citation_lines);
+    }
+
+    /**
+     * @return list<array{source: string, excerpt: string, score: float|null}>
+     */
+    private function buildCitations(object $message): array
+    {
+        if (! method_exists($message, 'getCitations')) {
+            return [];
+        }
+
+        $citations = [];
+
+        foreach ($message->getCitations() as $citation) {
+            $source = $citation->getSourceName();
+            $score = $citation->getScore();
+            $content = $citation->getContent();
+
+            $citations[] = [
+                'source' => is_string($source) && $source !== '' ? $source : 'Unknown',
+                'excerpt' => Str::limit(is_string($content) ? $content : '', 300),
+                'score' => is_float($score) || is_int($score) ? (float) $score : null,
+            ];
+        }
+
+        return $citations;
     }
 
     private function singlePathPrefix(string $path): string
@@ -156,7 +178,7 @@ final readonly class DocumentationService
         $base = str_replace('\\', '/', base_path());
 
         if (preg_match('#/Modules/([^/]+)/docs/rag/?$#', $normalized, $matches)) {
-            return 'faq-module-' . ($matches[1] ?? 'unknown');
+            return 'faq-module-' . $matches[1];
         }
 
         if ($normalized === $base . '/docs/rag' || $normalized === $base . '/docs/rag/') {
@@ -190,7 +212,7 @@ final readonly class DocumentationService
             return 0;
         }
 
-        $driver = (string) config('ai.features.faq.vector_store', 'filesystem');
+        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
 
         if ($fullRebuild) {
             $this->resetVectorStoreForFullRebuild($driver);
@@ -230,7 +252,13 @@ final readonly class DocumentationService
 
     private function getFilesystemVectorStoreFilePath(): string
     {
-        return (string) (config('ai.features.faq.vector_store_path') ?: storage_path('app/ai/faq-vectorstore.store'));
+        $configured = config('ai.features.faq.vector_store_path');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return storage_path('app/ai/faq-vectorstore.store');
     }
 
     private function resetVectorStoreForFullRebuild(string $driver): void
@@ -265,9 +293,9 @@ final readonly class DocumentationService
             }
 
             $reader = new FileDocumentReader($physical, FileDocumentReader::DOCUMENT_EXTENSIONS, $prefix);
-            $documents = array_merge($documents, $reader->getDocuments());
+            $documents = [...$documents, ...$reader->getDocuments()];
         }
 
-        return $documents;
+        return array_values($documents);
     }
 }

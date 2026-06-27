@@ -72,6 +72,12 @@ final class TranslateMissingCommand extends Command
 
         $model_class = head($model_class);
 
+        if (! is_string($model_class) || $model_class === '') {
+            $this->error("Invalid model type: {$model_type}. Not found or not translatable");
+
+            return Command::FAILURE;
+        }
+
         $this->info('Finding models with missing translations...');
 
         $models_to_translate = [];
@@ -79,10 +85,10 @@ final class TranslateMissingCommand extends Command
         foreach ($locales_to_check as $check_locale) {
             $query = $model_class::query()
                 ->whereHas('translations', function (\Illuminate\Database\Eloquent\Builder $q) use ($default_locale): void {
-                    $q->where('locale', $default_locale);
+                    $q->whereRaw('locale = ?', [$default_locale]);
                 })
                 ->whereDoesntHave('translations', function (\Illuminate\Database\Eloquent\Builder $q) use ($check_locale): void {
-                    $q->where('locale', $check_locale);
+                    $q->whereRaw('locale = ?', [$check_locale]);
                 });
 
             $missing = $query->get();

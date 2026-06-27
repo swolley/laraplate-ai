@@ -13,6 +13,9 @@ use Modules\AI\Models\ConversationSummary;
 use Modules\AI\Models\Message;
 use NeuronAI\Chat\Messages\UserMessage;
 
+use function ai_config_bool;
+use function ai_config_int;
+
 final readonly class MemoryService
 {
     private const int SUMMARY_THRESHOLD = 20;
@@ -46,16 +49,16 @@ PROMPT;
             return false;
         }
 
-        if (! config('ai.features.chat.enable_summary', false)) {
+        if (! ai_config_bool('ai.features.chat.enable_summary', false)) {
             return false;
         }
 
         $message_count = $conversation->messages()->count();
-        $threshold = config('ai.features.chat.summary_threshold', self::SUMMARY_THRESHOLD);
+        $threshold = ai_config_int('ai.features.chat.summary_threshold', self::SUMMARY_THRESHOLD);
 
         $last_summary = $conversation->summaries()->first();
 
-        if ($last_summary !== null) {
+        if ($last_summary instanceof ConversationSummary) {
             $messages_since_summary = $message_count - $last_summary->message_count;
 
             return $messages_since_summary >= $threshold;
@@ -91,13 +94,13 @@ PROMPT;
 
         $response = $summary_agent->chat(new UserMessage($context . $conversation_text));
 
-        return $response->getMessage()->getContent();
+        return mb_trim($response->getMessage()->getContent() ?? '');
     }
 
     /**
      * Extract key facts from the conversation.
      *
-     * @return string[]
+     * @return list<string>
      */
     public function extractFacts(Conversation $conversation): array
     {
@@ -117,9 +120,16 @@ PROMPT;
             $facts_agent = $this->makeChatAgent(self::FACTS_SYSTEM_PROMPT);
 
             $response = $facts_agent->chat(new UserMessage($conversation_text));
-            $facts = json_decode((string) $response->getMessage()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+            $facts = json_decode((string) ($response->getMessage()->getContent() ?? ''), true, 512, JSON_THROW_ON_ERROR);
 
-            return is_array($facts) ? $facts : [];
+            if (! is_array($facts)) {
+                return [];
+            }
+
+            return array_values(array_filter(
+                $facts,
+                static fn (mixed $fact): bool => is_string($fact) && $fact !== '',
+            ));
         } catch (Exception) {
             return [];
         }

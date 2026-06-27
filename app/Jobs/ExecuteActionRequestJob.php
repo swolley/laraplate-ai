@@ -29,7 +29,11 @@ final class ExecuteActionRequestJob implements ShouldQueue
     {
         $request = ActionRequest::query()->find($this->actionRequest->getKey());
 
-        if ($request === null || ! in_array($request->status, ['approved', 'executing'], true)) {
+        if (! $request instanceof ActionRequest) {
+            return;
+        }
+
+        if (! in_array($request->status, ['approved', 'executing'], true)) {
             return;
         }
 

@@ -19,7 +19,10 @@ class ChatAgent extends Agent
         protected ?string $systemPrompt = null,
     ) {}
 
-    public static function make(...$arguments): static
+    /**
+     * @param  mixed  ...$arguments
+     */
+    public static function make(mixed ...$arguments): static
     {
         /** @phpstan-ignore new.static */
         return new static(...$arguments);

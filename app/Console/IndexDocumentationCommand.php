@@ -9,6 +9,9 @@ use Illuminate\Console\Command;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
+use function ai_config_bool;
+use function ai_config_string;
+
 final class IndexDocumentationCommand extends Command
 {
     #[Override]
@@ -21,13 +24,14 @@ final class IndexDocumentationCommand extends Command
 
     public function handle(DocumentationService $documentationService): int
     {
-        if (! config('ai.features.faq.enabled', true)) {
+        if (! ai_config_bool('ai.features.faq.enabled', true)) {
             $this->warn('FAQ/RAG is disabled in config (ai.features.faq.enabled).');
 
             return self::FAILURE;
         }
 
-        $path = $this->option('path');
+        $path_option = $this->option('path');
+        $path = is_string($path_option) && $path_option !== '' ? $path_option : null;
         $full = (bool) $this->option('full');
 
         if ($path !== null && (! is_dir($path) && ! is_file($path))) {
@@ -36,12 +40,12 @@ final class IndexDocumentationCommand extends Command
             return self::FAILURE;
         }
 
-        if ($full && (string) config('ai.features.faq.vector_store', 'filesystem') === 'memory') {
+        if ($full && ai_config_string('ai.features.faq.vector_store', 'filesystem') === 'memory') {
             $this->comment('Vector store driver is "memory": --full resets the in-process shared store only.');
         }
 
         try {
-            $count = $documentationService->indexDocuments($path !== null ? (string) $path : null, $full);
+            $count = $documentationService->indexDocuments($path, $full);
             $this->info("Indexed {$count} document chunks.");
 
             return self::SUCCESS;

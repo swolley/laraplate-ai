@@ -44,8 +44,13 @@ return [
             // 'enabled' => env('AI_FAQ_ENABLED', true),
             // Optional extra root for app-level custom docs. Default scan always includes `docs/rag` and active `Modules/*/docs/rag` (see `docs/README.md`).
             'documentation_path' => env('AI_FAQ_DOCS_PATH'),
-            'vector_store' => env('AI_FAQ_VECTOR_STORE', 'filesystem'), // memory (testing only), filesystem
+            'vector_store' => env('AI_FAQ_VECTOR_STORE', 'filesystem'), // memory (testing only), filesystem, elasticsearch
             'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.json')
+            'elasticsearch' => [
+                'index' => env('AI_FAQ_ES_INDEX', 'laraplate_rag_docs'),
+                // Must match the active embeddings provider output dimensionality.
+                'embedding_dims' => (int) env('AI_FAQ_ES_EMBEDDING_DIMS', 384),
+            ],
             // 'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),
             // 'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.7),
             // 'question_detection' => [

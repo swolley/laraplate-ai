@@ -8,5 +8,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\AI\Tests\TestCase;
 
 pest()->extend(TestCase::class)
+    ->in(__DIR__ . '/Unit');
+
+pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in(__DIR__ . '/Integration', __DIR__ . '/Feature');

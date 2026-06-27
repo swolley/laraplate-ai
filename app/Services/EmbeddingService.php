@@ -50,12 +50,12 @@ final readonly class EmbeddingService implements IEmbeddingService
     /**
      * Generate embedding for a simple text string.
      *
-     * @return float[]
+     * @return list<float>
      */
     #[Override]
     public function embedText(string $text): array
     {
-        return $this->getProvider()->embedText($text);
+        return array_values($this->getProvider()->embedText($text));
     }
 
     /**

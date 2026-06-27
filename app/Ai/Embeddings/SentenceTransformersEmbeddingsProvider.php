@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Embeddings;
 
-use Exception;
 use GuzzleHttp\Client;
+use Modules\Core\Search\Exceptions\EmbeddingsException;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Embeddings\AbstractEmbeddingsProvider;
 
@@ -44,7 +44,7 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
     }
 
     /**
-     * @return float[]
+     * @return list<float>
      */
     public function embedText(string $text): array
     {
@@ -60,28 +60,28 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
         ]);
 
         $result = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
+        $embeddings = $this->parseEmbeddingBatch($result);
 
-        throw_unless(is_array($result) && isset($result['embeddings']), Exception::class, 'SentenceTransformers returned unexpected format');
+        if ($embeddings === []) {
+            throw new EmbeddingsException('SentenceTransformers returned an empty embedding');
+        }
 
-        return $result['embeddings'][0];
+        return $embeddings[0];
     }
 
     /**
-     * @param  Document[]  $documents
-     * @return Document[]
+     * @param  list<Document>  $documents
+     * @return list<Document>
      */
     public function embedDocuments(array $documents): array
     {
-        $batches = array_chunk($documents, $this->batch_size_limit);
+        $batch_size = max(1, $this->batch_size_limit);
+        $batches = array_chunk($documents, $batch_size);
         $processed = [];
 
         foreach ($batches as $batch) {
             $texts = array_map(
-                fn (Document $doc): string => mb_convert_encoding(
-                    $doc->formattedContent ?? $doc->content,
-                    'UTF-8',
-                    'UTF-8',
-                ),
+                fn (Document $doc): string => $this->documentText($doc),
                 $batch,
             );
 
@@ -95,14 +95,11 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
             ]);
 
             $result = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
-
-            throw_unless(is_array($result) && isset($result['embeddings']), Exception::class, 'SentenceTransformers returned unexpected format');
-
-            $embeddings = $result['embeddings'];
+            $embeddings = $this->parseEmbeddingBatch($result);
             $batch_count = count($batch);
             $embedding_count = count($embeddings);
 
-            throw_if($embedding_count !== $batch_count, Exception::class, "Embeddings count mismatch: expected {$batch_count}, got {$embedding_count}");
+            throw_if($embedding_count !== $batch_count, EmbeddingsException::class, "Embeddings count mismatch: expected {$batch_count}, got {$embedding_count}");
 
             for ($i = 0; $i < $batch_count; $i++) {
                 $batch[$i]->embedding = $embeddings[$i];
@@ -113,6 +110,61 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
         }
 
         return $processed;
+    }
+
+    private function documentText(Document $document): string
+    {
+        $content = $document->formattedContent ?? $document->content;
+
+        if (! is_string($content)) {
+            return '';
+        }
+
+        return mb_convert_encoding($content, 'UTF-8', 'UTF-8');
+    }
+
+    /**
+     * @return list<list<float>>
+     */
+    private function parseEmbeddingBatch(mixed $payload): array
+    {
+        if (! is_array($payload) || ! array_key_exists('embeddings', $payload)) {
+            throw new EmbeddingsException('SentenceTransformers returned unexpected format');
+        }
+
+        if (! is_array($payload['embeddings'])) {
+            throw new EmbeddingsException('SentenceTransformers returned unexpected format');
+        }
+
+        $batch = [];
+
+        foreach ($payload['embeddings'] as $embedding) {
+            $batch[] = $this->parseEmbeddingVector($embedding);
+        }
+
+        return $batch;
+    }
+
+    /**
+     * @return list<float>
+     */
+    private function parseEmbeddingVector(mixed $embedding): array
+    {
+        if (! is_array($embedding)) {
+            throw new EmbeddingsException('SentenceTransformers returned invalid embedding vector');
+        }
+
+        $vector = [];
+
+        foreach ($embedding as $component) {
+            if (! is_int($component) && ! is_float($component)) {
+                throw new EmbeddingsException('SentenceTransformers returned invalid embedding component');
+            }
+
+            $vector[] = (float) $component;
+        }
+
+        return $vector;
     }
 
     private function getEmbeddingLength(): int

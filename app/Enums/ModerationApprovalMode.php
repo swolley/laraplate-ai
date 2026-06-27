@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Enums;
 
+use function ai_config_string;
+
 enum ModerationApprovalMode: string
 {
     case Threshold = 'threshold';
@@ -11,7 +13,7 @@ enum ModerationApprovalMode: string
 
     public static function fromConfig(): self
     {
-        $raw = (string) config('ai.features.moderation.approval_mode', 'threshold');
+        $raw = ai_config_string('ai.features.moderation.approval_mode', 'threshold');
 
         return self::tryFrom($raw) ?? self::Threshold;
     }

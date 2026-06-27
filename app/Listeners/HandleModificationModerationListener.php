@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Modules\AI\Listeners;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\Core\Events\ModificationRequiresModeration;
+use Modules\Core\Contracts\IModeratableModel;
 use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\Modification;
 use Modules\Core\Services\ModerationAdapterRegistry;
+
+use function ai_config_bool;
+use function ai_config_string;
 
 final class HandleModificationModerationListener
 {
@@ -27,7 +32,7 @@ final class HandleModificationModerationListener
         $event->addRequiredPreProcessing('ai_approval');
         $this->saveEventToCache($event);
 
-        $queue = (string) config('ai.features.moderation.queue', 'default');
+        $queue = ai_config_string('ai.features.moderation.queue', 'default');
 
         dispatch(new ApproveModificationJob($event->modification))->onQueue($queue);
 
@@ -36,7 +41,7 @@ final class HandleModificationModerationListener
 
     private function shouldHandle(Modification $modification): bool
     {
-        if (! config('ai.features.moderation.enabled', true)) {
+        if (! ai_config_bool('ai.features.moderation.enabled', true)) {
             return false;
         }
 
@@ -63,9 +68,8 @@ final class HandleModificationModerationListener
     {
         $modifiable = $modification->modifiable;
 
-        if ($modifiable !== null) {
-            return class_uses_trait($modifiable, HasApprovals::class)
-                && $modifiable->aiModerationEnabledBySettings();
+        if ($modifiable instanceof Model) {
+            return $this->supportsAiModeration($modifiable);
         }
 
         $modifiable_class = $modification->modifiable_type;
@@ -76,11 +80,28 @@ final class HandleModificationModerationListener
 
         $instance = new $modifiable_class();
 
-        if (! class_uses_trait($instance, HasApprovals::class)) {
+        if (! $instance instanceof Model) {
             return false;
         }
 
-        return $instance->aiModerationEnabledBySettings();
+        return $this->supportsAiModeration($instance);
+    }
+
+    private function supportsAiModeration(Model $model): bool
+    {
+        if (! $this->usesApprovalsTrait($model)) {
+            return false;
+        }
+
+        return $model->aiModerationEnabledBySettings();
+    }
+
+    /**
+     * @phpstan-assert-if-true IModeratableModel&Model $model
+     */
+    private function usesApprovalsTrait(Model $model): bool
+    {
+        return in_array(HasApprovals::class, class_uses_recursive($model), true);
     }
 
     private function saveEventToCache(ModificationRequiresModeration $event): void
@@ -89,7 +110,13 @@ final class HandleModificationModerationListener
             return;
         }
 
-        $cache_key = 'modification_moderation:' . $event->modification->getKey();
+        $modification_key = $event->modification->getKey();
+
+        if (! is_int($modification_key) && ! is_string($modification_key)) {
+            return;
+        }
+
+        $cache_key = 'modification_moderation:' . $modification_key;
         Cache::put($cache_key, $event, now()->addMinutes(10));
     }
 }

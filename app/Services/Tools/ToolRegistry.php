@@ -7,7 +7,10 @@ namespace Modules\AI\Services\Tools;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\ActionRequestService;
+use Modules\Core\Models\User;
 use NeuronAI\Tools\PropertyType;
+
+use function ai_config_nullable_string;
 use NeuronAI\Tools\Tool;
 use NeuronAI\Tools\ToolProperty;
 
@@ -98,7 +101,7 @@ final class ToolRegistry
         foreach ($this->tools as $definition) {
             $tool = $this->buildNeuronToolStructure($definition);
 
-            $config_risk = config("ai.features.tools.definitions.{$definition->name}.risk_level");
+            $config_risk = ai_config_nullable_string("ai.features.tools.definitions.{$definition->name}.risk_level");
             $risk_level = $risk_classifier->classifyRisk($definition->name, [], $config_risk);
 
             if ($risk_level === 'low') {
@@ -121,8 +124,14 @@ final class ToolRegistry
                         // @codeCoverageIgnoreEnd
                     }
 
+                    $user = $conversation->user;
+
+                    if (! $user instanceof User) {
+                        return "Action '{$definition->name}' requires an authenticated user.";
+                    }
+
                     $request = $action_request_service->createRequest(
-                        $conversation->user,
+                        $user,
                         $definition->name,
                         $named_args,
                         $conversation,

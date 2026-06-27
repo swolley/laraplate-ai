@@ -18,6 +18,9 @@ final readonly class SearchEmbedder implements ITextEmbedder
         private EmbeddingService $embeddingService,
     ) {}
 
+    /**
+     * @return list<float>
+     */
     public function embed(string $text): array
     {
         return $this->embeddingService->embedText($text);

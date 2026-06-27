@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use NeuronAI\Chat\Messages\UserMessage;
 
+use function ai_config_nullable_string;
+
 final readonly class AiTranslationService implements TranslationServiceInterface
 {
     private const string SYSTEM_PROMPT = 'You are a professional translator. Translate the provided text accurately while preserving formatting, tone, and meaning. Return ONLY the translation, without any explanations or additional text.';
@@ -24,7 +26,7 @@ final readonly class AiTranslationService implements TranslationServiceInterface
             return $text;
         }
 
-        $provider = config('ai.features.translation.default_provider');
+        $provider = ai_config_nullable_string('ai.features.translation.default_provider');
 
         try {
             $agent = $this->makeChatAgent($this->resolveProvider($provider));
@@ -32,7 +34,7 @@ final readonly class AiTranslationService implements TranslationServiceInterface
             $prompt = "Translate the following text from {$from_locale} to {$to_locale}:\n\n{$text}";
             $response = $agent->chat(new UserMessage($prompt));
 
-            return mb_trim($response->getMessage()->getContent());
+            return mb_trim($response->getMessage()->getContent() ?? '');
         } catch (Exception $e) {
             Log::error('AI translation error', [
                 'error' => $e->getMessage(),

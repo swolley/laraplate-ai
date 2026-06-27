@@ -27,7 +27,10 @@ class DocumentationAgent extends RAG
         protected int $topK = 5,
     ) {}
 
-    public static function make(...$arguments): static
+    /**
+     * @param  mixed  ...$arguments
+     */
+    public static function make(mixed ...$arguments): static
     {
         /** @phpstan-ignore new.static */
         return new static(...$arguments);
@@ -69,7 +72,8 @@ PROMPT;
      */
     protected function vectorStore(): VectorStoreInterface
     {
-        $driver = $this->vectorStoreDriver ?? (string) config('ai.features.faq.vector_store', 'filesystem');
+        $configured_driver = config('ai.features.faq.vector_store', 'filesystem');
+        $driver = $this->vectorStoreDriver ?? (is_string($configured_driver) ? $configured_driver : 'filesystem');
 
         return match ($driver) {
             'memory' => self::$shared_memory_store ??= new MemoryVectorStore($this->topK),
@@ -86,8 +90,16 @@ PROMPT;
      */
     private function getStorePath(): string
     {
-        return $this->vectorStorePath
-            ?? (string) config('ai.features.faq.vector_store_path')
-            ?: storage_path('app/ai/faq-vectorstore.store');
+        if (is_string($this->vectorStorePath) && $this->vectorStorePath !== '') {
+            return $this->vectorStorePath;
+        }
+
+        $configured_path = config('ai.features.faq.vector_store_path');
+
+        if (is_string($configured_path) && $configured_path !== '') {
+            return $configured_path;
+        }
+
+        return storage_path('app/ai/faq-vectorstore.store');
     }
 }

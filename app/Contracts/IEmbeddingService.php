@@ -18,7 +18,7 @@ interface IEmbeddingService
     public function embedDocument(string $data): array;
 
     /**
-     * @return float[]
+     * @return list<float>
      */
     public function embedText(string $text): array;
 

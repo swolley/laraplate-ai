@@ -37,13 +37,15 @@ final class IntelligentSearchAction
     public function execute(string $query, string $index, int $page = 1): array
     {
         $cache_key = $this->cacheKey($query, $index);
+        $cached_results = $this->cachedResults($cache_key);
 
-        if (Cache::has($cache_key)) {
-            return $this->paginate(Cache::get($cache_key), $page);
+        if ($cached_results !== null) {
+            return $this->buildPaginatedResponse($cached_results, $page, ['from_cache' => true]);
         }
 
         $plan = $this->planner->safePlan($query);
-        $max_attempts = (int) ($plan['retry_policy']['max_attempts'] ?? 2);
+        $retry_policy = $this->planSection($plan, 'retry_policy');
+        $max_attempts = $this->intValue($retry_policy['max_attempts'] ?? null, 2);
         $attempt = 0;
         $results = [];
         $search_meta = [];
@@ -63,14 +65,14 @@ final class IntelligentSearchAction
         } while ($attempt < $max_attempts);
 
         $search_meta['attempts'] = $attempt;
-        $search_meta['plan_source'] = $plan['meta']['source'] ?? 'unknown';
+        $plan_meta = $this->planSection($plan, 'meta');
+        $search_meta['plan_source'] = is_string($plan_meta['source'] ?? null)
+            ? $plan_meta['source']
+            : 'unknown';
 
         Cache::put($cache_key, $results, $this->cache_ttl);
 
-        $paginated = $this->paginate($results, $page);
-        $paginated['meta']['search_meta'] = $search_meta;
-
-        return $paginated;
+        return $this->buildPaginatedResponse($results, $page, $search_meta);
     }
 
     /**
@@ -80,7 +82,7 @@ final class IntelligentSearchAction
     private function runSearchPipeline(array $plan, string $query, string $index): array
     {
         $intent = $this->intent_parser->parse($query);
-        $final_query = $intent['query']['expanded'] ?? $query;
+        $final_query = $intent['query']['expanded'];
 
         $vector = null;
 
@@ -96,7 +98,7 @@ final class IntelligentSearchAction
      */
     private function shouldEmbed(array $plan): bool
     {
-        if (!$this->embedder instanceof \Modules\Core\Search\Contracts\ITextEmbedder) {
+        if (! $this->embedder instanceof ITextEmbedder) {
             return false;
         }
 
@@ -104,8 +106,11 @@ final class IntelligentSearchAction
             return false;
         }
 
-        return (bool) ($plan['retrieval']['use_vector'] ?? false)
-            && (bool) ($plan['vector']['enabled'] ?? false);
+        $retrieval = $this->planSection($plan, 'retrieval');
+        $vector = $this->planSection($plan, 'vector');
+
+        return $this->boolValue($retrieval['use_vector'] ?? null, false)
+            && $this->boolValue($vector['enabled'] ?? null, false);
     }
 
     /**
@@ -130,12 +135,14 @@ final class IntelligentSearchAction
      */
     private function shouldRetry(array $quality, int $attempt, array $plan): bool
     {
-        if (! ($plan['retry_policy']['enabled'] ?? true)) {
+        $retry_policy = $this->planSection($plan, 'retry_policy');
+
+        if (! $this->boolValue($retry_policy['enabled'] ?? null, true)) {
             return false;
         }
 
-        $max_attempts = (int) ($plan['retry_policy']['max_attempts'] ?? 2);
-        $threshold = (float) ($plan['retry_policy']['threshold_avg_score'] ?? 1.5);
+        $max_attempts = $this->intValue($retry_policy['max_attempts'] ?? null, 2);
+        $threshold = $this->floatValue($retry_policy['threshold_avg_score'] ?? null, 1.5);
 
         return $attempt < $max_attempts
             && ($quality['count'] < 5 || $quality['avg_score'] < $threshold || $quality['unique_ids'] < 3);
@@ -150,39 +157,126 @@ final class IntelligentSearchAction
      */
     private function refinePlan(array $plan, array $quality): array
     {
-        if ($quality['count'] < 5) {
-            $plan['retrieval']['size'] = min(200, (int) ($plan['retrieval']['size'] ?? 50) + 20);
-
-            $vector_w = (float) ($plan['ensemble']['vector_weight'] ?? 0.35);
-            $keyword_w = (float) ($plan['ensemble']['keyword_weight'] ?? 0.35);
-            $hybrid_w = (float) ($plan['ensemble']['hybrid_weight'] ?? 0.30);
-
-            $plan['ensemble']['vector_weight'] = min(0.55, $vector_w + 0.1);
-            $plan['ensemble']['keyword_weight'] = max(0.2, $keyword_w - 0.05);
-            $plan['ensemble']['hybrid_weight'] = max(0.2, $hybrid_w - 0.05);
+        if ($quality['count'] >= 5) {
+            return $plan;
         }
+
+        $retrieval = $this->planSection($plan, 'retrieval');
+        $ensemble = $this->planSection($plan, 'ensemble');
+
+        $retrieval['size'] = min(200, $this->intValue($retrieval['size'] ?? null, 50) + 20);
+
+        $vector_w = $this->floatValue($ensemble['vector_weight'] ?? null, 0.35);
+        $keyword_w = $this->floatValue($ensemble['keyword_weight'] ?? null, 0.35);
+        $hybrid_w = $this->floatValue($ensemble['hybrid_weight'] ?? null, 0.30);
+
+        $ensemble['vector_weight'] = min(0.55, $vector_w + 0.1);
+        $ensemble['keyword_weight'] = max(0.2, $keyword_w - 0.05);
+        $ensemble['hybrid_weight'] = max(0.2, $hybrid_w - 0.05);
+
+        $plan['retrieval'] = $retrieval;
+        $plan['ensemble'] = $ensemble;
 
         return $plan;
     }
 
     /**
      * @param  list<array<string, mixed>>  $results
-     * @return array{data: list<array<string, mixed>>, meta: array{page: int, per_page: int, total: int}}
+     * @param  array<string, mixed>  $search_meta
+     * @return array{data: list<array<string, mixed>>, meta: array{page: int, per_page: int, total: int, search_meta: array<string, mixed>}}
      */
-    private function paginate(array $results, int $page): array
+    private function buildPaginatedResponse(array $results, int $page, array $search_meta): array
     {
-        return [
-            'data' => collect($results)
-                ->slice(($page - 1) * $this->per_page, $this->per_page)
-                ->values()
-                ->all(),
+        $offset = ($page - 1) * $this->per_page;
+        $data = array_slice($results, $offset, $this->per_page);
 
+        return [
+            'data' => $data,
             'meta' => [
                 'page' => $page,
                 'per_page' => $this->per_page,
                 'total' => count($results),
+                'search_meta' => $search_meta,
             ],
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>|null
+     */
+    private function cachedResults(string $cache_key): ?array
+    {
+        if (! Cache::has($cache_key)) {
+            return null;
+        }
+
+        $cached = Cache::get($cache_key);
+
+        if (! is_array($cached)) {
+            return null;
+        }
+
+        $results = [];
+
+        foreach ($cached as $item) {
+            if (! is_array($item)) {
+                return null;
+            }
+
+            $results[] = $item;
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
+    private function planSection(array $plan, string $key): array
+    {
+        $section = $plan[$key] ?? [];
+
+        return is_array($section) ? $section : [];
+    }
+
+    private function intValue(mixed $value, int $default): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $default;
+    }
+
+    private function floatValue(mixed $value, float $default): float
+    {
+        if (is_float($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return (float) $value;
+        }
+
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return $default;
+    }
+
+    private function boolValue(mixed $value, bool $default): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return $default;
     }
 
     private function cacheKey(string $query, string $index): string

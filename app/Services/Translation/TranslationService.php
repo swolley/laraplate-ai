@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
-use Exception;
 use Illuminate\Support\Facades\Cache;
+use Exception;
 use Illuminate\Support\Facades\Log;
+
+use function ai_config_bool;
+use function ai_config_string;
 
 final class TranslationService implements TranslationServiceInterface
 {
@@ -18,13 +21,15 @@ final class TranslationService implements TranslationServiceInterface
 
     /**
      * In-memory cache for translations during the request.
+     *
+     * @var array<string, string>
      */
     private array $memory_cache = [];
 
     public function __construct()
     {
-        $provider = config('core.auto_translate_provider', 'deepl');
-        $this->cache_enabled = config('core.translation_cache_enabled', true);
+        $provider = ai_config_string('core.auto_translate_provider', 'deepl');
+        $this->cache_enabled = ai_config_bool('core.translation_cache_enabled', true);
 
         // Initialize primary service
         $this->primary_service = match ($provider) {
@@ -34,7 +39,7 @@ final class TranslationService implements TranslationServiceInterface
         };
 
         // Initialize fallback service if enabled
-        if (config('core.auto_translate_fallback_to_ai', true) && $provider !== 'ai') {
+        if (ai_config_bool('core.auto_translate_fallback_to_ai', true) && $provider !== 'ai') {
             $this->fallback_service = new AiTranslationService();
         }
     }

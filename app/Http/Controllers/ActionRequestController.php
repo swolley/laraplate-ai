@@ -13,6 +13,7 @@ use Modules\AI\Http\Requests\RejectActionRequest;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Services\ActionRequestService;
 use Modules\Core\Helpers\ResponseBuilder;
+use Modules\Core\Models\User;
 
 final class ActionRequestController extends Controller
 {
@@ -26,7 +27,7 @@ final class ActionRequestController extends Controller
      */
     public function list(): JsonResponse
     {
-        $user = Auth::user();
+        $user = $this->authenticatedUser();
         $is_admin = $user->hasRole(['admin', 'superadmin']);
 
         $query = ActionRequest::query()
@@ -40,8 +41,14 @@ final class ActionRequestController extends Controller
                     ->orWhere('status', 'pending_admin_approval');
             });
         } else {
+            $user_id = $user->id;
+
+            if (! is_int($user_id)) {
+                abort(Response::HTTP_UNAUTHORIZED);
+            }
+
             // Regular users see only their own requests
-            $query->forUser($user->id);
+            $query->forUser($user_id);
         }
 
         $requests = $query->paginate(request()->integer('per_page', 20));
@@ -107,10 +114,12 @@ final class ActionRequestController extends Controller
 
         $this->actionRequestService->confirmRequest($actionRequest);
 
+        $fresh = $actionRequest->fresh();
+
         return new ResponseBuilder(request())
             ->setData([
                 'id' => $actionRequest->id,
-                'status' => $actionRequest->fresh()->status,
+                'status' => $fresh instanceof ActionRequest ? $fresh->status : $actionRequest->status,
                 'message' => 'Action request confirmed and queued for execution.',
             ])
             ->json();
@@ -122,7 +131,7 @@ final class ActionRequestController extends Controller
      */
     public function approve(ApproveActionRequest $request, ActionRequest $actionRequest): JsonResponse
     {
-        $user = Auth::user();
+        $user = $this->authenticatedUser();
 
         if (! $user->hasRole(['admin', 'superadmin'])) {
             return new ResponseBuilder($request)
@@ -140,10 +149,12 @@ final class ActionRequestController extends Controller
 
         $this->actionRequestService->approveRequest($actionRequest);
 
+        $fresh = $actionRequest->fresh();
+
         return new ResponseBuilder($request)
             ->setData([
                 'id' => $actionRequest->id,
-                'status' => $actionRequest->fresh()->status,
+                'status' => $fresh instanceof ActionRequest ? $fresh->status : $actionRequest->status,
                 'message' => 'Action request approved and queued for execution.',
             ])
             ->json();
@@ -182,7 +193,7 @@ final class ActionRequestController extends Controller
      */
     private function authorizeAccess(ActionRequest $actionRequest): void
     {
-        $user = Auth::user();
+        $user = $this->authenticatedUser();
         $is_admin = $user->hasRole(['admin', 'superadmin']);
 
         abort_if(! $is_admin && $actionRequest->user_id !== $user->id, Response::HTTP_FORBIDDEN, 'You do not have access to this action request.');
@@ -194,5 +205,16 @@ final class ActionRequestController extends Controller
     private function authorizeOwnership(ActionRequest $actionRequest): void
     {
         abort_if($actionRequest->user_id !== Auth::id(), Response::HTTP_FORBIDDEN, 'You do not own this action request.');
+    }
+
+    private function authenticatedUser(): User
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $user;
     }
 }

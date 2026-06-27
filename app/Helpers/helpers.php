@@ -2,6 +2,95 @@
 
 declare(strict_types=1);
 
+if (! function_exists('ai_config_string')) {
+    function ai_config_string(string $key, ?string $default = null): string
+    {
+        $value = config($key, $default);
+
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if ($value === null) {
+            return $default ?? '';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return $default ?? '';
+    }
+}
+
+if (! function_exists('ai_config_nullable_string')) {
+    function ai_config_nullable_string(string $key): ?string
+    {
+        $value = config($key);
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return null;
+    }
+}
+
+if (! function_exists('ai_config_bool')) {
+    function ai_config_bool(string $key, bool $default = false): bool
+    {
+        $value = config($key, $default);
+
+        return is_bool($value) ? $value : $default;
+    }
+}
+
+if (! function_exists('ai_config_int')) {
+    function ai_config_int(string $key, int $default = 0): int
+    {
+        $value = config($key, $default);
+
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return $default;
+    }
+}
+
+if (! function_exists('ai_config_float')) {
+    function ai_config_float(string $key, float $default = 0.0): float
+    {
+        $value = config($key, $default);
+
+        if (is_float($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return (float) $value;
+        }
+
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return $default;
+    }
+}
+
 if (! function_exists('rag_paths')) {
     /**
      * Resolve RAG roots.
@@ -30,14 +119,11 @@ if (! function_exists('rag_paths')) {
 
         if (class_exists($module_class)) {
             $ai_module = $module_class::find('AI');
-
-            if ($ai_module !== null) {
-                $native_vendor = (string) ($ai_module->getComposerAttr('vendor', ''));
-            }
+            $native_vendor = (string) $ai_module->getComposerAttr('vendor', '');
         }
 
         if ($native_vendor === '') {
-            $native_vendor = (string) (config('ai.vendor', ''));
+            $native_vendor = ai_config_string('ai.vendor');
         }
 
         if ($native_vendor === '') {
@@ -47,7 +133,8 @@ if (! function_exists('rag_paths')) {
                 $decoded = json_decode((string) file_get_contents($ai_composer), true);
 
                 if (is_array($decoded)) {
-                    $native_vendor = (string) ($decoded['vendor'] ?? '');
+                    $vendor = $decoded['vendor'] ?? '';
+                    $native_vendor = is_string($vendor) ? $vendor : '';
                 }
             }
         }
@@ -96,10 +183,6 @@ if (! function_exists('rag_paths')) {
             foreach ($module_names as $module_name) {
                 $module_name = (string) $module_name;
                 $module = $module_class::find($module_name);
-
-                if ($module === null) {
-                    continue;
-                }
 
                 $module_path = normalize_path((string) $module->getPath());
                 $module_vendor = (string) ($module->getComposerAttr('vendor', ''));

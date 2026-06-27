@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- *(ai)* Expand AI services and introduce domain exceptions
+
+## [2.11.1] - 2026-06-23
+
 ### 🚜 Refactor
 
 - *(ai)* Update Core model concern imports

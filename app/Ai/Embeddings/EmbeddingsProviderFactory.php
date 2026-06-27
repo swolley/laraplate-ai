@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Embeddings;
 
-use Exception;
+use function ai_config_nullable_string;
+use function ai_config_string;
+
+use InvalidArgumentException;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Embeddings\MistralEmbeddingsProvider;
 use NeuronAI\RAG\Embeddings\OllamaEmbeddingsProvider;
@@ -18,7 +21,7 @@ final class EmbeddingsProviderFactory
 {
     public static function make(?string $provider = null): EmbeddingsProviderInterface
     {
-        $provider ??= (string) config('ai.features.embeddings.default_provider', 'sentence_transformers');
+        $provider ??= ai_config_string('ai.features.embeddings.default_provider', 'sentence_transformers');
 
         return match ($provider) {
             'openai' => self::createOpenAI(),
@@ -26,59 +29,49 @@ final class EmbeddingsProviderFactory
             'mistral' => self::createMistral(),
             'voyageai' => self::createVoyage(),
             'sentence-transformers', 'sentence_transformers' => self::createSentenceTransformers(),
-            default => throw new Exception("Unsupported embeddings provider: {$provider}"),
+            default => throw new InvalidArgumentException("Unsupported embeddings provider: {$provider}"),
         };
     }
 
     private static function createOpenAI(): OpenAIEmbeddingsProvider
     {
-        $api_key = (string) config('ai.providers.openai.api_key');
-        $model = (string) config('ai.providers.openai.model', 'text-embedding-3-small');
-
         return new OpenAIEmbeddingsProvider(
-            key: $api_key,
-            model: $model,
+            key: ai_config_string('ai.providers.openai.api_key'),
+            model: ai_config_string('ai.providers.openai.model', 'text-embedding-3-small'),
         );
     }
 
     private static function createOllama(): OllamaEmbeddingsProvider
     {
-        $url = (string) config('ai.providers.ollama.api_url', 'http://localhost:11434/api');
-        $model = (string) config('ai.providers.ollama.model', 'nomic-embed-text');
+        $url = ai_config_string('ai.providers.ollama.api_url', 'http://localhost:11434/api');
 
         return new OllamaEmbeddingsProvider(
-            model: $model,
+            model: ai_config_string('ai.providers.ollama.model', 'nomic-embed-text'),
             url: $url . '/api',
         );
     }
 
     private static function createMistral(): MistralEmbeddingsProvider
     {
-        $api_key = (string) config('ai.providers.mistral.api_key');
-        $model = (string) config('ai.providers.mistral.model', 'mistral-embed');
-
         return new MistralEmbeddingsProvider(
-            key: $api_key,
-            model: $model,
+            key: ai_config_string('ai.providers.mistral.api_key'),
+            model: ai_config_string('ai.providers.mistral.model', 'mistral-embed'),
         );
     }
 
     private static function createVoyage(): VoyageEmbeddingsProvider
     {
-        $api_key = (string) config('ai.providers.voyageai.api_key');
-        $model = (string) config('ai.providers.voyageai.model', 'voyage-3-lite');
-
         return new VoyageEmbeddingsProvider(
-            key: $api_key,
-            model: $model,
+            key: ai_config_string('ai.providers.voyageai.api_key'),
+            model: ai_config_string('ai.providers.voyageai.model', 'voyage-3-lite'),
         );
     }
 
     private static function createSentenceTransformers(): SentenceTransformersEmbeddingsProvider
     {
         return new SentenceTransformersEmbeddingsProvider(
-            url: (string) config('ai.providers.sentence_transformers.url', 'http://localhost:8000'),
-            api_key: config('ai.providers.sentence_transformers.api_key'),
+            url: ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'),
+            api_key: ai_config_nullable_string('ai.providers.sentence_transformers.api_key'),
         );
     }
 }

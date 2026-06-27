@@ -6,8 +6,11 @@ namespace Modules\AI\Listeners;
 
 use Illuminate\Database\Eloquent\Model;
 use Modules\AI\Jobs\TranslateModelJob;
+use Modules\Core\Contracts\ITranslatableModel;
 use Modules\Core\Events\ModificationApproved;
 use Modules\Core\Models\Concerns\HasTranslations;
+
+use function ai_config_bool;
 
 final class HandleModificationApprovedTranslationListener
 {
@@ -15,7 +18,7 @@ final class HandleModificationApprovedTranslationListener
     {
         $modifiable = $event->modifiable;
 
-        if (! $modifiable instanceof Model || ! class_uses_trait($modifiable, HasTranslations::class)) {
+        if (! $this->isTranslatable($modifiable)) {
             return;
         }
 
@@ -23,10 +26,18 @@ final class HandleModificationApprovedTranslationListener
             return;
         }
 
-        if (! config('ai.features.translation.enabled', true)) {
+        if (! ai_config_bool('ai.features.translation.enabled', true)) {
             return;
         }
 
         dispatch(new TranslateModelJob($modifiable));
+    }
+
+    /**
+     * @phpstan-assert-if-true ITranslatableModel&Model $model
+     */
+    private function isTranslatable(Model $model): bool
+    {
+        return in_array(HasTranslations::class, class_uses_recursive($model), true);
     }
 }

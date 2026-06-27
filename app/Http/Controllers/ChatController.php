@@ -16,6 +16,7 @@ use Modules\AI\Http\Requests\SendMessageRequest;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\Conversation;
 use Modules\Core\Helpers\ResponseBuilder;
+use Modules\Core\Models\User;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class ChatController extends Controller
@@ -32,10 +33,10 @@ final class ChatController extends Controller
         $validated = $request->validated();
 
         $conversation = $this->chatService->createConversation(
-            user: Auth::user(),
-            title: $validated['title'] ?? null,
-            systemMessage: $validated['system_message'] ?? null,
-            metadata: $validated['metadata'] ?? null,
+            user: $this->authenticatedUser(),
+            title: $this->optionalString($validated, 'title'),
+            systemMessage: $this->optionalString($validated, 'system_message'),
+            metadata: $this->optionalArray($validated, 'metadata'),
         );
 
         return new ResponseBuilder($request)
@@ -52,7 +53,7 @@ final class ChatController extends Controller
         $conversations = Conversation::query()->where('user_id', Auth::id())
             ->withCount('messages')
             ->latest()
-            ->paginate($request->validated('per_page', 15));
+            ->paginate($request->integer('per_page', 15));
 
         return new ResponseBuilder($request)
             ->setData($conversations->items())
@@ -87,7 +88,7 @@ final class ChatController extends Controller
 
         $messages = $conversation->messages()
             ->latest()
-            ->paginate($request->validated('per_page', 50));
+            ->paginate($request->integer('per_page', 50));
 
         return new ResponseBuilder($request)
             ->setData($messages->items())
@@ -145,8 +146,8 @@ final class ChatController extends Controller
 
             $this->chatService->sendMessageStream(
                 conversation: $conversation,
-                user_message: $validated['message'],
-                context: $validated['context'] ?? null,
+                user_message: $this->requiredString($validated, 'message'),
+                context: $this->optionalArray($validated, 'context'),
                 on_chunk: $on_chunk,
             );
 
@@ -172,8 +173,8 @@ final class ChatController extends Controller
 
         $message = $this->chatService->sendMessage(
             conversation: $conversation,
-            userMessage: $validated['message'],
-            context: $validated['context'] ?? null,
+            userMessage: $this->requiredString($validated, 'message'),
+            context: $this->optionalArray($validated, 'context'),
         );
 
         return new ResponseBuilder($request)
@@ -200,8 +201,8 @@ final class ChatController extends Controller
 
         $result = $this->chatService->sendMessageWithTools(
             conversation: $conversation,
-            user_message: $validated['message'],
-            context: $validated['context'] ?? null,
+            user_message: $this->requiredString($validated, 'message'),
+            context: $this->optionalArray($validated, 'context'),
         );
 
         $message = $result['message'];
@@ -237,5 +238,61 @@ final class ChatController extends Controller
     private function authorizeConversationAccess(Conversation $conversation): void
     {
         abort_if($conversation->user_id !== Auth::id(), Response::HTTP_FORBIDDEN, 'You do not have access to this conversation.');
+    }
+
+    private function authenticatedUser(): User
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $user;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function optionalString(array $validated, string $key): ?string
+    {
+        $value = $validated[$key] ?? null;
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>|null
+     */
+    private function optionalArray(array $validated, string $key): ?array
+    {
+        $value = $validated[$key] ?? null;
+
+        if (! is_array($value)) {
+            return null;
+        }
+
+        $normalized = [];
+
+        foreach ($value as $item_key => $item_value) {
+            $normalized[(string) $item_key] = $item_value;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function requiredString(array $validated, string $key): string
+    {
+        $value = $validated[$key] ?? null;
+
+        if (! is_string($value)) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $value;
     }
 }

@@ -7,10 +7,13 @@ namespace Modules\AI\Listeners;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\TranslateModelJob;
+use Modules\Core\Contracts\ITranslatableModel;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
+
+use function ai_config_bool;
 
 final class HandleModelTranslationListener
 {
@@ -20,24 +23,21 @@ final class HandleModelTranslationListener
             return;
         }
 
-        // If the model is also searchable, register 'translation' in ModelRequiresIndexing
-        // to synchronize translations with indexing
         if (class_uses_trait($event->model, Searchable::class)) {
             $this->registerTranslationForIndexing($event->model);
         }
 
-        // Dispatch translation job
         dispatch(new TranslateModelJob($event->model, $event->locales, $event->force));
         $event->markAsHandled();
     }
 
     private function shouldHandle(Model $model): bool
     {
-        if (! config('ai.features.translation.enabled', true)) {
+        if (! ai_config_bool('ai.features.translation.enabled', true)) {
             return false;
         }
 
-        if (! class_uses_trait($model, HasTranslations::class)) {
+        if (! $this->isTranslatable($model)) {
             return false;
         }
 
@@ -46,14 +46,26 @@ final class HandleModelTranslationListener
 
     private function registerTranslationForIndexing(Model $model): void
     {
-        $cache_key = "model_indexing:{$model->getTable()}:{$model->getKey()}";
+        $model_key = $model->getKey();
+
+        if (! is_int($model_key) && ! is_string($model_key)) {
+            return;
+        }
+
+        $cache_key = "model_indexing:{$model->getTable()}:{$model_key}";
         $indexing_event = Cache::get($cache_key);
 
         if ($indexing_event instanceof ModelRequiresIndexing) {
             $indexing_event->addRequiredPreProcessing('translation');
             Cache::put($cache_key, $indexing_event, now()->addMinutes(10));
         }
-        // If the event is not in cache, it means indexing hasn't been requested yet
-        // or has already been completed. In this case, translations proceed independently.
+    }
+
+    /**
+     * @phpstan-assert-if-true ITranslatableModel&Model $model
+     */
+    private function isTranslatable(Model $model): bool
+    {
+        return in_array(HasTranslations::class, class_uses_recursive($model), true);
     }
 }

@@ -363,7 +363,7 @@ final class MarkdownAwareSplitter extends AbstractSplitter
                     $current_words = [];
                 }
 
-                foreach (array_chunk($words, $this->maxWords) as $piece) {
+                foreach (array_chunk($words, max(1, $this->maxWords)) as $piece) {
                     $chunks[] = implode(' ', $piece);
                 }
 

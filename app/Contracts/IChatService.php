@@ -14,6 +14,9 @@ use Modules\Core\Models\User;
  */
 interface IChatService
 {
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     */
     public function createConversation(
         User $user,
         ?string $title = null,
@@ -21,6 +24,9 @@ interface IChatService
         ?array $metadata = null,
     ): Conversation;
 
+    /**
+     * @param  array<string, mixed>|null  $context
+     */
     public function sendMessage(
         Conversation $conversation,
         string $userMessage,
@@ -28,6 +34,7 @@ interface IChatService
     ): Message;
 
     /**
+     * @param  array<string, mixed>|null  $context
      * @param  callable(string): void  $on_chunk
      */
     public function sendMessageStream(
@@ -38,6 +45,8 @@ interface IChatService
     ): Message;
 
     /**
+     * @param  array<string, mixed>|null  $context
+     *
      * @return array{message: Message, action_requests: array<int, ActionRequest>}
      */
     public function sendMessageWithTools(

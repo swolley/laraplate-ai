@@ -16,7 +16,9 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use Modules\AI\Contracts\IEmbeddingService;
+use Modules\Core\Contracts\IEmbeddableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
+use Modules\Core\Search\Traits\Searchable;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
 
@@ -30,7 +32,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     public int $tries = 3;
 
     /**
-     * @var array|int[]
+     * @var list<int>
      */
     public array $backoff = [30, 60, 120];
 
@@ -54,11 +56,14 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         $this->onQueue('embeddings');
     }
 
+    /**
+     * @return array<int, ThrottlesExceptions|RateLimited>
+     */
     public function middleware(): array
     {
         return [
-            new ThrottlesExceptions(10, 5), // Max 10 exceptions in 5 minutes
-            new RateLimited('embeddings'), // Rate limit for the embedding queue
+            new ThrottlesExceptions(10, 5),
+            new RateLimited('embeddings'),
         ];
     }
 
@@ -70,29 +75,36 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     public function handle(IEmbeddingService $embedding_service): void
     {
-        $data = $this->model->prepareDataToEmbed();
+        $model = $this->model->fresh();
+
+        if (! $model instanceof Model || ! $this->isEmbeddable($model)) {
+            return;
+        }
+
+        $data = $model->prepareDataToEmbed();
 
         if ($data === null || $data === '') {
             return;
         }
 
         try {
-            $embeddedDocuments = $embedding_service->embedDocument($data);
+            $embedded_documents = $embedding_service->embedDocument($data);
 
-            foreach ($embeddedDocuments as $embeddedDocument) {
-                $this->model->embeddings()->create(['embedding' => $embeddedDocument->embedding]);
+            foreach ($embedded_documents as $embedded_document) {
+                $model->embeddings()->create([
+                    'embedding' => $embedded_document->embedding,
+                ]);
             }
 
-            // Emit event: pre-processing completed
-            event(new ModelPreProcessingCompleted($this->model, 'embeddings'));
+            event(new ModelPreProcessingCompleted($model, 'embeddings'));
         } catch (Exception $exception) {
-            Log::error('Embedding generation failed for model: ' . $this->model::class, [
-                'model_id' => $this->model->id,
+            Log::error('Embedding generation failed for model: ' . $model::class, [
+                'model_id' => $model->getKey(),
                 'error' => $exception->getMessage(),
                 'trace' => $exception->getTraceAsString(),
             ]);
 
-            throw $exception; // Rethrow to make the join chain fails
+            throw $exception;
         }
     }
 
@@ -103,8 +115,16 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     {
         Log::error('GenerateEmbeddingsJob failed', [
             'model' => $this->model::class,
-            'model_id' => $this->model->id,
+            'model_id' => $this->model->getKey(),
             'error' => $exception->getMessage(),
         ]);
+    }
+
+    /**
+     * @phpstan-assert-if-true IEmbeddableModel&Model $model
+     */
+    private function isEmbeddable(Model $model): bool
+    {
+        return in_array(Searchable::class, class_uses_recursive($model), true);
     }
 }
