@@ -26,7 +26,12 @@ final class SuggestionController extends Controller
      */
     public function listSuggestions(Request $request): JsonResponse
     {
-        $user = $this->authenticatedUser();
+        $user = $this->resolveAuthenticatedUser($request);
+
+        if (! $user instanceof User) {
+            return $user;
+        }
+
         $suggestions = $this->suggestionService->getPendingSuggestions($user);
 
         return new ResponseBuilder($request)
@@ -40,7 +45,12 @@ final class SuggestionController extends Controller
      */
     public function generateSuggestion(GenerateSuggestionRequest $request): JsonResponse
     {
-        $user = $this->authenticatedUser();
+        $user = $this->resolveAuthenticatedUser($request);
+
+        if (! $user instanceof User) {
+            return $user;
+        }
+
         $validated = $request->validated();
         $context = $validated['context'] ?? null;
 
@@ -73,7 +83,11 @@ final class SuggestionController extends Controller
      */
     public function dismissSuggestion(Request $request, ContextualSuggestion $suggestion): JsonResponse
     {
-        $user = $this->authenticatedUser();
+        $user = $this->resolveAuthenticatedUser($request);
+
+        if (! $user instanceof User) {
+            return $user;
+        }
 
         if ($suggestion->user_id !== $user->id) {
             return new ResponseBuilder($request)
@@ -89,14 +103,17 @@ final class SuggestionController extends Controller
             ->json();
     }
 
-    private function authenticatedUser(): User
+    private function resolveAuthenticatedUser(Request $request): User|JsonResponse
     {
         $user = Auth::user();
 
-        if (! $user instanceof User) {
-            abort(Response::HTTP_UNAUTHORIZED);
+        if ($user instanceof User) {
+            return $user;
         }
 
-        return $user;
+        return new ResponseBuilder($request)
+            ->setError('Unauthorized')
+            ->setStatus(Response::HTTP_UNAUTHORIZED)
+            ->json();
     }
 }

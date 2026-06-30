@@ -75,6 +75,7 @@ it('processes embeddings and creates records', function (): void {
     $model->shouldReceive('getTable')->andReturn('test');
     $model->shouldReceive('prepareDataToEmbed')->andReturn('Some text to embed');
     $model->shouldReceive('embeddings')->andReturn($embeddingRelation);
+    $model->shouldReceive('fresh')->andReturn($model);
 
     $document = new Document('');
     $document->embedding = [0.1, 0.2];

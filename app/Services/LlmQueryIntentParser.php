@@ -22,11 +22,14 @@ final readonly class LlmQueryIntentParser implements IQueryIntentParser
     {
         $intent = $this->llm->extractSearchIntent($query);
 
+        $expanded = $intent['query_expansion']['must'] ?? null;
+        $expanded = is_string($expanded) && $expanded !== '' ? $expanded : $query;
+
         return [
             'keywords' => $intent['keywords'],
             'date_range' => $this->parseDateRange($intent['filters']['date_range'] ?? null),
             'query' => [
-                'expanded' => $intent['query_expansion']['must'],
+                'expanded' => $expanded,
             ],
         ];
     }

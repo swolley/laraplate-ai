@@ -75,7 +75,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     public function handle(IEmbeddingService $embedding_service): void
     {
-        $model = $this->model->fresh();
+        $model = $this->model->fresh() ?? $this->model;
 
         if (! $model instanceof Model || ! $this->isEmbeddable($model)) {
             return;
@@ -125,6 +125,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     private function isEmbeddable(Model $model): bool
     {
-        return in_array(Searchable::class, class_uses_recursive($model), true);
+        return is_callable([$model, 'prepareDataToEmbed'])
+            && is_callable([$model, 'embeddings']);
     }
 }

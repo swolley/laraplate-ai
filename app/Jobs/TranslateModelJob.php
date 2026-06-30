@@ -14,7 +14,6 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Services\Translation\TranslationService;
-use Modules\Core\Contracts\ITranslatableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
@@ -118,12 +117,18 @@ final class TranslateModelJob implements ShouldQueue
         }
     }
 
-    private function resolveSourceTranslation(ITranslatableModel $model, string $default_locale): ?Model
+    private function resolveSourceTranslation(Model $model, string $default_locale): ?Model
     {
-        $original = $model->getOriginalTranslation();
+        if (method_exists($model, 'getOriginalTranslation')) {
+            $original = $model->getOriginalTranslation();
 
-        if ($original instanceof Model) {
-            return $original;
+            if ($original instanceof Model) {
+                return $original;
+            }
+        }
+
+        if (! method_exists($model, 'getTranslation')) {
+            return null;
         }
 
         return $model->getTranslation($default_locale);
@@ -133,11 +138,15 @@ final class TranslateModelJob implements ShouldQueue
      * @codeCoverageIgnore
      */
     private function translateModel(
-        ITranslatableModel $model,
+        Model $model,
         Model $default_translation,
         string $locale,
         TranslationService $translation_service,
     ): void {
+        if (! method_exists($model, 'getTranslatableFields') || ! method_exists($model, 'setTranslation')) {
+            return;
+        }
+
         $default_locale = ai_config_string('app.locale', 'en');
         $translatable_fields = $model::getTranslatableFields();
         $translated_data = [];

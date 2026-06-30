@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🐛 Bug Fixes
+
+- *(config)* Update default vector store to elasticsearch and adjust index naming convention
+
 ## [2.12.1] - 2026-06-27
 
 ### 🚀 Features
