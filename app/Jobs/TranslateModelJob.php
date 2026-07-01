@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Jobs;
 
+use function ai_config_string;
+
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,11 +17,9 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
-use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Helpers\LocaleContext;
+use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
-
-use function ai_config_string;
 
 final class TranslateModelJob implements ShouldQueue
 {
@@ -125,6 +125,10 @@ final class TranslateModelJob implements ShouldQueue
             if ($original instanceof Model) {
                 return $original;
             }
+        }
+
+        if (! method_exists($model, 'getTranslation')) {
+            return null;
         }
 
         return $model->getTranslation($default_locale);
