@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
@@ -85,6 +86,25 @@ it('adds embeddings to required pre-processing', function (): void {
     $listener->handle($event);
 
     expect($event->required_pre_processing)->toContain('embeddings');
+});
+
+it('skips event cache when model key is not scalar', function (): void {
+    Cache::spy();
+
+    $model = new class extends SearchableModelStub
+    {
+        public function getKey(): mixed
+        {
+            return ['compound'];
+        }
+    };
+
+    $event = new ModelRequiresIndexing($model, false);
+    $listener = new HandleModelIndexingListener();
+    $listener->handle($event);
+
+    Queue::assertPushed(GenerateEmbeddingsJob::class);
+    Cache::shouldNotHaveReceived('put');
 });
 
 // Property 19: Web-context sync indexing is always dispatched asynchronously

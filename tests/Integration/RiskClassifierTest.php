@@ -10,6 +10,7 @@ it('returns explicit config_risk when provided', function (): void {
     expect($classifier->classifyRisk('some_tool', [], 'high'))->toBe('high');
     expect($classifier->classifyRisk('some_tool', [], 'medium'))->toBe('medium');
     expect($classifier->classifyRisk('some_tool', [], 'low'))->toBe('low');
+    expect($classifier->classifyRisk('some_tool', [], 'unknown'))->toBe('unknown');
 });
 
 it('ignores invalid explicit config_risk and falls through', function (): void {
@@ -24,6 +25,14 @@ it('uses tool_definitions config when no explicit risk provided', function (): v
     ]);
 
     expect($classifier->classifyRisk('my_tool', []))->toBe('high');
+});
+
+it('falls back to empty definitions when configured definitions are not an array', function (): void {
+    config()->set('ai.features.tools.definitions', 'invalid');
+
+    $classifier = new RiskClassifier;
+
+    expect($classifier->classifyRisk('get_info', []))->toBe('low');
 });
 
 it('falls back to heuristic when no config match', function (): void {

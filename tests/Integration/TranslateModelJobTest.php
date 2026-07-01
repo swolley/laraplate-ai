@@ -91,6 +91,32 @@ it('translates model for each locale', function (): void {
         ->and($model->setTranslationCalls[0]['data'])->toBe(['title' => 'Ciao', 'content' => 'Mondo']);
 });
 
+it('uses original translation before locale fallback', function (): void {
+    $originalTranslation = Mockery::mock(Model::class)->makePartial();
+    $originalTranslation->title = 'Source';
+
+    $defaultTranslation = Mockery::mock(Model::class)->makePartial();
+    $defaultTranslation->title = 'Fallback';
+
+    $model = new TranslateModelJobStub;
+    $model->originalTranslation = $originalTranslation;
+    $model->defaultTranslation = $defaultTranslation;
+    $model->hasTranslationResult = false;
+    TranslateModelJobStub::$translatableFields = ['title'];
+
+    $translationService = Mockery::mock(TranslationService::class);
+    $translationService->shouldReceive('translate')
+        ->once()
+        ->with('Source', 'en', 'it')
+        ->andReturn('Origine');
+
+    $job = new TranslateModelJob($model, ['it'], true);
+    $job->handle($translationService);
+
+    expect($model->setTranslationCalls)->toHaveCount(1)
+        ->and($model->setTranslationCalls[0]['data'])->toBe(['title' => 'Origine']);
+});
+
 it('skips existing translations when force is false', function (): void {
     $defaultTranslation = Mockery::mock(Model::class)->makePartial();
     $defaultTranslation->title = 'Hello';

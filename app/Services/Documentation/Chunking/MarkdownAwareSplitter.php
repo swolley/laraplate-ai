@@ -45,10 +45,6 @@ final class MarkdownAwareSplitter extends AbstractSplitter
 
         $blocks = $this->tokenizeBlocks($content);
 
-        if ($blocks === []) {
-            return [];
-        }
-
         $chunks = $this->packBlocks($blocks);
 
         $output = [];

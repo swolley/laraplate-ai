@@ -5,6 +5,7 @@ declare(strict_types=1);
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Response;
 use Modules\AI\Ai\Embeddings\SentenceTransformersEmbeddingsProvider;
+use Modules\Core\Search\Exceptions\EmbeddingsException;
 use NeuronAI\RAG\Document;
 
 beforeEach(function (): void {
@@ -70,6 +71,58 @@ it('throws exception on unexpected format', function (): void {
     $provider->embedText('test');
 })->throws(Exception::class);
 
+it('throws exception when embedText receives no embeddings', function (): void {
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => []])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('test');
+})->throws(EmbeddingsException::class, 'SentenceTransformers returned an empty embedding');
+
+it('throws exception when embeddings payload is not an array', function (): void {
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => 'invalid'])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('test');
+})->throws(EmbeddingsException::class, 'SentenceTransformers returned unexpected format');
+
+it('throws exception when an embedding vector is not an array', function (): void {
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => ['invalid']])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('test');
+})->throws(EmbeddingsException::class, 'SentenceTransformers returned invalid embedding vector');
+
+it('throws exception when an embedding component is not numeric', function (): void {
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [[0.1, 'invalid']]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('test');
+})->throws(EmbeddingsException::class, 'SentenceTransformers returned invalid embedding component');
+
 it('prepends http when missing from URL', function (): void {
     $embeddings = array_fill(0, 512, 0.1);
     $this->mockClient->shouldReceive('post')
@@ -84,6 +137,31 @@ it('prepends http when missing from URL', function (): void {
     $provider->embedText('test');
 
     expect(true)->toBeTrue();
+});
+
+it('uses an empty text when document formatted content is not a string', function (): void {
+    $document = new class extends Document
+    {
+        /**
+         * @var array<int, string>
+         */
+        public array $formattedContent = ['not text'];
+    };
+
+    $embeddings = array_fill(0, 512, 0.1);
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => $arg['json']['texts'] === ['']))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$embeddings]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $result = $provider->embedDocuments([$document]);
+
+    expect($result[0]->embedding)->toBe($embeddings);
 });
 
 it('sets authorization header when api_key is provided', function (): void {

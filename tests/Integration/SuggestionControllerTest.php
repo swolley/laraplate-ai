@@ -94,6 +94,21 @@ it('generateSuggestion returns suggestion', function (): void {
         ->and($data['data']['suggestion'])->toBe('Generated');
 });
 
+it('generateSuggestion aborts when context is not an array', function (): void {
+    Auth::shouldReceive('user')->andReturn($this->user);
+
+    $service = Mockery::mock(ContextualSuggestionService::class);
+    $service->shouldNotReceive('generateSuggestion');
+
+    $request = Mockery::mock(GenerateSuggestionRequest::class);
+    $request->shouldReceive('validated')->andReturn(['context' => 'invalid']);
+
+    $controller = new SuggestionController($service);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->generateSuggestion($request))
+        ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+});
+
 it('generateSuggestion returns null when no suggestion generated', function (): void {
     Auth::shouldReceive('user')->andReturn($this->user);
 

@@ -47,6 +47,23 @@ it('insertConversation creates conversation', function (): void {
     expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
 });
 
+it('insertConversation aborts when no core user is authenticated', function (): void {
+    Auth::shouldReceive('user')->andReturn(null);
+
+    $chatService = Mockery::mock(IChatService::class);
+    $request = new InsertConversationRequest;
+    $request->setContainer(app());
+    $request->initialize([], []);
+    $request->merge(['title' => 'Test']);
+    $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
+    $request->validateResolved();
+
+    $controller = new ChatController($chatService);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->insertConversation($request))
+        ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+});
+
 it('listConversations returns paginated conversations', function (): void {
     Auth::shouldReceive('user')->andReturn($this->user);
     Auth::shouldReceive('id')->andReturn($this->user->id);
@@ -122,6 +139,33 @@ it('insertMessage sends message and returns response', function (): void {
     $response = $controller->insertMessage($request, $conversation);
 
     expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
+});
+
+it('insertMessage aborts when validated message is not a string', function (): void {
+    Auth::shouldReceive('id')->andReturn($this->user->id);
+
+    $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
+    $chatService = Mockery::mock(IChatService::class);
+
+    $request = new class extends SendMessageRequest
+    {
+        /**
+         * @return array<string, mixed>
+         */
+        #[Override]
+        public function validated($key = null, $default = null): mixed
+        {
+            return ['message' => ['not a string']];
+        }
+    };
+
+    $request->setContainer(app());
+    $request->initialize([], []);
+
+    $controller = new ChatController($chatService);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->insertMessage($request, $conversation))
+        ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
 
 it('streamMessage returns StreamedResponse and invokes on_chunk callback', function (): void {

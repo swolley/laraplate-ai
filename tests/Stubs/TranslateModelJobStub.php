@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stubs;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Override;
@@ -14,9 +15,8 @@ use Override;
  */
 class TranslateModelJobStub extends Model
 {
+    use HasFactory;
     use HasTranslations;
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
     public $id = 1;
 
@@ -26,6 +26,8 @@ class TranslateModelJobStub extends Model
     public static array $translatableFields = ['title', 'content'];
 
     public mixed $defaultTranslation = null;
+
+    public mixed $originalTranslation = null;
 
     public bool $hasTranslationResult = false;
 
@@ -45,6 +47,11 @@ class TranslateModelJobStub extends Model
     public function getTranslation(string $locale): mixed
     {
         return $this->defaultTranslation;
+    }
+
+    public function getOriginalTranslation(): mixed
+    {
+        return $this->originalTranslation;
     }
 
     public function hasTranslation(string $locale): bool

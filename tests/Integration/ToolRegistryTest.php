@@ -243,6 +243,38 @@ it('getAllNeuronToolsWithApproval wraps medium-risk tools with ActionRequest flo
         ->and($tools[0]->getResult())->toContain('pending user confirmation');
 });
 
+it('getAllNeuronToolsWithApproval reports missing authenticated user for approval tools', function (): void {
+    $this->registry->register(
+        'medium_tool',
+        fn (): string => 'done',
+        'Medium risk',
+        [],
+        'medium',
+    );
+
+    $conversation = Mockery::mock(Conversation::class);
+    $conversation->shouldReceive('getAttribute')->with('user')->andReturn(null);
+
+    $actionService = Mockery::mock(ActionRequestService::class);
+    $actionService->shouldNotReceive('createRequest');
+
+    $riskClassifier = new RiskClassifier(['medium_tool' => ['risk_level' => 'medium']]);
+    config()->set('ai.features.tools.definitions.medium_tool.risk_level', 'medium');
+
+    $pending_requests = [];
+    $tools = $this->registry->getAllNeuronToolsWithApproval(
+        $conversation,
+        $actionService,
+        $riskClassifier,
+        $pending_requests,
+    );
+
+    $tools[0]->execute();
+
+    expect($pending_requests)->toBeEmpty()
+        ->and($tools[0]->getResult())->toBe("Action 'medium_tool' requires an authenticated user.");
+});
+
 it('getAllNeuronToolsWithApproval returns high-risk pending admin approval message', function (): void {
     $this->registry->register(
         'high_tool',

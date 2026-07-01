@@ -48,3 +48,18 @@ it('forwards max_words and overlap_words to the markdown-aware splitter', functi
     expect($reflection->getProperty('overlapWords')->getValue($splitter))->toBe(0);
     expect($reflection->getProperty('prependHeadingBreadcrumb')->getValue($splitter))->toBeFalse();
 });
+
+it('resets overlap words when it is greater than or equal to max words', function (): void {
+    config()->set('ai.features.faq.splitter', [
+        'driver' => 'markdown_aware',
+        'max_words' => 80,
+        'overlap_words' => 80,
+    ]);
+
+    $splitter = SplitterFactory::make();
+
+    expect($splitter)->toBeInstanceOf(MarkdownAwareSplitter::class);
+
+    $reflection = new ReflectionObject($splitter);
+    expect($reflection->getProperty('overlapWords')->getValue($splitter))->toBe(0);
+});

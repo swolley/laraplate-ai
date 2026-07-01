@@ -59,3 +59,21 @@ it('detects empty string as no lakera credentials', function (): void {
 
     expect($reflection->invoke($service))->toBeFalse();
 });
+
+it('ignores unexpected lakera payload shape', function (): void {
+    $service = new GuardrailsService;
+    $reflection = new ReflectionMethod($service, 'assertLakeraSafe');
+
+    $reflection->invoke($service, ['unexpected' => true]);
+
+    expect(true)->toBeTrue();
+});
+
+it('ignores non-array lakera result entries', function (): void {
+    $service = new GuardrailsService;
+    $reflection = new ReflectionMethod($service, 'assertLakeraSafe');
+
+    $reflection->invoke($service, ['results' => ['invalid', ['flagged' => false]]]);
+
+    expect(true)->toBeTrue();
+});

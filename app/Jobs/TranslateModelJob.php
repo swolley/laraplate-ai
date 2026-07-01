@@ -127,10 +127,6 @@ final class TranslateModelJob implements ShouldQueue
             }
         }
 
-        if (! method_exists($model, 'getTranslation')) {
-            return null;
-        }
-
         return $model->getTranslation($default_locale);
     }
 

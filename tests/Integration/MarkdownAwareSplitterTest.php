@@ -92,6 +92,18 @@ it('keeps a markdown pipe table atomic', function (): void {
         ->toContain('| Field30 |');
 });
 
+it('flushes current prose before adding a fitting atomic block that would exceed max words', function (): void {
+    $document = new Document("one two three four\n\n```\nx\n```");
+
+    $splitter = new MarkdownAwareSplitter(maxWords: 5, overlapWords: 0, prependHeadingBreadcrumb: false);
+    $chunks = $splitter->splitDocument($document);
+    $contents = array_map(fn (Document $chunk): string => $chunk->getContent(), $chunks);
+
+    expect($contents)->toHaveCount(2)
+        ->and($contents[0])->toBe('one two three four')
+        ->and($contents[1])->toBe("```\nx\n```");
+});
+
 it('preserves atomic blocks while still splitting long prose around them', function (): void {
     $prose = str_repeat('This is a long sentence used to fill prose content. ', 60);
     $mermaid = "```mermaid\nflowchart LR\n  A --> B\n  B --> C\n```";
@@ -152,6 +164,42 @@ it('falls back to sentence-aware splitting on plain prose without markdown', fun
         $word_count = str_word_count($chunk->getContent());
         expect($word_count)->toBeLessThanOrEqual(35);
     }
+});
+
+it('flushes current prose before adding another fitting prose block that would exceed max words', function (): void {
+    $document = new Document("one two three\n\nfour five six");
+
+    $splitter = new MarkdownAwareSplitter(maxWords: 5, overlapWords: 0, prependHeadingBreadcrumb: false);
+    $chunks = $splitter->splitDocument($document);
+    $contents = array_map(fn (Document $chunk): string => $chunk->getContent(), $chunks);
+
+    expect($contents)->toBe(['one two three', 'four five six']);
+});
+
+it('omits breadcrumb prefix when headings contain no text', function (): void {
+    $document = new Document("#   \n\nBody text");
+
+    $splitter = new MarkdownAwareSplitter(maxWords: 20, overlapWords: 0, prependHeadingBreadcrumb: true);
+    $chunks = $splitter->splitDocument($document);
+
+    expect($chunks)->toHaveCount(1)
+        ->and($chunks[0]->getContent())->not->toStartWith('> Section:')
+        ->and($chunks[0]->getContent())->toContain('Body text');
+});
+
+it('splits a single oversized sentence into max word pieces after flushing current words', function (): void {
+    $document = new Document(
+        'Short sentence. Another sentence has many words that must be split into multiple smaller pieces.',
+    );
+
+    $splitter = new MarkdownAwareSplitter(maxWords: 5, overlapWords: 0, prependHeadingBreadcrumb: false);
+    $chunks = $splitter->splitDocument($document);
+    $contents = array_map(fn (Document $chunk): string => $chunk->getContent(), $chunks);
+
+    expect($contents[0])->toBe('Short sentence.')
+        ->and($contents[1])->toBe('Another sentence has many words')
+        ->and($contents[2])->toBe('that must be split into')
+        ->and($contents[3])->toBe('multiple smaller pieces.');
 });
 
 it('preserves Document metadata across all emitted chunks', function (): void {

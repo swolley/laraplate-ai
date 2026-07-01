@@ -75,6 +75,27 @@ it('passes full flag to documentationService', function (): void {
         ->and($tester->getDisplay())->toContain('3');
 });
 
+it('warns that full indexing resets the in-process memory store', function (): void {
+    Config::set('ai.features.faq.vector_store', 'memory');
+
+    $mock = Mockery::mock(DocumentationService::class);
+    $mock->shouldReceive('indexDocuments')
+        ->once()
+        ->with(null, true)
+        ->andReturn(3);
+    app()->instance(DocumentationService::class, $mock);
+
+    $command = new IndexDocumentationCommand;
+    $command->setLaravel(app());
+
+    $tester = new CommandTester($command);
+    $tester->execute(['--full' => true]);
+
+    expect($tester->getStatusCode())->toBe(IndexDocumentationCommand::SUCCESS)
+        ->and($tester->getDisplay())->toContain('Vector store driver is "memory"')
+        ->and($tester->getDisplay())->toContain('3');
+});
+
 it('returns failure on exception', function (): void {
     $mock = Mockery::mock(DocumentationService::class);
     $mock->shouldReceive('indexDocuments')

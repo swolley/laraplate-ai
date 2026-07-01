@@ -147,6 +147,36 @@ it('updateRateLimit writes to cache', function (): void {
     expect(Cache::get('ai:suggestion:rate:' . $user->id))->not->toBeNull();
 });
 
+it('resolveUserId casts numeric string keys to integers', function (): void {
+    $service = new ContextualSuggestionService;
+    $method = new ReflectionMethod($service, 'resolveUserId');
+
+    $user = new class extends User
+    {
+        public function getKey(): mixed
+        {
+            return '42';
+        }
+    };
+
+    expect($method->invoke($service, $user))->toBe(42);
+});
+
+it('resolveUserId falls back to zero for non numeric keys', function (): void {
+    $service = new ContextualSuggestionService;
+    $method = new ReflectionMethod($service, 'resolveUserId');
+
+    $user = new class extends User
+    {
+        public function getKey(): mixed
+        {
+            return ['compound'];
+        }
+    };
+
+    expect($method->invoke($service, $user))->toBe(0);
+});
+
 it('generateSuggestion calls AI and creates suggestion when not cached', function (): void {
     config()->set('ai.features.contextual_suggestions.enabled', true);
     config()->set('ai.features.contextual_suggestions.cooldown_minutes', 0);

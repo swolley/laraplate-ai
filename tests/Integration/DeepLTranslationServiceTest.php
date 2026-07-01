@@ -74,6 +74,25 @@ it('translateBatch returns empty array for empty input', function (): void {
     expect($result)->toBe([]);
 });
 
+it('parseTranslations returns empty array for unexpected payloads', function (): void {
+    $service = new DeepLTranslationService;
+    $method = new ReflectionMethod($service, 'parseTranslations');
+
+    expect($method->invoke($service, ['unexpected' => true]))->toBe([]);
+});
+
+it('parseTranslations ignores non-array translation entries', function (): void {
+    $service = new DeepLTranslationService;
+    $method = new ReflectionMethod($service, 'parseTranslations');
+
+    expect($method->invoke($service, [
+        'translations' => [
+            'invalid',
+            ['text' => 'Ciao'],
+        ],
+    ]))->toBe(['Ciao']);
+});
+
 it('uses pro API URL when key starts with fx-', function (): void {
     config()->set('core.deepl_api_key', 'fx-test-key');
 

@@ -94,3 +94,44 @@ it('registers translation for indexing when model is Searchable', function (): v
     expect($cached)->toBeInstanceOf(ModelRequiresIndexing::class)
         ->and($cached->required_pre_processing)->toContain('translation');
 });
+
+it('skips indexing cache registration when searchable model key is not scalar', function (): void {
+    Cache::spy();
+
+    $model = new class extends Model
+    {
+        use HasTranslations;
+        use Illuminate\Database\Eloquent\Factories\HasFactory;
+        use Modules\Core\Search\Traits\Searchable;
+
+        protected bool $auto_translate_enabled = true;
+
+        public function getKey(): mixed
+        {
+            return ['compound'];
+        }
+
+        public function getTable(): string
+        {
+            return 'test_searchable_translatable';
+        }
+
+        public function vectorSearchEnabled(): bool
+        {
+            return true;
+        }
+
+        protected static function getTranslationModelClass(): string
+        {
+            return TranslatableModelStubTranslation::class;
+        }
+    };
+
+    $event = new TranslatedModelSaved($model, ['it'], false);
+    $listener = new HandleModelTranslationListener();
+    $listener->handle($event);
+
+    Queue::assertPushed(TranslateModelJob::class);
+    Cache::shouldNotHaveReceived('get');
+    Cache::shouldNotHaveReceived('put');
+});

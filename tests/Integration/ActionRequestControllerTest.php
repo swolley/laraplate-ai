@@ -296,3 +296,46 @@ it('authorizeAccess aborts for unauthorized user', function (): void {
 
     expect(fn (): Illuminate\Http\JsonResponse => $controller->detail($actionRequest))->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
+
+it('list aborts when authenticated user has a non-integer id', function (): void {
+    $user = new class extends User
+    {
+        #[Override]
+        public function hasRole($roles, ?string $guard = null): bool
+        {
+            return false;
+        }
+
+        #[Override]
+        public function getAttribute($key): mixed
+        {
+            if ($key === 'id') {
+                return 'external-user-id';
+            }
+
+            return parent::getAttribute($key);
+        }
+    };
+
+    Auth::shouldReceive('user')->andReturn($user);
+
+    request()->merge(['per_page' => 20]);
+    $service = createActionRequestService();
+    app()->instance(ActionRequestService::class, $service);
+
+    $controller = new ActionRequestController($service);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->list())->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+});
+
+it('list aborts when no core user is authenticated', function (): void {
+    Auth::shouldReceive('user')->andReturn(null);
+
+    request()->merge(['per_page' => 20]);
+    $service = createActionRequestService();
+    app()->instance(ActionRequestService::class, $service);
+
+    $controller = new ActionRequestController($service);
+
+    expect(fn (): Illuminate\Http\JsonResponse => $controller->list())->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+});

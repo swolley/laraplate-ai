@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🧪 Testing
+
+- *(ai)* Streamline translation job and documentation splitter logic
+
+## [2.12.3] - 2026-06-30
+
 ### 🐛 Bug Fixes
 
 - *(config)* Update default vector store to elasticsearch and adjust index naming convention
