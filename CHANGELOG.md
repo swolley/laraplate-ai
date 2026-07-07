@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚜 Refactor
+
+- *(ai)* Enhance translation job method checks
+
+## [2.12.4] - 2026-07-01
+
 ### 🧪 Testing
 
 - *(ai)* Streamline translation job and documentation splitter logic
