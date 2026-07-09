@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Agents\DocumentationAgent;
-use Modules\AI\Services\Documentation\Chunking\MarkdownAwareSplitter;
 use Modules\AI\Services\DocumentationService;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
@@ -122,7 +121,7 @@ it('preserves a mermaid block intact when indexing markdown documentation', func
         $first = array_values($mermaid_chunks)[0];
         $content = (string) $first->getContent();
 
-        expect(substr_count($content, '```'))->toBe(2);
+        expect(mb_substr_count($content, '```'))->toBe(2);
         expect($content)->toContain('A --> B');
         expect($content)->toContain('C --> D');
     } finally {
@@ -349,4 +348,76 @@ it('answerQuestion appends citations when format_citations enabled', function ()
         ->toContain('[1] doc.md')
         ->and($result['citations'])->toHaveCount(1)
         ->and($result['citations'][0]['source'])->toBe('doc.md');
+});
+
+it('includes configured absolute paths when resolving helper roots', function (): void {
+    $rag_dir = sys_get_temp_dir() . '/ai-rag-roots-' . uniqid();
+    mkdir($rag_dir, 0755, true);
+
+    config()->set('ai.features.faq.documentation_path', $rag_dir);
+
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'helperRoots');
+    $roots = $method->invoke($service);
+
+    try {
+        expect(collect($roots)->firstWhere('path', $rag_dir))->toMatchArray([
+            'path' => $rag_dir,
+            'prefix' => 'faq-config',
+        ]);
+    } finally {
+        rmdir($rag_dir);
+    }
+});
+
+it('maps helper rag paths to stable source prefixes', function (): void {
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'prefixFromHelperPath');
+
+    expect($method->invoke($service, base_path('Modules/CMS/docs/rag')))->toBe('faq-module-CMS')
+        ->and($method->invoke($service, base_path('docs/rag')))->toBe('faq-app-rag')
+        ->and($method->invoke($service, '/tmp/custom-rag'))->toBe('faq-config');
+});
+
+it('returns zero when the splitter yields no chunks', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-docs-empty-split-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/readme.md', '# Title');
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $empty_splitter = new class implements SplitterInterface
+    {
+        public function splitDocument(Document $document): array
+        {
+            return [];
+        }
+
+        public function splitDocuments(array $documents): array
+        {
+            return [];
+        }
+    };
+
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldNotReceive('addDocuments');
+    $agent_mock->shouldNotReceive('reindexBySource');
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock, $empty_splitter);
+
+    try {
+        expect($service->indexDocuments($tmp_dir))->toBe(0);
+    } finally {
+        unlink($tmp_dir . '/readme.md');
+        rmdir($tmp_dir);
+    }
+});
+
+it('falls back to the default filesystem vector store path', function (): void {
+    config()->set('ai.features.faq.vector_store_path', null);
+
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'getFilesystemVectorStoreFilePath');
+
+    expect($method->invoke($service))->toBe(storage_path('app/ai/faq-vectorstore.store'));
 });

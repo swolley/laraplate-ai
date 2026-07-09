@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Listeners\HandleModificationModerationListener;
@@ -26,6 +27,7 @@ beforeEach(function (): void {
         'ai.features.moderation.enabled' => true,
         'ai.features.moderation.system_user_id' => $this->system_user->id,
         'ai.features.moderation.queue' => 'default',
+        'permission.users.system' => 'system',
     ]);
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
@@ -120,4 +122,100 @@ it('skips when no moderation adapter is registered for the modifiable type', fun
     app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
 
     Queue::assertNothingPushed();
+});
+
+it('skips when the system user is not configured', function (): void {
+    Queue::fake();
+    config(['permission.users.system' => '']);
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('no-system-user'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertNothingPushed();
+});
+
+it('skips inactive modifications', function (): void {
+    Queue::fake();
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => false,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('inactive'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertNothingPushed();
+});
+
+it('caches async moderation events for later correlation', function (): void {
+    Queue::fake();
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('cache-async'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    $event = new ModificationRequiresModeration($modification);
+
+    Cache::shouldReceive('put')
+        ->once()
+        ->withArgs(function (string $key, mixed $value, DateTimeInterface $ttl) use ($modification, $event): bool {
+            return $key === 'modification_moderation:' . $modification->id
+                && $value === $event;
+        });
+
+    app(HandleModificationModerationListener::class)->handle($event);
+
+    Queue::assertPushed(ApproveModificationJob::class);
+});
+
+it('does not cache sync moderation events', function (): void {
+    Queue::fake();
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('cache-sync'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    Cache::shouldReceive('put')->never();
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification, sync: true));
+
+    Queue::assertPushed(ApproveModificationJob::class);
 });

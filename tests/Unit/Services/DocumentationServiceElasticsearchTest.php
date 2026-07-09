@@ -46,3 +46,18 @@ test('create rag elasticsearch index command fails when faq is disabled', functi
         ->expectsOutputToContain('FAQ/RAG is disabled')
         ->assertExitCode(1);
 });
+
+test('documentation service reports unavailable for elasticsearch when the cluster has no documents', function (): void {
+    config()->set('ai.features.faq.enabled', true);
+    config()->set('ai.features.faq.vector_store', 'elasticsearch');
+    config()->set('ai.features.faq.elasticsearch.index', 'missing-rag-index-for-tests');
+
+    expect(app(DocumentationService::class)->isAvailable())->toBeFalse();
+});
+
+test('documentation service prefers incremental reindex on the memory driver', function (): void {
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'shouldUseIncrementalReindex');
+
+    expect($method->invoke($service, 'memory'))->toBeTrue();
+});

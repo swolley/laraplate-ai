@@ -65,3 +65,41 @@ it('does not dispatch when auto translate is disabled', function (): void {
 
     Bus::assertNothingDispatched();
 });
+
+it('does not dispatch for non-translatable models', function (): void {
+    Bus::fake();
+
+    $user = \Modules\Core\Models\User::factory()->create();
+
+    (new HandleModificationApprovedTranslationListener())->handle(
+        new ModificationApproved(new Modification(), $user),
+    );
+
+    Bus::assertNothingDispatched();
+});
+
+it('does not dispatch when the translation feature is disabled', function (): void {
+    Bus::fake();
+    config(['ai.features.translation.enabled' => false]);
+
+    Setting::factory()->persistedWithoutApprovalCapture()->create([
+        'name' => 'auto_translate_' . (new Comment())->getTable(),
+        'value' => true,
+        'type' => SettingTypeEnum::Boolean,
+        'group_name' => 'translations',
+        'description' => 'test',
+    ]);
+
+    app(PerModelSettingResolver::class)->flush();
+
+    $comment = Comment::factory()->approved()->create([
+        'content_id' => $this->content->id,
+        'user_id' => $this->user->id,
+    ]);
+
+    (new HandleModificationApprovedTranslationListener())->handle(
+        new ModificationApproved(new Modification(), $comment),
+    );
+
+    Bus::assertNothingDispatched();
+});
