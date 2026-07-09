@@ -159,7 +159,7 @@ final readonly class DocumentationService
      */
     private function helperRoots(): array
     {
-        if (! function_exists('rag_paths')) {
+        if (! $this->ragPathsFunctionExists()) {
             return [];
         }
 
@@ -175,6 +175,11 @@ final readonly class DocumentationService
         }
 
         return $roots;
+    }
+
+    protected function ragPathsFunctionExists(): bool
+    {
+        return function_exists('rag_paths');
     }
 
     private function prefixFromHelperPath(string $path): string

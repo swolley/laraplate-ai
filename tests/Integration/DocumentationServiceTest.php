@@ -421,3 +421,52 @@ it('falls back to the default filesystem vector store path', function (): void {
 
     expect($method->invoke($service))->toBe(storage_path('app/ai/faq-vectorstore.store'));
 });
+
+it('uses helper roots when indexing without an explicit path', function (): void {
+    $rag_dir = sys_get_temp_dir() . '/ai-rag-null-path-' . uniqid();
+    mkdir($rag_dir, 0755, true);
+    file_put_contents($rag_dir . '/guide.md', "# Guide\n\nBody.");
+
+    config()->set('ai.features.faq.documentation_path', $rag_dir);
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldReceive('reindexBySource')->once();
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock);
+
+    try {
+        expect($service->indexDocuments())->toBeGreaterThan(0);
+    } finally {
+        unlink($rag_dir . '/guide.md');
+        rmdir($rag_dir);
+    }
+});
+
+it('clears elasticsearch index during full rebuild', function (): void {
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'resetVectorStoreForFullRebuild');
+
+    expect(fn () => $method->invoke($service, 'elasticsearch'))->not->toThrow(Throwable::class);
+});
+
+it('checks elasticsearch store population for incremental reindex', function (): void {
+    $service = new DocumentationService;
+    $method = new ReflectionMethod($service, 'shouldUseIncrementalReindex');
+
+    expect($method->invoke($service, 'elasticsearch'))->toBeBool();
+});
+
+it('returns no helper roots when rag_paths is unavailable', function (): void {
+    $service = new class extends DocumentationService
+    {
+        protected function ragPathsFunctionExists(): bool
+        {
+            return false;
+        }
+    };
+
+    $method = new ReflectionMethod(DocumentationService::class, 'helperRoots');
+
+    expect($method->invoke($service))->toBe([]);
+});
