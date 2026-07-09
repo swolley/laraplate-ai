@@ -108,10 +108,18 @@ AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarizati
 
 # FAQ/RAG Configuration
 AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
-AI_FAQ_DOCS_PATH=                    # Optional extra documentation root (default scan: docs/rag + active Modules/*/docs/rag; see docs/README.md)
-AI_FAQ_VECTOR_STORE=filesystem       # Vector store type (memory, filesystem)
-AI_FAQ_MAX_DOCS=5                    # Max documents to retrieve
-AI_FAQ_MIN_SIMILARITY=0.7            # Minimum similarity score
+AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/newline); see docs/README.md and rag_paths()
+AI_FAQ_VECTOR_STORE=filesystem       # Vector store: memory (tests), filesystem, elasticsearch (multi-instance)
+AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
+AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
+AI_FAQ_ES_EMBEDDING_DIMS=384         # Must match your embeddings model dimensionality
+AI_FAQ_MAX_DOCS=5                    # Max chunks retrieved per question
+AI_FAQ_MIN_SIMILARITY=0.7            # Minimum similarity score (where applicable)
+AI_FAQ_FORMAT_CITATIONS=true         # Append source list to RAG answers
+AI_FAQ_SPLITTER=markdown_aware       # Chunking: markdown_aware, sentence, delimiter
+AI_FAQ_SPLITTER_MAX_WORDS=250
+AI_FAQ_SPLITTER_OVERLAP=0
+AI_FAQ_QUESTION_DETECTION=true       # Route question-like chat messages through RAG when index is available
 
 # Tools Configuration
 AI_TOOLS_ENABLED=true                # Enable tool/function calling
@@ -188,12 +196,17 @@ The AI Module includes built-in features such as:
     - System message customization per conversation
 
 -   **FAQ/RAG (Retrieval-Augmented Generation):**
-    - Documentation indexing with embeddings
-    - Vector similarity search for relevant context
-    - Automatic question detection (locale-aware)
-    - Citations in responses with source attribution
-    - Commands: `php artisan ai:index-docs`, `php artisan ai:create-rag-es-index`
-    - **Production multi-instance:** set `AI_FAQ_VECTOR_STORE=elasticsearch`, create the index with `ai:create-rag-es-index`, align `AI_FAQ_ES_EMBEDDING_DIMS` with your embeddings model, then index docs once from any replica or CI. See `Modules/AI/docs/rag/DEPLOYMENT.md`.
+    - Answers from a **documentation corpus** indexed under `docs/rag/` and `Modules/*/docs/rag/` (not from general `docs/` unless copied into `rag/`)
+    - **Two audiences, two entry points** (same indexed corpus today; write docs for the right reader):
+        - **End users** — in-app chat (`ChatService`): help using the application (workflows, screens, permissions). RAG runs when enabled and the message looks like a question, or when `use_rag: true` is passed in context.
+        - **Developers** — terminal assistant: `php artisan ai:laraplate-help` (interactive REPL or `--question="..."` one-shot). Same RAG stack; intended for contributors extending Laraplate/modules.
+    - Citations with source attribution in answers
+    - **Commands:**
+        - `php artisan ai:index-docs` — build or update the vector store (`--path=`, `--full`)
+        - `php artisan ai:create-rag-es-index` — create Elasticsearch index when using `AI_FAQ_VECTOR_STORE=elasticsearch`
+        - `php artisan ai:laraplate-help` — developer documentation assistant in the terminal
+    - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
+    - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
 
 -   **Tool/Function Calling:**
     - Register custom tools with `ToolRegistry`
@@ -237,7 +250,10 @@ Core is the **event bus**; this module registers AI listeners and jobs. Full dia
 | **Overview** (indexing + moderation, comparison, extension) | [Modules/Core/docs/EVENT_ORCHESTRATION.md](../Core/docs/EVENT_ORCHESTRATION.md) |
 | **Embeddings, Elasticsearch, translations** | [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md) |
 | **Modification moderation (AI vote)** | [docs/MODERATION.md](docs/MODERATION.md) |
-| Chat, RAG, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Chat, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| **RAG corpus conventions** (what to put in `docs/rag/`) | [docs/rag/README.md](../../docs/rag/README.md) |
+| **RAG implementation** (pipeline, agents, stores) | [docs/rag/MODULE.md](docs/rag/MODULE.md) |
+| **RAG deployment** (filesystem vs Elasticsearch, multi-instance) | [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md) |
 
 ```mermaid
 flowchart LR
