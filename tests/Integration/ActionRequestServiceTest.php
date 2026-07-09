@@ -290,10 +290,14 @@ it('runToolHandler passes non-array args to handler as single argument', functio
     $request = ActionRequest::query()->create([
         'user_id' => $user->id,
         'tool_name' => 'test',
-        'tool_args' => 'single_arg',
+        'tool_args' => [],
         'risk_level' => 'low',
         'status' => 'approved',
     ]);
+    // Legacy rows may store a JSON-encoded scalar instead of an object/array.
+    $request->setRawAttributes(array_merge($request->getAttributes(), [
+        'tool_args' => json_encode('single_arg'),
+    ]));
 
     $result = $service->runToolHandler($request);
 

@@ -27,6 +27,7 @@ use Override;
  * @property \Illuminate\Support\Carbon|null $executed_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ *
  * @mixin \Eloquent
  * @mixin IdeHelperActionRequest
  */
@@ -65,8 +66,7 @@ final class ActionRequest extends Model
         $rules['create'] = array_merge($rules['create'], [
             'user_id' => ['required', 'exists:' . CoreTables::Users->value . ',id'],
             'tool_name' => ['required', 'string', 'max:255'],
-            // Validated from raw attributes: array-cast columns are JSON strings before insert.
-            'tool_args' => ['required', 'json'],
+            'tool_args' => ['present', 'array'],
             'risk_level' => ['required', 'string', 'max:255'],
         ]);
 

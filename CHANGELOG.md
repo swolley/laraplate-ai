@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 📚 Documentation
+
+- *(ai)* Clarify RAG audiences and FAQ configuration in README
+
+## [2.12.5] - 2026-07-07
+
 ### 🚜 Refactor
 
 - *(ai)* Enhance translation job method checks

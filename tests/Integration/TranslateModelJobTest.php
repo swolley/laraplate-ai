@@ -155,3 +155,16 @@ it('translates components recursively', function (): void {
         ->and($model->setTranslationCalls[0]['locale'])->toBe('it')
         ->and($model->setTranslationCalls[0]['data'])->toBe(['components' => ['block' => ['title' => 'Titolo Blocco']]]);
 });
+
+it('cannot resolve source translation when the model exposes no translation API', function (): void {
+    $model = new class extends Model
+    {
+        protected $table = 'test';
+    };
+
+    $job = new TranslateModelJob($model, [], false);
+    $method = new ReflectionMethod(TranslateModelJob::class, 'resolveSourceTranslation');
+    $method->setAccessible(true);
+
+    expect($method->invoke($job, $model, 'en'))->toBeNull();
+});
