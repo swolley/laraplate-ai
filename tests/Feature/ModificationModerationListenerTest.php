@@ -219,3 +219,123 @@ it('does not cache sync moderation events', function (): void {
 
     Queue::assertPushed(ApproveModificationJob::class);
 });
+
+it('evaluates moderation support from a loaded modifiable model', function (): void {
+    Queue::fake();
+
+    $content = createMinimalTestContentForComments();
+    $comment = Comment::factory()->approved()->create([
+        'content_id' => $content->id,
+        'user_id' => $this->system_user->id,
+    ]);
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => $comment->id,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('loaded-modifiable'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+    $modification->setRelation('modifiable', $comment);
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertPushed(ApproveModificationJob::class);
+});
+
+it('skips when the modifiable class does not exist', function (): void {
+    Queue::fake();
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => 'App\\Models\\DoesNotExist',
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('missing-class'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertNothingPushed();
+});
+
+it('skips when the modifiable class is not an eloquent model', function (): void {
+    $listener = app(HandleModificationModerationListener::class);
+    $method = new ReflectionMethod($listener, 'modifiableSupportsAiModeration');
+
+    $modification = Mockery::mock(Modification::class);
+    $modification->shouldReceive('getAttribute')->andReturnUsing(
+        static fn (string $key): mixed => match ($key) {
+            'modifiable' => null,
+            'modifiable_type' => Illuminate\Support\Collection::class,
+            default => null,
+        },
+    );
+
+    expect($method->invoke($listener, $modification))->toBeFalse();
+});
+
+it('skips when the modifiable model does not use approval workflows', function (): void {
+    Queue::fake();
+
+    $registry = Mockery::mock(ModerationAdapterRegistry::class);
+    $registry->shouldReceive('supports')->andReturn(true);
+    app()->instance(ModerationAdapterRegistry::class, $registry);
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => User::class,
+        'modifiable_id' => $this->system_user->id,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('no-approvals'),
+        'modifications' => ['name' => ['original' => 'a', 'modified' => 'b']],
+    ]);
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertNothingPushed();
+
+    app()->forgetInstance(ModerationAdapterRegistry::class);
+    app(ModerationAdapterRegistry::class)->register(app(CommentModerationAdapter::class));
+});
+
+it('does not cache events when the modification has no cacheable key', function (): void {
+    Queue::fake();
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'is_update' => false,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('no-cache-key'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    $modification = Mockery::mock($modification)->makePartial();
+    $modification->shouldReceive('getKey')->andReturn(null);
+
+    Cache::spy();
+
+    app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
+
+    Cache::shouldNotHaveReceived('put');
+    Queue::assertPushed(ApproveModificationJob::class);
+});

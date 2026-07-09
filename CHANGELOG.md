@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚜 Refactor
+
+- *(ai)* Improve helper roots logic and add tests for indexing behavior
+
+### 🧪 Testing
+
+- *(ai)* Enhance moderation listener tests and add caching logic
+- *(ai)* Add ApproveModificationJob and LaraplateHelp coverage
+
+## [2.12.6] - 2026-07-09
+
 ### 📚 Documentation
 
 - *(ai)* Clarify RAG audiences and FAQ configuration in README

@@ -27,7 +27,6 @@ use Override;
  * @property \Illuminate\Support\Carbon|null $executed_at
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
- *
  * @mixin \Eloquent
  * @mixin IdeHelperActionRequest
  */
