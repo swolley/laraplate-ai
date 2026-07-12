@@ -4,23 +4,23 @@ declare(strict_types=1);
 
 namespace Modules\AI\Console;
 
+use function ai_config_bool;
+use function ai_config_int;
+use function ai_config_string;
+
 use Illuminate\Console\Command;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\Core\Services\ElasticsearchService;
 use Override;
 use Throwable;
 
-use function ai_config_bool;
-use function ai_config_int;
-use function ai_config_string;
-
 final class CreateRagElasticsearchIndexCommand extends Command
 {
     #[Override]
-    protected $signature = 'ai:create-rag-es-index';
+    protected $signature = 'ai:create-rag-index';
 
     #[Override]
-    protected $description = 'Create or update the Elasticsearch index for documentation RAG <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
+    protected $description = 'Create or update the RAG index for documentation <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
 
     public function handle(): int
     {

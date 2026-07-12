@@ -4,22 +4,25 @@ declare(strict_types=1);
 
 namespace Modules\AI\Console;
 
+use function ai_config_bool;
+
 use Exception;
 use Illuminate\Console\Command;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
-use function ai_config_bool;
-
 final class LaraplateHelpCommand extends Command
 {
     #[Override]
-    protected $signature = 'ai:laraplate-help
+    protected $signature = 'ai:help
                             {--question= : Ask a single question and exit}';
 
     #[Override]
-    protected $description = 'Open a terminal RAG assistant for Laraplate documentation (interactive REPL or one-shot with --question). <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Open a terminal RAG assistant for application documentation. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
+    /**
+     * Open a terminal RAG assistant for Laraplate documentation (interactive REPL or one-shot with --question).
+     */
     public function handle(DocumentationService $documentationService): int
     {
         if (! ai_config_bool('ai.features.faq.enabled', true)) {

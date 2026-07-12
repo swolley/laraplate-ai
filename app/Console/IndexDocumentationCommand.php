@@ -4,24 +4,28 @@ declare(strict_types=1);
 
 namespace Modules\AI\Console;
 
+use function ai_config_bool;
+use function ai_config_string;
+
 use Exception;
 use Illuminate\Console\Command;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
-use function ai_config_bool;
-use function ai_config_string;
-
 final class IndexDocumentationCommand extends Command
 {
     #[Override]
-    protected $signature = 'ai:index-docs
+    protected $signature = 'ai:index-rag-docs
                             {--path= : Scan only this file or directory (omit to index roots returned by rag_paths())}
                             {--full : Delete the vector store first, then rebuild from the selected documentation}';
 
     #[Override]
-    protected $description = 'Index documentation for FAQ/RAG: when --path is omitted, roots come from rag_paths(). Incremental runs use reindex-by-source to avoid duplicate chunks unless --full is passed. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Index documentation for FAQ/RAG. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
+    /**
+     * Index documentation for FAQ/RAG
+     * when --path is omitted, roots come from rag_paths(). Incremental runs use reindex-by-source to avoid duplicate chunks unless --full is passed.
+     */
     public function handle(DocumentationService $documentationService): int
     {
         if (! ai_config_bool('ai.features.faq.enabled', true)) {
