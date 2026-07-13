@@ -14,7 +14,8 @@ use Symfony\Component\Console\Tester\CommandTester;
  */
 function translate_missing_command_with_models(array $model_list): TranslateMissingCommand
 {
-    $resolver = new class ($model_list) implements ITranslatableModelClassNames {
+    $resolver = new class($model_list) implements ITranslatableModelClassNames
+    {
         public function __construct(private readonly array $model_list) {}
 
         /**
@@ -31,6 +32,13 @@ function translate_missing_command_with_models(array $model_list): TranslateMiss
 
 beforeEach(function (): void {
     Queue::fake();
+});
+
+it('streams missing translation command models instead of loading each locale fully', function (): void {
+    $source = file_get_contents(base_path('Modules/AI/app/Console/TranslateMissingCommand.php'));
+
+    expect($source)->toContain('->lazyById(')
+        ->and($source)->not->toContain('$missing = $query->get();');
 });
 
 it('returns failure when model type not found', function (): void {

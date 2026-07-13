@@ -8,6 +8,13 @@ use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 
+it('indexes documentation chunks in bounded batches', function (): void {
+    $source = file_get_contents(base_path('Modules/AI/app/Services/DocumentationService.php'));
+
+    expect($source)->toContain('array_chunk($split_documents, 100)')
+        ->and($source)->not->toContain('$agent->addDocuments($split_documents);');
+});
+
 it('indexDocuments returns 0 for invalid path', function (): void {
     $service = new DocumentationService;
 
@@ -431,7 +438,10 @@ it('uses helper roots when indexing without an explicit path', function (): void
     config()->set('ai.features.faq.vector_store', 'memory');
 
     $agent_mock = Mockery::mock(DocumentationAgent::class);
-    $agent_mock->shouldReceive('reindexBySource')->once();
+    $agent_mock->shouldReceive('reindexBySource')
+        ->with(Mockery::on(static fn (array $docs): bool => count($docs) > 0 && count($docs) <= 100))
+        ->atLeast()
+        ->once();
 
     $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock);
 

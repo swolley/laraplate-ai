@@ -86,8 +86,7 @@ final class TranslateContentCommand extends Command
             $query->where('id', $model_id);
         }
 
-        $models = $query->get();
-        $count = $models->count();
+        $count = (clone $query)->count();
 
         if ($count === 0) {
             $this->warn('No models found to translate');
@@ -100,7 +99,9 @@ final class TranslateContentCommand extends Command
         $bar = $this->output->createProgressBar($count);
         $bar->start();
 
-        foreach ($models as $model) {
+        $key_name = $model_class::query()->getModel()->getKeyName();
+
+        foreach ($query->lazyById(100, $key_name) as $model) {
             if ($sync) {
                 // Run synchronously
                 $job = new TranslateModelJob($model, $locales, $force);

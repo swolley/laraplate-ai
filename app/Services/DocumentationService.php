@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_bool;
+use function ai_config_int;
+use function ai_config_string;
+
 use Closure;
 use Illuminate\Support\Str;
 use Modules\AI\Ai\Agents\DocumentationAgent;
@@ -13,10 +17,6 @@ use Modules\AI\Services\Documentation\FileDocumentReader;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Splitter\SplitterInterface;
-
-use function ai_config_bool;
-use function ai_config_int;
-use function ai_config_string;
 
 final readonly class DocumentationService
 {
@@ -151,7 +151,7 @@ final readonly class DocumentationService
     {
         $resolved = realpath($path);
 
-        return 'faq-cli-' . substr(hash('sha256', $resolved !== false ? $resolved : $path), 0, 16);
+        return 'faq-cli-' . mb_substr(hash('sha256', $resolved !== false ? $resolved : $path), 0, 16);
     }
 
     /**
@@ -235,10 +235,14 @@ final readonly class DocumentationService
         /** @var DocumentationAgent $agent */
         $agent = $factory();
 
-        if ($use_incremental_reindex) {
-            $agent->reindexBySource($split_documents);
-        } else {
-            $agent->addDocuments($split_documents);
+        foreach (array_chunk($split_documents, 100) as $batch) {
+            if ($use_incremental_reindex) {
+                $agent->reindexBySource($batch);
+
+                continue;
+            }
+
+            $agent->addDocuments($batch);
         }
 
         return count($split_documents);

@@ -81,6 +81,7 @@ final class TranslateMissingCommand extends Command
         $this->info('Finding models with missing translations...');
 
         $models_to_translate = [];
+        $key_name = $model_class::query()->getModel()->getKeyName();
 
         foreach ($locales_to_check as $check_locale) {
             $query = $model_class::query()
@@ -91,9 +92,7 @@ final class TranslateMissingCommand extends Command
                     $q->whereRaw('locale = ?', [$check_locale]);
                 });
 
-            $missing = $query->get();
-
-            foreach ($missing as $model) {
+            foreach ($query->lazyById(100, $key_name) as $model) {
                 if (! isset($models_to_translate[$model->id])) {
                     $models_to_translate[$model->id] = [
                         'model' => $model,

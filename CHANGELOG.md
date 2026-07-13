@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### 🚜 Refactor
 
+- *(ai)* Update command signatures and descriptions for clarity
+- *(ai)* Optimize translation commands for efficiency
+
+## [2.12.7] - 2026-07-09
+
+### 🚜 Refactor
+
 - *(ai)* Improve helper roots logic and add tests for indexing behavior
 
 ### 🧪 Testing
