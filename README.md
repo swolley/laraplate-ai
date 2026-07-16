@@ -381,9 +381,14 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Provider abstraction layer improvements
 
 - [ ] **Advanced RAG Features**
-  - Multi-document source types (database, API)
-  - Hybrid search (keyword + vector)
-  - Re-ranking with cross-encoder
+  - Build and version an evaluation dataset before changing retrieval defaults
+  - Add stable audience/module/locale/source metadata and retrieval scoping
+  - Evaluate hybrid search (keyword + vector) against the vector baseline
+  - Evaluate cross-encoder reranking on a bounded candidate set
+  - Consider graph retrieval only for measured residual multi-hop failures; Graphify/GraphRAG are not selected dependencies and graph remains optional and disabled by default
+  - Multi-document source types (database, API) require separate ingestion specs
+
+The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-16-rag-retrieval-strategy-design.md`; its phased plan is `docs/superpowers/plans/2026-07-16-rag-retrieval-strategy.md`. The Graph Explorer UI is unrelated to documentation RAG storage and retrieval.
 
 ### Completed Features
 

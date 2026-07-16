@@ -90,6 +90,17 @@ flowchart LR
 - Returns normalized output with answer + structured citations.
 - Can append formatted citation section in final answer.
 
+#### Retrieval strategy decision
+
+The required baseline is curated **vector documentation RAG**. Elasticsearch kNN is the recommended production retrieval path; filesystem remains a simple single-instance option and memory is test-only. Laraplate does not currently depend on Graphify, GraphRAG, or a graph database.
+
+Retrieval evolves only through measured stages: evaluation dataset, metadata/scoping, optional hybrid lexical + vector retrieval, optional reranking, and only then an evidence-gated graph spike for residual multi-hop failures. A future graph retriever must remain optional, disabled by default, preserve canonical document citations, and fall back to the non-graph path. The UI Graph Explorer is a separate product capability and is not the RAG knowledge graph.
+
+The authoritative design and implementation roadmap are:
+
+- `docs/superpowers/specs/2026-07-16-rag-retrieval-strategy-design.md`
+- `docs/superpowers/plans/2026-07-16-rag-retrieval-strategy.md`
+
 #### RAG question answering flow
 
 `answerQuestion()` instantiates `DocumentationAgent::make()` with `topK` from `ai.features.faq.max_documents`. The agent runs Neuron RAG retrieval over the vector store, then the LLM produces the assistant message. If the message exposes `getCitations()`, each citation is mapped to `source`, `excerpt`, and `score`. When `ai.features.faq.format_citations` is true, a markdown **Sources** block is appended to the answer string returned to callers.
@@ -202,6 +213,8 @@ Important groups include:
 - `ai.features.guardrails.*` for prompt-injection and input hardening behavior.
 - `ai.features.search_orchestration.*` for AI-driven search planner/reranking bindings.
 - `AI_FAQ_DOCS_PATH` / `ai.features.faq.documentation_path` for extra documentation roots.
+
+The current retrieval strategy is vector similarity. Do not document `graph` as a configuration value unless a separate graph spike spec passes the adoption gate and is explicitly approved.
 
 #### Service container bindings relevant to RAG
 
