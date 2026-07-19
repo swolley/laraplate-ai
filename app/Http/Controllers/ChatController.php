@@ -15,6 +15,7 @@ use Modules\AI\Http\Requests\ListMessagesRequest;
 use Modules\AI\Http\Requests\SendMessageRequest;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\Conversation;
+use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\Core\Helpers\ResponseBuilder;
 use Modules\Core\Models\User;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -23,6 +24,7 @@ final class ChatController extends Controller
 {
     public function __construct(
         private readonly IChatService $chatService,
+        private readonly AssistantAccessContextFactory $assistantAccessContextFactory,
     ) {}
 
     /**
@@ -35,7 +37,6 @@ final class ChatController extends Controller
         $conversation = $this->chatService->createConversation(
             user: $this->authenticatedUser(),
             title: $this->optionalString($validated, 'title'),
-            systemMessage: $this->optionalString($validated, 'system_message'),
             metadata: $this->optionalArray($validated, 'metadata'),
         );
 
@@ -167,7 +168,7 @@ final class ChatController extends Controller
      */
     public function insertMessage(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
-        $this->authorizeConversationAccess($conversation);
+        $this->authorizeInAppAssistantAccess($conversation);
 
         $validated = $request->validated();
 
@@ -195,7 +196,7 @@ final class ChatController extends Controller
      */
     public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
-        $this->authorizeConversationAccess($conversation);
+        $this->authorizeInAppAssistantAccess($conversation);
 
         $validated = $request->validated();
 
@@ -238,6 +239,14 @@ final class ChatController extends Controller
     private function authorizeConversationAccess(Conversation $conversation): void
     {
         abort_if($conversation->user_id !== Auth::id(), Response::HTTP_FORBIDDEN, 'You do not have access to this conversation.');
+    }
+
+    private function authorizeInAppAssistantAccess(Conversation $conversation): void
+    {
+        $this->assistantAccessContextFactory->forInApp(
+            conversation: $conversation,
+            authenticated_user: $this->authenticatedUser(),
+        );
     }
 
     private function authenticatedUser(): User

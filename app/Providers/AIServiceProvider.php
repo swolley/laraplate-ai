@@ -15,6 +15,8 @@ use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
+use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
+use Modules\AI\Services\Assistance\GlobalAssistantTenantResolver;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
@@ -39,6 +41,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
+        $this->app->singleton(AssistantTenantResolverInterface::class, GlobalAssistantTenantResolver::class);
 
         $this->app->bind(SplitterInterface::class, static fn (): SplitterInterface => SplitterFactory::make());
     }

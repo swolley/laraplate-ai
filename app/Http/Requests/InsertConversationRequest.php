@@ -4,19 +4,36 @@ declare(strict_types=1);
 
 namespace Modules\AI\Http\Requests;
 
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\AI\Services\Assistance\AssistantControlPlaneData;
 
 class InsertConversationRequest extends FormRequest
 {
     /**
-     * @return array<string, array<int, string>>
+     * @return array<string, list<string|Closure>>
      */
     public function rules(): array
     {
         return [
             'title' => ['nullable', 'string', 'max:255'], // conversation title
-            'system_message' => ['nullable', 'string'], // system message
-            'metadata' => ['nullable', 'array'], // additional context data
+            'system_message' => ['prohibited'],
+            'system_prompt' => ['prohibited'],
+            'profile' => ['prohibited'],
+            'user_id' => ['prohibited'],
+            'tenant_id' => ['prohibited'],
+            'permissions' => ['prohibited'],
+            'roles' => ['prohibited'],
+            'tools' => ['prohibited'],
+            'metadata' => [
+                'nullable',
+                'array',
+                static function (string $attribute, mixed $value, Closure $fail): void {
+                    if (is_array($value) && AssistantControlPlaneData::containsForbiddenKey($value)) {
+                        $fail('The metadata contains a prohibited assistant control field.');
+                    }
+                },
+            ],
         ];
     }
 
