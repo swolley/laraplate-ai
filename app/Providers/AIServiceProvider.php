@@ -20,6 +20,8 @@ use Modules\AI\Services\Assistance\GlobalAssistantTenantResolver;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
+use Modules\AI\Services\Tools\ContextualToolProviderInterface;
+use Modules\AI\Services\Tools\GraphToolProvider;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
@@ -44,6 +46,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
+        $this->app->bind(ContextualToolProviderInterface::class, GraphToolProvider::class);
         $this->app->singleton(AssistantTenantResolverInterface::class, GlobalAssistantTenantResolver::class);
         $this->app->singleton(
             AssistanceGuardrailPipeline::class,

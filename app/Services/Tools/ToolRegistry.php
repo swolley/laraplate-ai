@@ -7,12 +7,12 @@ namespace Modules\AI\Services\Tools;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\ActionRequestService;
+use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\Core\Models\User;
 use NeuronAI\Tools\PropertyType;
 
 use function ai_config_nullable_string;
 use NeuronAI\Tools\Tool;
-use NeuronAI\Tools\ToolProperty;
 
 /**
  * Registry for AI tools that can be called by LLM.
@@ -30,7 +30,7 @@ final class ToolRegistry
     /**
      * Register a tool with its handler.
      *
-     * @param  array{name: string, type: string, description: string, required?: bool}[]  $parameters
+     * @param  array{name: string, type: string, description: string, required?: bool, enum?: list<mixed>, minimum?: int|float, maximum?: int|float, minLength?: int, maxLength?: int, minItems?: int, maxItems?: int, items?: array<string, mixed>}[]  $parameters
      * @param  callable(mixed ...$args): mixed  $handler
      */
     public function register(
@@ -65,6 +65,21 @@ final class ToolRegistry
     public function hasTools(): bool
     {
         return $this->tools !== [];
+    }
+
+    /**
+     * Build request-local tools without adding them to the global action registry.
+     *
+     * @return list<Tool>
+     */
+    public function getContextualNeuronTools(
+        ContextualToolProviderInterface $provider,
+        AssistantAccessContext $context,
+    ): array {
+        return array_map(
+            fn (ToolDefinition $definition): Tool => $this->buildNeuronTool($definition),
+            $provider->tools($context),
+        );
     }
 
     /**
@@ -170,11 +185,21 @@ final class ToolRegistry
 
         foreach ($definition->parameters as $param) {
             $tool->addProperty(
-                new ToolProperty(
+                new SchemaToolProperty(
                     name: $param['name'],
                     type: $this->mapPropertyType($param['type']),
                     description: $param['description'],
                     required: $param['required'] ?? true,
+                    enum: $param['enum'] ?? [],
+                    constraints: array_intersect_key($param, array_flip([
+                        'minimum',
+                        'maximum',
+                        'minLength',
+                        'maxLength',
+                        'minItems',
+                        'maxItems',
+                        'items',
+                    ])),
                 ),
             );
         }
