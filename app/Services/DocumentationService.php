@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
+use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
+use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use Modules\AI\Services\Documentation\FileDocumentReader;
@@ -28,6 +30,7 @@ final readonly class DocumentationService
     public function __construct(
         private ?Closure $agentFactory = null,
         private ?SplitterInterface $splitter = null,
+        private ?InAppDocumentationRetrieval $in_app_retrieval = null,
     ) {}
 
     /**
@@ -81,6 +84,18 @@ final readonly class DocumentationService
             'answer' => $formatted_answer,
             'citations' => $citations,
         ];
+    }
+
+    /**
+     * Retrieve permission- and tenant-scoped documentation for in-app orchestration.
+     *
+     * @return list<Document>
+     */
+    public function retrieveForInApp(string $question, AssistantAccessContext $access): array
+    {
+        $retrieval = $this->in_app_retrieval ?? app(InAppDocumentationRetrieval::class);
+
+        return $retrieval->retrieve($question, $access);
     }
 
     /**
@@ -221,6 +236,16 @@ final readonly class DocumentationService
             $documents,
             static fn (Document $document): bool => $audience_policy->allows($document, $profile),
         ));
+
+        if ($profile === DocumentationIndexProfile::User) {
+            foreach ($documents as $document) {
+                $document->metadata['permissions_metadata_validated'] = true;
+                $document->metadata['required_permissions_count'] = count(
+                    $document->metadata['required_permissions'],
+                );
+            }
+        }
+
         $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
 
         if ($fullRebuild) {

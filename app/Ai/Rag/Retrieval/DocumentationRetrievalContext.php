@@ -1,0 +1,127 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\AI\Ai\Rag\Retrieval;
+
+use function ai_config_int;
+
+use Illuminate\Auth\Access\AuthorizationException;
+use InvalidArgumentException;
+use Modules\AI\Enums\AssistantProfile;
+use Modules\AI\Enums\AssistantTenantScope;
+use Modules\AI\Services\Assistance\AssistantAccessContext;
+
+final readonly class DocumentationRetrievalContext
+{
+    /**
+     * @param list<string> $effectivePermissions
+     */
+    private function __construct(
+        public AssistantTenantScope $tenantScope,
+        public ?string $tenantId,
+        public string $locale,
+        public array $effectivePermissions,
+        public int $topK,
+    ) {
+        if ($topK < 1 || $topK > 10) {
+            throw new InvalidArgumentException('In-app documentation retrieval topK must be between 1 and 10.');
+        }
+    }
+
+    /**
+     * @throws AuthorizationException
+     */
+    public static function fromAccessContext(AssistantAccessContext $access): self
+    {
+        if ($access->profile !== AssistantProfile::InAppAssistance || $access->tenantScope === null) {
+            throw new AuthorizationException('In-app documentation retrieval context is unavailable.');
+        }
+
+        $permissions = array_values(array_unique($access->effectivePermissions));
+        sort($permissions, SORT_STRING);
+
+        return new self(
+            tenantScope: $access->tenantScope,
+            tenantId: $access->tenantId,
+            locale: $access->locale,
+            effectivePermissions: $permissions,
+            topK: min(max(ai_config_int('ai.features.faq.max_documents', 5), 1), 10),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function elasticsearchFilter(string $classificationVersion): array
+    {
+        if (trim($classificationVersion) === '') {
+            throw new InvalidArgumentException('Documentation classification version cannot be blank.');
+        }
+
+        return [
+            'bool' => [
+                'filter' => [
+                    ['terms' => ['metadata.audience' => ['user', 'shared']]],
+                    ['term' => ['metadata.locale' => $this->locale]],
+                    ['term' => ['metadata.policy_classification' => 'user_safe']],
+                    ['term' => ['metadata.policy_classification_version' => $classificationVersion]],
+                    ['term' => ['metadata.permissions_metadata_validated' => true]],
+                    $this->tenantFilter(),
+                    $this->permissionFilter(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function tenantFilter(): array
+    {
+        if ($this->tenantScope === AssistantTenantScope::Global) {
+            return ['term' => ['metadata.tenant_scope' => 'global']];
+        }
+
+        return [
+            'bool' => [
+                'should' => [
+                    ['term' => ['metadata.tenant_scope' => 'global']],
+                    [
+                        'bool' => [
+                            'filter' => [
+                                ['term' => ['metadata.tenant_scope' => 'tenant']],
+                                ['term' => ['metadata.tenant_id' => $this->tenantId]],
+                            ],
+                        ],
+                    ],
+                ],
+                'minimum_should_match' => 1,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function permissionFilter(): array
+    {
+        $should = [
+            ['term' => ['metadata.required_permissions_count' => 0]],
+        ];
+
+        if ($this->effectivePermissions !== []) {
+            $should[] = [
+                'terms_set' => [
+                    'metadata.required_permissions' => [
+                        'terms' => $this->effectivePermissions,
+                        'minimum_should_match_field' => 'metadata.required_permissions_count',
+                    ],
+                ],
+            ];
+        }
+
+        return [
+            'bool' => [
+                'should' => $should,
+                'minimum_should_match' => 1,
+            ],
+        ];
+    }
+}

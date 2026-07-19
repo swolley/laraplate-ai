@@ -36,6 +36,8 @@ test('index mappings include dense vector with configured dimensions', function 
             'canonical_source',
             'safe_source_label',
             'required_permissions',
+            'permissions_metadata_validated',
+            'required_permissions_count',
             'tenant_scope',
             'tenant_id',
             'version',

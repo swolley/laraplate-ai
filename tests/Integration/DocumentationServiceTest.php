@@ -66,7 +66,9 @@ MARKDOWN);
         ->with(Mockery::on(function (array $documents): bool {
             return count($documents) === 1
                 && $documents[0]->metadata['audience'] === 'user'
-                && $documents[0]->metadata['canonical_source'] === 'cms/content/editing';
+                && $documents[0]->metadata['canonical_source'] === 'cms/content/editing'
+                && $documents[0]->metadata['permissions_metadata_validated'] === true
+                && $documents[0]->metadata['required_permissions_count'] === 0;
         }));
 
     $service = new DocumentationService(fn () => $agent_mock);

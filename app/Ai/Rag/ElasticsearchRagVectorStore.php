@@ -10,6 +10,7 @@ use Elastic\Elasticsearch\Exception\ServerResponseException;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Modules\Core\Services\ElasticsearchService;
+use Modules\AI\Ai\Rag\Retrieval\DocumentationRetrievalContext;
 use NeuronAI\Exceptions\VectorStoreException;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\VectorStore\VectorStoreInterface;
@@ -74,6 +75,8 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
                         'canonical_source' => ['type' => 'keyword'],
                         'safe_source_label' => ['type' => 'keyword'],
                         'required_permissions' => ['type' => 'keyword'],
+                        'permissions_metadata_validated' => ['type' => 'boolean'],
+                        'required_permissions_count' => ['type' => 'integer'],
                         'tenant_scope' => ['type' => 'keyword'],
                         'tenant_id' => ['type' => 'keyword'],
                         'version' => ['type' => 'keyword'],
@@ -231,19 +234,55 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
      */
     public function similaritySearch(array $embedding): array
     {
+        return $this->search($embedding);
+    }
+
+    /**
+     * @param float[] $embedding
+     * @return Document[]
+     */
+    public function similaritySearchForContext(
+        array $embedding,
+        DocumentationRetrievalContext $context,
+    ): array
+    {
+        if ($this->indexProfile !== DocumentationIndexProfile::User) {
+            throw new InvalidArgumentException('Scoped in-app retrieval requires the user documentation index.');
+        }
+
+        return $this->search(
+            $embedding,
+            $context->elasticsearchFilter(
+                ai_config_string('ai.features.faq.policy_classification_version', 'in-app-docs-v1'),
+            ),
+        );
+    }
+
+    /**
+     * @param float[] $embedding
+     * @param array<string, mixed>|null $filter
+     * @return Document[]
+     */
+    private function search(array $embedding, ?array $filter = null): array
+    {
         $num_candidates = min($this->topK * 10, 100);
+        $knn = [
+            'field' => 'embedding',
+            'query_vector' => $embedding,
+            'k' => $this->topK,
+            'num_candidates' => $num_candidates,
+        ];
+
+        if ($filter !== null) {
+            $knn['filter'] = $filter;
+        }
 
         try {
             $response = $this->client->search([
                 'index' => $this->indexProfile->indexName(),
                 'body' => [
                     'size' => $this->topK,
-                    'knn' => [
-                        'field' => 'embedding',
-                        'query_vector' => $embedding,
-                        'k' => $this->topK,
-                        'num_candidates' => $num_candidates,
-                    ],
+                    'knn' => $knn,
                 ],
             ])->asArray();
         } catch (Throwable $throwable) {
