@@ -17,6 +17,9 @@ use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
 use Modules\AI\Services\Assistance\GlobalAssistantTenantResolver;
+use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
+use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
+use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
@@ -42,6 +45,20 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->singleton(AssistantTenantResolverInterface::class, GlobalAssistantTenantResolver::class);
+        $this->app->singleton(
+            AssistanceGuardrailPipeline::class,
+            static fn (): AssistanceGuardrailPipeline => AssistanceGuardrailPipeline::defaults(),
+        );
+        $this->app->singleton(
+            AssistantPolicyCatalog::class,
+            static fn (): AssistantPolicyCatalog => AssistantPolicyCatalog::defaults(),
+        );
+        $this->app->singleton(
+            AssistantPolicyCompiler::class,
+            static fn ($app): AssistantPolicyCompiler => new AssistantPolicyCompiler(
+                $app->make(AssistantPolicyCatalog::class),
+            ),
+        );
 
         $this->app->bind(SplitterInterface::class, static fn (): SplitterInterface => SplitterFactory::make());
     }
