@@ -10,10 +10,9 @@ use Modules\AI\Http\Requests\InsertConversationRequest;
 use Modules\AI\Http\Requests\ListConversationsRequest;
 use Modules\AI\Http\Requests\ListMessagesRequest;
 use Modules\AI\Http\Requests\SendMessageRequest;
-use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
-use Modules\AI\Models\Message;
 use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
+use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Contracts\IChatService;
 use Modules\Core\Models\User;
 
@@ -23,11 +22,17 @@ beforeEach(function (): void {
     $this->user = User::factory()->create();
 });
 
-function aiChatController(IChatService $chat_service): ChatController
+function aiChatController(
+    IChatService $chat_service,
+    ?InAppAssistanceServiceInterface $in_app_assistance = null,
+): ChatController
 {
+    $in_app_assistance ??= Mockery::mock(InAppAssistanceServiceInterface::class)->shouldIgnoreMissing();
+
     return new ChatController(
         $chat_service,
         app(AssistantAccessContextFactory::class),
+        $in_app_assistance,
     );
 }
 
@@ -159,8 +164,10 @@ it('insertMessage sends message and returns response', function (): void {
     $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Hi']);
 
     $chatService = Mockery::mock(IChatService::class);
-    $chatService->shouldReceive('sendMessage')
+    $inAppAssistance = Mockery::mock(InAppAssistanceServiceInterface::class);
+    $inAppAssistance->shouldReceive('respond')
         ->once()
+        ->with($conversation, $this->user, 'Hello', null)
         ->andReturn($message);
 
     $request = new SendMessageRequest;
@@ -170,7 +177,7 @@ it('insertMessage sends message and returns response', function (): void {
     $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
     $request->validateResolved();
 
-    $controller = aiChatController($chatService);
+    $controller = aiChatController($chatService, $inAppAssistance);
     $response = $controller->insertMessage($request, $conversation);
 
     expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);
@@ -203,22 +210,12 @@ it('insertMessage aborts when validated message is not a string', function (): v
         ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
 
-it('streamMessage returns StreamedResponse and invokes on_chunk callback', function (): void {
-    Auth::shouldReceive('id')->andReturn($this->user->id);
+it('streamMessage rejects protected in-app streaming before generating chunks', function (): void {
+    Auth::shouldReceive('user')->andReturn($this->user);
 
     $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
-    $streamMessage = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Hello world']);
-
     $chatService = Mockery::mock(IChatService::class);
-    $chatService->shouldReceive('sendMessageStream')
-        ->once()
-        ->with($conversation, 'Hello', null, Mockery::type('callable'))
-        ->andReturnUsing(function ($conv, $msg, $ctx, $on_chunk) use ($streamMessage): Message {
-            $on_chunk('Hello ');
-            $on_chunk('world');
-
-            return $streamMessage;
-        });
+    $chatService->shouldNotReceive('sendMessageStream');
 
     $request = new SendMessageRequest;
     $request->setContainer(app());
@@ -230,15 +227,8 @@ it('streamMessage returns StreamedResponse and invokes on_chunk callback', funct
     $controller = aiChatController($chatService);
     $response = $controller->streamMessage($request, $conversation);
 
-    expect($response)->toBeInstanceOf(Symfony\Component\HttpFoundation\StreamedResponse::class);
-
-    // StreamedResponse uses ob_flush in the controller; keep two nested buffers so
-    // flushes stay in-memory and do not pollute test output.
-    ob_start();
-    ob_start();
-    $response->sendContent();
-    ob_end_clean();
-    ob_end_clean();
+    expect($response->getStatusCode())->toBe(Response::HTTP_UNPROCESSABLE_ENTITY)
+        ->and($response->getData(true)['code'])->toBe('in_app_streaming_unavailable');
 });
 
 it('authorizeConversationAccess aborts for unauthorized', function (): void {
@@ -285,23 +275,12 @@ it('sendMessageWithTools returns message and action requests', function (): void
 
     $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
     $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Response']);
-    $actionRequest = ActionRequest::query()->create([
-        'user_id' => $this->user->id,
-        'conversation_id' => $conversation->id,
-        'tool_name' => 'test_tool',
-        'tool_args' => ['key' => 'value'],
-        'risk_level' => 'medium',
-        'status' => 'pending_user_confirmation',
-    ]);
-
     $chatService = Mockery::mock(IChatService::class);
-    $chatService->shouldReceive('sendMessageWithTools')
+    $inAppAssistance = Mockery::mock(InAppAssistanceServiceInterface::class);
+    $inAppAssistance->shouldReceive('respond')
         ->once()
-        ->with($conversation, 'Hello', null)
-        ->andReturn([
-            'message' => $message,
-            'action_requests' => [$actionRequest],
-        ]);
+        ->with($conversation, $this->user, 'Hello', null)
+        ->andReturn($message);
 
     $request = new SendMessageRequest;
     $request->setContainer(app());
@@ -310,7 +289,7 @@ it('sendMessageWithTools returns message and action requests', function (): void
     $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
     $request->validateResolved();
 
-    $controller = aiChatController($chatService);
+    $controller = aiChatController($chatService, $inAppAssistance);
     $response = $controller->sendMessageWithTools($request, $conversation);
 
     $data = $response->getData(true);
@@ -318,8 +297,7 @@ it('sendMessageWithTools returns message and action requests', function (): void
         ->and($data)->toHaveKey('data')
         ->and($data['data'])->toHaveKey('message')
         ->and($data['data'])->toHaveKey('action_requests')
-        ->and($data['data']['action_requests'])->toHaveCount(1)
-        ->and($data['data']['action_requests'][0]['tool_name'])->toBe('test_tool');
+        ->and($data['data']['action_requests'])->toBe([]);
 });
 
 it('sendMessageWithTools passes context when provided', function (): void {
@@ -329,13 +307,11 @@ it('sendMessageWithTools passes context when provided', function (): void {
     $message = $conversation->messages()->create(['role' => 'assistant', 'content' => 'Response']);
 
     $chatService = Mockery::mock(IChatService::class);
-    $chatService->shouldReceive('sendMessageWithTools')
+    $inAppAssistance = Mockery::mock(InAppAssistanceServiceInterface::class);
+    $inAppAssistance->shouldReceive('respond')
         ->once()
-        ->with($conversation, 'Hello', ['page' => 'dashboard'])
-        ->andReturn([
-            'message' => $message,
-            'action_requests' => [],
-        ]);
+        ->with($conversation, $this->user, 'Hello', ['page' => 'dashboard'])
+        ->andReturn($message);
 
     $request = new SendMessageRequest;
     $request->setContainer(app());
@@ -344,7 +320,7 @@ it('sendMessageWithTools passes context when provided', function (): void {
     $request->setRedirector(resolve(Illuminate\Routing\Redirector::class));
     $request->validateResolved();
 
-    $controller = aiChatController($chatService);
+    $controller = aiChatController($chatService, $inAppAssistance);
     $response = $controller->sendMessageWithTools($request, $conversation);
 
     expect($response->getStatusCode())->toBe(Response::HTTP_CREATED);

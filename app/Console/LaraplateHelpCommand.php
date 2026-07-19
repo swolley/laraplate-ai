@@ -8,6 +8,7 @@ use function ai_config_bool;
 
 use Exception;
 use Illuminate\Console\Command;
+use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
@@ -76,7 +77,10 @@ final class LaraplateHelpCommand extends Command
     private function answerAndRender(DocumentationService $documentationService, string $question): int
     {
         try {
-            $result = $documentationService->answerQuestion($question);
+            $result = $documentationService->answerDeveloperQuestion(
+                $question,
+                AssistantProfile::DeveloperHelp,
+            );
         } catch (Exception $exception) {
             $this->error('Help query failed: ' . $exception->getMessage());
 

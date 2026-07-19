@@ -75,10 +75,20 @@ final class ToolRegistry
     public function getContextualNeuronTools(
         ContextualToolProviderInterface $provider,
         AssistantAccessContext $context,
+        ?array $allowedToolNames = null,
     ): array {
+        $definitions = $provider->tools($context);
+
+        if ($allowedToolNames !== null) {
+            $definitions = array_values(array_filter(
+                $definitions,
+                static fn (ToolDefinition $definition): bool => in_array($definition->name, $allowedToolNames, true),
+            ));
+        }
+
         return array_map(
             fn (ToolDefinition $definition): Tool => $this->buildNeuronTool($definition),
-            $provider->tools($context),
+            $definitions,
         );
     }
 

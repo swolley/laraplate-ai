@@ -16,7 +16,9 @@ use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
+use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\Assistance\GlobalAssistantTenantResolver;
+use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
@@ -48,6 +50,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(ContextualToolProviderInterface::class, GraphToolProvider::class);
         $this->app->singleton(AssistantTenantResolverInterface::class, GlobalAssistantTenantResolver::class);
+        $this->app->bind(InAppAssistanceServiceInterface::class, InAppAssistanceService::class);
         $this->app->singleton(
             AssistanceGuardrailPipeline::class,
             static fn (): AssistanceGuardrailPipeline => AssistanceGuardrailPipeline::defaults(),

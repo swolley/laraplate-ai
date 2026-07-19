@@ -15,6 +15,7 @@ use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use Modules\AI\Services\Documentation\FileDocumentReader;
@@ -84,6 +85,20 @@ final readonly class DocumentationService
             'answer' => $formatted_answer,
             'citations' => $citations,
         ];
+    }
+
+    /**
+     * Answer from the developer documentation corpus selected by a server-owned CLI profile.
+     *
+     * @return array{answer: string, citations: list<array{source: string, excerpt: string, score: float|null}>}
+     */
+    public function answerDeveloperQuestion(string $question, AssistantProfile $profile): array
+    {
+        if ($profile !== AssistantProfile::DeveloperHelp) {
+            throw new \InvalidArgumentException('Developer documentation requires the developer help profile.');
+        }
+
+        return $this->answerQuestion($question);
     }
 
     /**

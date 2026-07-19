@@ -8,7 +8,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use JsonException;
 use Modules\AI\Http\Requests\InsertConversationRequest;
 use Modules\AI\Http\Requests\ListConversationsRequest;
 use Modules\AI\Http\Requests\ListMessagesRequest;
@@ -16,15 +15,16 @@ use Modules\AI\Http\Requests\SendMessageRequest;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
+use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\Core\Helpers\ResponseBuilder;
 use Modules\Core\Models\User;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class ChatController extends Controller
 {
     public function __construct(
         private readonly IChatService $chatService,
         private readonly AssistantAccessContextFactory $assistantAccessContextFactory,
+        private readonly InAppAssistanceServiceInterface $inAppAssistance,
     ) {}
 
     /**
@@ -116,51 +116,16 @@ final class ChatController extends Controller
     }
 
     /**
-     * Send a message in a conversation with streaming response.
-     *
-     * Note: This method cannot use ResponseBuilder as it requires SSE streaming.
+     * Protected in-app assistance is non-streaming until complete output validation.
      */
-    public function streamMessage(SendMessageRequest $request, Conversation $conversation): StreamedResponse
+    public function streamMessage(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
-        $this->authorizeConversationAccess($conversation);
+        $this->authorizeInAppAssistantAccess($conversation);
 
-        $validated = $request->validated();
-
-        return new StreamedResponse(function () use ($conversation, $validated): void {
-            header('Content-Type: text/event-stream');
-            header('Cache-Control: no-cache');
-            header('X-Accel-Buffering: no');
-
-            $on_chunk = static function (string $delta): void {
-                try {
-                    echo 'data: ' . json_encode([
-                        'type' => 'chunk',
-                        'content' => $delta,
-                    ], JSON_THROW_ON_ERROR) . "\n\n";
-                } catch (JsonException) { // @codeCoverageIgnoreStart
-                    // in caso di errore di encoding, saltiamo il chunk
-                } // @codeCoverageIgnoreEnd
-
-                @ob_flush();
-                @flush();
-            };
-
-            $this->chatService->sendMessageStream(
-                conversation: $conversation,
-                user_message: $this->requiredString($validated, 'message'),
-                context: $this->optionalArray($validated, 'context'),
-                on_chunk: $on_chunk,
-            );
-
-            try {
-                echo 'data: ' . json_encode(['type' => 'end'], JSON_THROW_ON_ERROR) . "\n\n";
-            } catch (JsonException) { // @codeCoverageIgnoreStart
-                // ignore
-            } // @codeCoverageIgnoreEnd
-
-            @ob_flush();
-            @flush();
-        });
+        return response()->json([
+            'message' => 'Streaming is unavailable for protected in-app assistance.',
+            'code' => 'in_app_streaming_unavailable',
+        ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     /**
@@ -172,10 +137,11 @@ final class ChatController extends Controller
 
         $validated = $request->validated();
 
-        $message = $this->chatService->sendMessage(
+        $message = $this->inAppAssistance->respond(
             conversation: $conversation,
-            userMessage: $this->requiredString($validated, 'message'),
-            context: $this->optionalArray($validated, 'context'),
+            authenticated_user: $this->authenticatedUser(),
+            user_input: $this->requiredString($validated, 'message'),
+            request_context: $this->optionalArray($validated, 'context'),
         );
 
         return new ResponseBuilder($request)
@@ -191,8 +157,8 @@ final class ChatController extends Controller
     }
 
     /**
-     * Send a message with tools support (non-streaming).
-     * If the LLM proposes tool calls, ActionRequests are created based on risk level.
+     * Send a protected non-streaming message with contextual read-only tools.
+     * Read-only assistance tools never create ActionRequest records.
      */
     public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
@@ -200,14 +166,12 @@ final class ChatController extends Controller
 
         $validated = $request->validated();
 
-        $result = $this->chatService->sendMessageWithTools(
+        $message = $this->inAppAssistance->respond(
             conversation: $conversation,
-            user_message: $this->requiredString($validated, 'message'),
-            context: $this->optionalArray($validated, 'context'),
+            authenticated_user: $this->authenticatedUser(),
+            user_input: $this->requiredString($validated, 'message'),
+            request_context: $this->optionalArray($validated, 'context'),
         );
-
-        $message = $result['message'];
-        $action_requests = $result['action_requests'];
 
         return new ResponseBuilder($request)
             ->setData([
@@ -218,16 +182,7 @@ final class ChatController extends Controller
                     'metadata' => $message->metadata,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ],
-                'action_requests' => array_map(static fn (\Modules\AI\Models\ActionRequest $ar): array => [
-                    'id' => $ar->id,
-                    'tool_name' => $ar->tool_name,
-                    'tool_args' => $ar->tool_args,
-                    'risk_level' => $ar->risk_level,
-                    'status' => $ar->status,
-                    'result' => $ar->result,
-                    'error' => $ar->error,
-                    'created_at' => $ar->created_at?->toIso8601String(),
-                ], $action_requests),
+                'action_requests' => [],
             ])
             ->setStatus(Response::HTTP_CREATED)
             ->json();

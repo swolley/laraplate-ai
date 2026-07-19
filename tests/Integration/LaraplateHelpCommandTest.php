@@ -48,9 +48,9 @@ it('answers one-shot question and prints sources', function (): void {
     $mock->shouldReceive('isAvailable')
         ->once()
         ->andReturn(true);
-    $mock->shouldReceive('answerQuestion')
+    $mock->shouldReceive('answerDeveloperQuestion')
         ->once()
-        ->with('How do I use CRUD APIs?')
+        ->with('How do I use CRUD APIs?', Modules\AI\Enums\AssistantProfile::DeveloperHelp)
         ->andReturn([
             'answer' => 'Use /crud/select and /crud/update endpoints.',
             'citations' => [
@@ -76,9 +76,9 @@ it('returns failure when answering fails', function (): void {
     $mock->shouldReceive('isAvailable')
         ->once()
         ->andReturn(true);
-    $mock->shouldReceive('answerQuestion')
+    $mock->shouldReceive('answerDeveloperQuestion')
         ->once()
-        ->with('How do I use CRUD APIs?')
+        ->with('How do I use CRUD APIs?', Modules\AI\Enums\AssistantProfile::DeveloperHelp)
         ->andThrow(new Exception('Provider timeout'));
     app()->instance(DocumentationService::class, $mock);
 
@@ -91,4 +91,3 @@ it('returns failure when answering fails', function (): void {
     expect($tester->getStatusCode())->toBe(LaraplateHelpCommand::FAILURE)
         ->and($tester->getDisplay())->toContain('Provider timeout');
 });
-
