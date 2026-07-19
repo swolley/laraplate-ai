@@ -206,6 +206,10 @@ it('preserves Document metadata across all emitted chunks', function (): void {
     $document = new Document("# T\n\nParagraph content for the test.");
     $document->sourceType = 'files';
     $document->sourceName = 'erp/MODULE.md';
+    $document->metadata = [
+        'audience' => 'user',
+        'heading_breadcrumb' => [],
+    ];
 
     $splitter = new MarkdownAwareSplitter(maxWords: 200);
     $chunks = $splitter->splitDocument($document);
@@ -215,6 +219,8 @@ it('preserves Document metadata across all emitted chunks', function (): void {
     foreach ($chunks as $chunk) {
         expect($chunk->getSourceType())->toBe('files');
         expect($chunk->getSourceName())->toBe('erp/MODULE.md');
+        expect($chunk->metadata)->toMatchArray(['audience' => 'user']);
+        expect($chunk->metadata['heading_breadcrumb'])->toBe(['T']);
     }
 });
 

@@ -6,9 +6,8 @@ namespace Modules\AI\Console;
 
 use function ai_config_bool;
 use function ai_config_int;
-use function ai_config_string;
-
 use Illuminate\Console\Command;
+use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\Core\Services\ElasticsearchService;
 use Override;
@@ -17,7 +16,8 @@ use Throwable;
 final class CreateRagElasticsearchIndexCommand extends Command
 {
     #[Override]
-    protected $signature = 'ai:create-rag-index';
+    protected $signature = 'ai:create-rag-index
+                            {--profile=all : Index profile: developer, user, or all}';
 
     #[Override]
     protected $description = 'Create or update the RAG index for documentation <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
@@ -30,17 +30,31 @@ final class CreateRagElasticsearchIndexCommand extends Command
             return self::FAILURE;
         }
 
-        $index = ai_config_string('ai.features.faq.elasticsearch.index', 'laraplate_rag_docs');
         $embedding_dims = ai_config_int('ai.features.faq.elasticsearch.embedding_dims', 384);
+        $profile_option = $this->option('profile');
+        $profile_name = is_string($profile_option) ? mb_strtolower(trim($profile_option)) : '';
+
+        if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
+            $this->error('Invalid profile. Expected developer, user, or all.');
+
+            return self::FAILURE;
+        }
 
         try {
-            ElasticsearchService::getInstance()->createIndex(
-                $index,
-                [],
-                ElasticsearchRagVectorStore::indexMappings($embedding_dims),
-            );
+            $profiles = $profile_name === 'all'
+                ? DocumentationIndexProfile::cases()
+                : [DocumentationIndexProfile::from($profile_name)];
 
-            $this->info("RAG Elasticsearch index [{$index}] is ready (embedding dims: {$embedding_dims}).");
+            foreach ($profiles as $profile) {
+                $index = $profile->indexName();
+                ElasticsearchService::getInstance()->createIndex(
+                    $index,
+                    [],
+                    ElasticsearchRagVectorStore::indexMappings($embedding_dims),
+                );
+
+                $this->info("RAG Elasticsearch {$profile->value} index [{$index}] is ready (embedding dims: {$embedding_dims}).");
+            }
 
             return self::SUCCESS;
         } catch (Throwable $throwable) {

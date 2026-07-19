@@ -9,6 +9,7 @@ use function ai_config_string;
 
 use Exception;
 use Illuminate\Console\Command;
+use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
@@ -17,6 +18,7 @@ final class IndexDocumentationCommand extends Command
     #[Override]
     protected $signature = 'ai:index-rag-docs
                             {--path= : Scan only this file or directory (omit to index roots returned by rag_paths())}
+                            {--profile=developer : Index profile: developer, user, or all}
                             {--full : Delete the vector store first, then rebuild from the selected documentation}';
 
     #[Override]
@@ -37,6 +39,14 @@ final class IndexDocumentationCommand extends Command
         $path_option = $this->option('path');
         $path = is_string($path_option) && $path_option !== '' ? $path_option : null;
         $full = (bool) $this->option('full');
+        $profile_option = $this->option('profile');
+        $profile_name = is_string($profile_option) ? mb_strtolower(trim($profile_option)) : '';
+
+        if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
+            $this->error('Invalid profile. Expected developer, user, or all.');
+
+            return self::FAILURE;
+        }
 
         if ($path !== null && (! is_dir($path) && ! is_file($path))) {
             $this->error("Path does not exist or is not readable: {$path}");
@@ -49,7 +59,15 @@ final class IndexDocumentationCommand extends Command
         }
 
         try {
-            $count = $documentationService->indexDocuments($path, $full);
+            $profiles = $profile_name === 'all'
+                ? DocumentationIndexProfile::cases()
+                : [DocumentationIndexProfile::from($profile_name)];
+            $count = 0;
+
+            foreach ($profiles as $profile) {
+                $count += $documentationService->indexDocuments($path, $full, $profile);
+            }
+
             $this->info("Indexed {$count} document chunks.");
 
             return self::SUCCESS;

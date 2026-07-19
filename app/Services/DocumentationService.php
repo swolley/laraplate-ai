@@ -11,8 +11,10 @@ use function ai_config_string;
 use Closure;
 use Illuminate\Support\Str;
 use Modules\AI\Ai\Agents\DocumentationAgent;
+use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
+use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use Modules\AI\Services\Documentation\FileDocumentReader;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
@@ -38,13 +40,17 @@ final readonly class DocumentationService
      * {@see DocumentationAgent::reindexBySource()} so repeated runs update each logical file instead of duplicating chunks.
      * Pass {@code $fullRebuild} true to wipe the store and rebuild from scratch (filesystem: deletes store file; memory: resets shared store).
      */
-    public function indexDocuments(?string $path = null, bool $fullRebuild = false): int
+    public function indexDocuments(
+        ?string $path = null,
+        bool $fullRebuild = false,
+        DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+    ): int
     {
         $roots = $path !== null
             ? [['path' => $path, 'prefix' => $this->singlePathPrefix($path)]]
             : $this->helperRoots();
 
-        return $this->indexFromRoots($roots, $fullRebuild);
+        return $this->indexFromRoots($roots, $fullRebuild, $profile);
     }
 
     /**
@@ -95,7 +101,7 @@ final readonly class DocumentationService
         }
 
         if ($store_driver === 'elasticsearch') {
-            return ElasticsearchRagVectorStore::fromConfig(1)->hasDocuments();
+            return ElasticsearchRagVectorStore::fromConfig(DocumentationIndexProfile::Developer, 1)->hasDocuments();
         }
 
         return true;
@@ -201,9 +207,25 @@ final readonly class DocumentationService
     /**
      * @param  list<array{path: string, prefix: string}>  $roots
      */
-    private function indexFromRoots(array $roots, bool $fullRebuild): int
+    private function indexFromRoots(
+        array $roots,
+        bool $fullRebuild,
+        DocumentationIndexProfile $profile,
+    ): int
     {
         $documents = $this->gatherDocumentsFromRoots($roots);
+        $audience_policy = new DocumentAudiencePolicy(
+            ai_config_string('ai.features.faq.policy_classification_version', 'in-app-docs-v1'),
+        );
+        $documents = array_values(array_filter(
+            $documents,
+            static fn (Document $document): bool => $audience_policy->allows($document, $profile),
+        ));
+        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
+
+        if ($fullRebuild) {
+            $this->resetVectorStoreForFullRebuild($driver, $profile);
+        }
 
         if ($documents === []) {
             return 0;
@@ -222,18 +244,12 @@ final readonly class DocumentationService
             return 0;
         }
 
-        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
-
-        if ($fullRebuild) {
-            $this->resetVectorStoreForFullRebuild($driver);
-        }
-
-        $use_incremental_reindex = ! $fullRebuild && $this->shouldUseIncrementalReindex($driver);
-
-        $factory = $this->agentFactory ?? DocumentationAgent::make(...);
+        $use_incremental_reindex = ! $fullRebuild && $this->shouldUseIncrementalReindex($driver, $profile);
 
         /** @var DocumentationAgent $agent */
-        $agent = $factory();
+        $agent = $this->agentFactory !== null
+            ? ($this->agentFactory)($profile)
+            : DocumentationAgent::make(indexProfile: $profile);
 
         foreach (array_chunk($split_documents, 100) as $batch) {
             if ($use_incremental_reindex) {
@@ -248,52 +264,69 @@ final readonly class DocumentationService
         return count($split_documents);
     }
 
-    private function shouldUseIncrementalReindex(string $driver): bool
+    private function shouldUseIncrementalReindex(
+        string $driver,
+        DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+    ): bool
     {
         if ($driver === 'memory') {
             return true;
         }
 
         if ($driver === 'elasticsearch') {
-            return ElasticsearchRagVectorStore::fromConfig(1)->hasDocuments();
+            return ElasticsearchRagVectorStore::fromConfig($profile, 1)->hasDocuments();
         }
 
-        return $this->filesystemVectorStoreHasData();
+        return $this->filesystemVectorStoreHasData($profile);
     }
 
-    private function filesystemVectorStoreHasData(): bool
+    private function filesystemVectorStoreHasData(
+        DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+    ): bool
     {
-        $path = $this->getFilesystemVectorStoreFilePath();
+        $path = $this->getFilesystemVectorStoreFilePath($profile);
 
         return is_file($path) && filesize($path) > 0;
     }
 
-    private function getFilesystemVectorStoreFilePath(): string
+    private function getFilesystemVectorStoreFilePath(
+        DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+    ): string
     {
         $configured = config('ai.features.faq.vector_store_path');
+        $path = is_string($configured) && $configured !== ''
+            ? $configured
+            : storage_path('app/ai/faq-vectorstore.store');
 
-        if (is_string($configured) && $configured !== '') {
-            return $configured;
+        if ($profile === DocumentationIndexProfile::Developer) {
+            return $path;
         }
 
-        return storage_path('app/ai/faq-vectorstore.store');
+        $extension = pathinfo($path, PATHINFO_EXTENSION);
+        $suffix = $extension === '' ? '' : '.' . $extension;
+        $base = $suffix === '' ? $path : mb_substr($path, 0, -mb_strlen($suffix));
+
+        return $base . '-user' . $suffix;
     }
 
-    private function resetVectorStoreForFullRebuild(string $driver): void
+    private function resetVectorStoreForFullRebuild(
+        string $driver,
+        DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+    ): void
     {
         if ($driver === 'memory') {
-            DocumentationAgent::resetSharedMemoryVectorStore();
+            DocumentationAgent::resetSharedMemoryVectorStore($profile);
 
             return;
         }
 
         if ($driver === 'elasticsearch') {
-            ElasticsearchRagVectorStore::fromConfig(1)->clearIndex();
+            ElasticsearchRagVectorStore::fromConfig($profile, 1)->clearIndex();
 
             return;
         }
 
-        $store_path = $this->getFilesystemVectorStoreFilePath();
+        $store_path = $this->getFilesystemVectorStoreFilePath($profile);
 
         if (is_file($store_path)) {
             unlink($store_path);

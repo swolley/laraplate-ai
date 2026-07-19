@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Documentation;
 
 use NeuronAI\RAG\Document;
+use Symfony\Component\Yaml\Exception\ParseException;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Reads markdown and HTML files from a path (file or directory) for documentation indexing.
@@ -44,13 +46,13 @@ final readonly class FileDocumentReader
             return $this->getDocumentsFromDirectory($this->file_path, '');
         }
 
-        $content = $this->getContentFromFile($this->file_path);
+        $file = $this->getContentFromFile($this->file_path);
 
-        if ($content === false) {
+        if ($file === false) {
             return [];
         }
 
-        return [$this->createDocument($content, basename($this->file_path))];
+        return [$this->createDocument($file['content'], basename($this->file_path), $file['metadata'])];
     }
 
     /**
@@ -85,10 +87,14 @@ final readonly class FileDocumentReader
                 continue;
             }
 
-            $content = $this->getContentFromFile($full_path);
+            $file = $this->getContentFromFile($full_path);
 
-            if ($content !== false) {
-                $documents[] = $this->createDocument($content, $this->normalizeRelativeSourceName($child_relative));
+            if ($file !== false) {
+                $documents[] = $this->createDocument(
+                    $file['content'],
+                    $this->normalizeRelativeSourceName($child_relative),
+                    $file['metadata'],
+                );
             }
         }
 
@@ -100,7 +106,10 @@ final readonly class FileDocumentReader
         return str_replace('\\', '/', $relative);
     }
 
-    private function getContentFromFile(string $path): string|false
+    /**
+     * @return array{content: string, metadata: array<string, mixed>}|false
+     */
+    private function getContentFromFile(string $path): array|false
     {
         $extension = mb_strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
@@ -110,7 +119,16 @@ final readonly class FileDocumentReader
 
         $content = file_get_contents($path);
 
-        return $content !== false ? $this->normalizeContent($content, $extension) : false;
+        if ($content === false) {
+            return false;
+        }
+
+        [$content, $metadata] = $this->extractFrontMatter($content);
+
+        return [
+            'content' => $this->normalizeContent($content, $extension),
+            'metadata' => $metadata,
+        ];
     }
 
     private function normalizeContent(string $content, string $extension): string
@@ -124,14 +142,40 @@ final readonly class FileDocumentReader
         return $content;
     }
 
-    private function createDocument(string $content, string $source_name): Document
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function createDocument(string $content, string $source_name, array $metadata = []): Document
     {
+        $metadata['heading_breadcrumb'] ??= [];
+
         $document = new Document($content);
         $document->sourceType = 'files';
         $document->sourceName = $this->qualifiedSourceName($source_name);
         $document->id = hash('sha256', $content);
+        $document->metadata = $metadata;
 
         return $document;
+    }
+
+    /**
+     * @return array{string, array<string, mixed>}
+     */
+    private function extractFrontMatter(string $content): array
+    {
+        if (preg_match('/\A---\R(.*?)\R---\R?/s', $content, $matches) !== 1) {
+            return [$content, []];
+        }
+
+        $body = mb_substr($content, mb_strlen($matches[0]));
+
+        try {
+            $metadata = Yaml::parse($matches[1]);
+        } catch (ParseException) {
+            return [$body, []];
+        }
+
+        return [$body, is_array($metadata) ? $metadata : []];
     }
 
     private function qualifiedSourceName(string $source_name): string

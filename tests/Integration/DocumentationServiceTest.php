@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Agents\DocumentationAgent;
+use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Services\DocumentationService;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
@@ -31,6 +32,84 @@ it('indexDocuments returns 0 for empty directory', function (): void {
         expect($service->indexDocuments($emptyDir))->toBe(0);
     } finally {
         rmdir($emptyDir);
+    }
+});
+
+it('indexes only explicitly classified safe documents in the user corpus', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-user-docs-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/unclassified.md', "# Internal\n\nUnclassified details.");
+    file_put_contents($tmp_dir . '/user.md', <<<'MARKDOWN'
+---
+audience: user
+module: CMS
+locale: it
+canonical_source: cms/content/editing
+safe_source_label: Modifica dei contenuti
+required_permissions: []
+tenant_scope: global
+version: '1.0'
+policy_classification: user_safe
+policy_classification_version: in-app-docs-v1
+---
+# Modifica
+
+Apri il contenuto e seleziona Modifica.
+MARKDOWN);
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+    config()->set('ai.features.faq.policy_classification_version', 'in-app-docs-v1');
+
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldReceive('reindexBySource')
+        ->once()
+        ->with(Mockery::on(function (array $documents): bool {
+            return count($documents) === 1
+                && $documents[0]->metadata['audience'] === 'user'
+                && $documents[0]->metadata['canonical_source'] === 'cms/content/editing';
+        }));
+
+    $service = new DocumentationService(fn () => $agent_mock);
+
+    try {
+        expect($service->indexDocuments(
+            $tmp_dir,
+            false,
+            DocumentationIndexProfile::User,
+        ))->toBe(1);
+    } finally {
+        unlink($tmp_dir . '/unclassified.md');
+        unlink($tmp_dir . '/user.md');
+        rmdir($tmp_dir);
+    }
+});
+
+it('clears a stale user store during a full rebuild with no eligible documents', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-user-docs-empty-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/unclassified.md', "# Internal\n\nUnclassified details.");
+
+    $developer_store = sys_get_temp_dir() . '/ai-profile-store-' . uniqid() . '.store';
+    $user_store = mb_substr($developer_store, 0, -mb_strlen('.store')) . '-user.store';
+    file_put_contents($user_store, 'stale user corpus');
+
+    config()->set('ai.features.faq.vector_store', 'filesystem');
+    config()->set('ai.features.faq.vector_store_path', $developer_store);
+
+    $service = new DocumentationService;
+
+    try {
+        expect($service->indexDocuments(
+            $tmp_dir,
+            true,
+            DocumentationIndexProfile::User,
+        ))->toBe(0)
+            ->and(file_exists($user_store))->toBeFalse();
+    } finally {
+        unlink($tmp_dir . '/unclassified.md');
+        rmdir($tmp_dir);
+        @unlink($developer_store);
+        @unlink($user_store);
     }
 });
 

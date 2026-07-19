@@ -33,24 +33,22 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 {
     public function __construct(
         private readonly Client $client,
-        private readonly string $index,
+        private readonly DocumentationIndexProfile $indexProfile,
         private readonly int $topK = 5,
         private readonly int $embedding_dims = 384,
     ) {
-        if ($this->index === '') {
-            throw new InvalidArgumentException('Elasticsearch RAG index name cannot be empty.');
-        }
+        DocumentationIndexProfile::assertDistinctConfiguration();
 
         if ($this->embedding_dims <= 0) {
             throw new InvalidArgumentException('Elasticsearch RAG embedding dimensions must be positive.');
         }
     }
 
-    public static function fromConfig(int $topK): self
+    public static function fromConfig(DocumentationIndexProfile $profile, int $topK): self
     {
         return new self(
             client: ElasticsearchService::getInstance()->client,
-            index: ai_config_string('ai.features.faq.elasticsearch.index', 'laraplate_rag_docs'),
+            indexProfile: $profile,
             topK: $topK,
             embedding_dims: ai_config_int('ai.features.faq.elasticsearch.embedding_dims', 384),
         );
@@ -66,7 +64,24 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
                 'content' => ['type' => 'text'],
                 'sourceType' => ['type' => 'keyword'],
                 'sourceName' => ['type' => 'keyword'],
-                'metadata' => ['type' => 'object', 'enabled' => true],
+                'metadata' => [
+                    'type' => 'object',
+                    'enabled' => true,
+                    'properties' => [
+                        'audience' => ['type' => 'keyword'],
+                        'module' => ['type' => 'keyword'],
+                        'locale' => ['type' => 'keyword'],
+                        'canonical_source' => ['type' => 'keyword'],
+                        'safe_source_label' => ['type' => 'keyword'],
+                        'required_permissions' => ['type' => 'keyword'],
+                        'tenant_scope' => ['type' => 'keyword'],
+                        'tenant_id' => ['type' => 'keyword'],
+                        'version' => ['type' => 'keyword'],
+                        'heading_breadcrumb' => ['type' => 'keyword'],
+                        'policy_classification' => ['type' => 'keyword'],
+                        'policy_classification_version' => ['type' => 'keyword'],
+                    ],
+                ],
                 'neuron_id' => ['type' => 'keyword'],
                 'indexed_at' => ['type' => 'date'],
                 'embedding' => [
@@ -82,12 +97,12 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
     public function indexExists(): bool
     {
         try {
-            $this->client->count(['index' => $this->index]);
+            $this->client->count(['index' => $this->indexProfile->indexName()]);
 
             return true;
         } catch (Throwable $throwable) {
             Log::warning('Elasticsearch RAG index exists check failed', [
-                'index' => $this->index,
+                'index' => $this->indexProfile->indexName(),
                 'error' => $throwable->getMessage(),
             ]);
 
@@ -98,13 +113,13 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
     public function hasDocuments(): bool
     {
         try {
-            $response = $this->client->count(['index' => $this->index])->asArray();
+            $response = $this->client->count(['index' => $this->indexProfile->indexName()])->asArray();
             $count = $response['count'] ?? 0;
 
             return is_numeric($count) && (int) $count > 0;
         } catch (Throwable $throwable) {
             Log::warning('Elasticsearch RAG document count failed', [
-                'index' => $this->index,
+                'index' => $this->indexProfile->indexName(),
                 'error' => $throwable->getMessage(),
             ]);
 
@@ -120,7 +135,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 
         try {
             $this->client->deleteByQuery([
-                'index' => $this->index,
+                'index' => $this->indexProfile->indexName(),
                 'body' => [
                     'query' => ['match_all' => new stdClass],
                 ],
@@ -152,7 +167,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 
         foreach ($documents as $document) {
             $id = (string) $document->id;
-            $body[] = ['index' => ['_index' => $this->index, '_id' => $id]];
+            $body[] = ['index' => ['_index' => $this->indexProfile->indexName(), '_id' => $id]];
             $body[] = $this->documentToSource($document);
         }
 
@@ -190,7 +205,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 
         try {
             $this->client->deleteByQuery([
-                'index' => $this->index,
+                'index' => $this->indexProfile->indexName(),
                 'body' => [
                     'query' => [
                         'bool' => [
@@ -220,7 +235,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
 
         try {
             $response = $this->client->search([
-                'index' => $this->index,
+                'index' => $this->indexProfile->indexName(),
                 'body' => [
                     'size' => $this->topK,
                     'knn' => [
@@ -304,4 +319,5 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
             'indexed_at' => now()->toIso8601String(),
         ];
     }
+
 }

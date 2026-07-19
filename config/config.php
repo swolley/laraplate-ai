@@ -47,10 +47,17 @@ return [
             'vector_store' => env('AI_FAQ_VECTOR_STORE', 'elasticsearch'), // memory (testing only), filesystem, elasticsearch
             'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.json')
             'elasticsearch' => [
+                'developer_index' => env(
+                    'AI_FAQ_DEVELOPER_ES_INDEX',
+                    env('AI_FAQ_ES_INDEX', Str::slug(config('app.name')) . '_rag_docs'),
+                ),
+                'user_index' => env('AI_FAQ_USER_ES_INDEX', Str::slug(config('app.name')) . '_rag_user_docs'),
+                // Deprecated alias retained only for migration compatibility.
                 'index' => env('AI_FAQ_ES_INDEX', Str::slug(config('app.name')) . '_rag_docs'),
                 // Must match the active embeddings provider output dimensionality.
                 'embedding_dims' => (int) env('AI_FAQ_ES_EMBEDDING_DIMS', 384),
             ],
+            'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
             // 'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),
             // 'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.7),
             // 'question_detection' => [

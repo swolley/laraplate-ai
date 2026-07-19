@@ -53,6 +53,15 @@ final class MarkdownAwareSplitter extends AbstractSplitter
             $new_document = new Document($chunk_text);
             $new_document->sourceType = $document->getSourceType();
             $new_document->sourceName = $document->getSourceName();
+            $new_document->metadata = $document->metadata;
+
+            if (preg_match('/\A> Section: ([^\r\n]+)/u', $chunk_text, $matches) === 1) {
+                $new_document->metadata['heading_breadcrumb'] = array_values(array_filter(
+                    array_map(mb_trim(...), explode('/', $matches[1])),
+                    static fn (string $heading): bool => $heading !== '',
+                ));
+            }
+
             $output[] = $new_document;
         }
 

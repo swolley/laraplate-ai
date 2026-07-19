@@ -85,3 +85,40 @@ it('strips html markup when indexing html files', function (): void {
         File::deleteDirectory($base);
     }
 });
+
+it('extracts RAG front matter into document metadata without indexing it as content', function (): void {
+    $path = sys_get_temp_dir() . '/lp-reader-front-matter-' . uniqid() . '.md';
+    file_put_contents($path, <<<'MARKDOWN'
+---
+audience: user
+module: CMS
+locale: it
+canonical_source: cms/content/editing
+safe_source_label: Modifica dei contenuti
+required_permissions:
+  - cms.content.view
+tenant_scope: global
+version: '1.0'
+policy_classification: user_safe
+policy_classification_version: in-app-docs-v1
+---
+# Modifica
+
+Apri il contenuto e seleziona Modifica.
+MARKDOWN);
+
+    try {
+        $document = (new FileDocumentReader($path))->getDocuments()[0];
+
+        expect($document->getContent())->toStartWith('# Modifica')
+            ->and($document->getContent())->not->toContain('policy_classification')
+            ->and($document->metadata)->toMatchArray([
+                'audience' => 'user',
+                'module' => 'CMS',
+                'required_permissions' => ['cms.content.view'],
+                'tenant_scope' => 'global',
+            ]);
+    } finally {
+        @unlink($path);
+    }
+});

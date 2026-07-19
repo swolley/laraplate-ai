@@ -3,15 +3,22 @@
 declare(strict_types=1);
 
 use Elastic\Elasticsearch\Client;
+use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use NeuronAI\Exceptions\VectorStoreException;
 use NeuronAI\RAG\Document;
 
-function make_rag_vector_store(Client $client): ElasticsearchRagVectorStore
+function make_rag_vector_store(
+    Client $client,
+    DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
+): ElasticsearchRagVectorStore
 {
+    config()->set('ai.features.faq.elasticsearch.developer_index', 'laraplate_rag_docs_test');
+    config()->set('ai.features.faq.elasticsearch.user_index', 'laraplate_rag_user_docs_test');
+
     return new ElasticsearchRagVectorStore(
         client: $client,
-        index: 'laraplate_rag_docs_test',
+        indexProfile: $profile,
         topK: 2,
         embedding_dims: 3,
     );
@@ -21,7 +28,42 @@ test('index mappings include dense vector with configured dimensions', function 
     $mappings = ElasticsearchRagVectorStore::indexMappings(384);
 
     expect($mappings['properties']['embedding']['dims'])->toBe(384)
-        ->and($mappings['properties']['embedding']['type'])->toBe('dense_vector');
+        ->and($mappings['properties']['embedding']['type'])->toBe('dense_vector')
+        ->and($mappings['properties']['metadata']['properties'])->toHaveKeys([
+            'audience',
+            'module',
+            'locale',
+            'canonical_source',
+            'safe_source_label',
+            'required_permissions',
+            'tenant_scope',
+            'tenant_id',
+            'version',
+            'heading_breadcrumb',
+            'policy_classification_version',
+        ]);
+});
+
+test('profile selects a distinct configured physical index', function (): void {
+    $client = Mockery::mock(Client::class);
+    $client->shouldReceive('count')
+        ->once()
+        ->with(['index' => 'laraplate_rag_user_docs_test'])
+        ->andReturn(make_elasticsearch_response(['count' => 1]));
+
+    expect(make_rag_vector_store($client, DocumentationIndexProfile::User)->hasDocuments())->toBeTrue();
+});
+
+test('matching developer and user index names are rejected', function (): void {
+    config()->set('ai.features.faq.elasticsearch.developer_index', 'same_index');
+    config()->set('ai.features.faq.elasticsearch.user_index', 'same_index');
+
+    expect(fn () => new ElasticsearchRagVectorStore(
+        client: Mockery::mock(Client::class),
+        indexProfile: DocumentationIndexProfile::Developer,
+        topK: 2,
+        embedding_dims: 3,
+    ))->toThrow(InvalidArgumentException::class);
 });
 
 test('similarity search maps knn hits to neuron documents', function (): void {
