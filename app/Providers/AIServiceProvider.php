@@ -7,6 +7,7 @@ namespace Modules\AI\Providers;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
+use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
@@ -51,6 +52,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(GraphToolProvider::class);
+        $this->app->scoped(ApplicationContentCitationMapper::class);
         $this->app->bind(ApplicationContentToolProvider::class);
         $this->app->bind(
             ContextualToolProviderInterface::class,

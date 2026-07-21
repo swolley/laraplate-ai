@@ -8,15 +8,19 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Exceptions\AssistancePolicyViolationException;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
+use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
+use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext;
+use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\AI\Services\Assistance\Policies\CompiledAssistantPolicy;
-use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
+use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Models\User;
@@ -42,6 +46,7 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
         private Request $request,
         private ?Closure $documentation_retrieval = null,
         private ?Closure $completion = null,
+        private ?ApplicationContentCitationMapper $application_content_citations = null,
     ) {}
 
     /**
@@ -55,11 +60,13 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
     ): Message {
         $access = $this->access_context_factory->forInApp($conversation, $authenticated_user);
         $this->assertRequestIdentity($access);
+        $application_content = $this->applicationContentCitations();
+        $application_content->reset();
 
         try {
             $policy = $this->policy_compiler->compile(
                 AssistantProfile::InAppAssistance,
-                ['in_app_rag', 'read_only_graph'],
+                ['application_content', 'in_app_rag', 'read_only_graph'],
             );
             $input = $this->guardrails->validateInput($user_input);
             $documents = $this->documentation_retrieval instanceof Closure
@@ -68,15 +75,18 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             $prompt_context = $this->guardrails->validateContext(
                 $this->promptContext($policy, $documents, $request_context),
             );
-            $tools = $this->tool_registry->getContextualNeuronTools(
-                $this->tool_provider,
-                $access,
-                $policy->allowedTools,
-            );
+            $tools = $this->contextualTools($access, $input, $policy);
             $output = $this->completion instanceof Closure
                 ? ($this->completion)($input, $policy->systemPrompt, $prompt_context, $tools)
                 : $this->complete($input, $policy, $prompt_context, $tools);
-            $output = $this->guardrails->validateOutput($output);
+
+            if ($application_content->attempted() && ! $application_content->hasEvidence()) {
+                $output = $this->guardrails->insufficientEvidence($access->locale);
+            } else {
+                $output = $this->guardrails->validateOutput($output);
+            }
+
+            $prompt_context = $this->mergeApplicationContent($prompt_context, $application_content);
 
             $conversation->addMessage('user', $input, $this->presentationPreferences($request_context));
 
@@ -100,11 +110,84 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
         }
     }
 
+    /**
+     * @return list<Tool>
+     */
+    private function contextualTools(
+        AssistantAccessContext $access,
+        string $input,
+        CompiledAssistantPolicy $policy,
+    ): array {
+        if ($this->tool_provider instanceof CompositeContextualToolProvider) {
+            $definitions = $this->tool_provider->toolsForRequest(
+                $access,
+                $input,
+                $this->serverApplicationContext(),
+            );
+
+            return $this->tool_registry->getNeuronToolsForDefinitions($definitions, $policy->allowedTools);
+        }
+
+        return $this->tool_registry->getContextualNeuronTools(
+            $this->tool_provider,
+            $access,
+            $policy->allowedTools,
+        );
+    }
+
+    private function serverApplicationContext(): ?ApplicationContentRequestContext
+    {
+        $context = $this->request->attributes->get('assistant_application_context');
+
+        if (! is_array($context) || ! is_string($context['module'] ?? null)) {
+            return null;
+        }
+
+        try {
+            return new ApplicationContentRequestContext(
+                module: $context['module'],
+                entity: is_string($context['entity'] ?? null) ? $context['entity'] : null,
+                recordKey: is_int($context['record_key'] ?? null) || is_string($context['record_key'] ?? null)
+                    ? $context['record_key']
+                    : null,
+            );
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    private function applicationContentCitations(): ApplicationContentCitationMapper
+    {
+        return $this->application_content_citations ?? app(ApplicationContentCitationMapper::class);
+    }
+
+    private function mergeApplicationContent(
+        AssistantPromptContext $context,
+        ApplicationContentCitationMapper $applicationContent,
+    ): AssistantPromptContext {
+        if (! $applicationContent->hasEvidence()) {
+            return $context;
+        }
+
+        return $this->guardrails->validateContext(new AssistantPromptContext(
+            policyVersion: $context->policyVersion,
+            presentationPreferences: $context->presentationPreferences,
+            safeCitations: array_slice([
+                ...$applicationContent->citations(),
+                ...$context->safeCitations,
+            ], 0, 10),
+            authorizedResults: array_slice([
+                ...$applicationContent->results(),
+                ...$context->authorizedResults,
+            ], 0, 50),
+        ));
+    }
+
     private function assertRequestIdentity(AssistantAccessContext $access): void
     {
         $request_user_id = $this->request->user()?->getAuthIdentifier();
 
-        if ($request_user_id === null || trim((string) $request_user_id) !== $access->userId) {
+        if ($request_user_id === null || $access->userId !== mb_trim((string) $request_user_id)) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Assistant access context is unavailable.');
         }
     }
@@ -126,7 +209,7 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 throw new AssistancePolicyViolationException('unsafe_document');
             }
 
-            $label = trim($document->getSourceName());
+            $label = mb_trim($document->getSourceName());
 
             if ($label === '') {
                 throw new AssistancePolicyViolationException('unsafe_citation');

@@ -57,4 +57,9 @@ final readonly class AssistanceGuardrailPipeline
     {
         return $this->output_policy->validate($output);
     }
+
+    public function insufficientEvidence(string $locale): string
+    {
+        return $this->output_policy->insufficientEvidence($locale);
+    }
 }

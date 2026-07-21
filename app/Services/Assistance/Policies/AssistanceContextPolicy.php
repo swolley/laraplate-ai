@@ -11,10 +11,14 @@ use Throwable;
 
 final readonly class AssistanceContextPolicy
 {
-    /** @var list<string> */
+    /**
+     * @var list<string>
+     */
     private const array CITATION_KEYS = ['excerpt', 'label', 'reference', 'score'];
 
-    /** @var list<string> */
+    /**
+     * @var list<string>
+     */
     private const array RESULT_KEYS = [
         'content',
         'count',
@@ -57,7 +61,7 @@ final readonly class AssistanceContextPolicy
             $label = $citation['label'] ?? null;
             $reference = $citation['reference'] ?? null;
 
-            if (! is_string($label) || trim($label) === '' || $this->isInternalPath($label)) {
+            if (! is_string($label) || mb_trim($label) === '' || $this->isInternalPath($label)) {
                 throw new AssistancePolicyViolationException('unsafe_citation');
             }
 
@@ -76,6 +80,7 @@ final readonly class AssistanceContextPolicy
         }
 
         $this->assertAuthorizedResultSchema($context->authorizedResults);
+
         foreach ($context->safeCitations as $citation) {
             unset($citation['reference']);
             $this->assertUntrustedDataSafe($citation);
@@ -97,7 +102,7 @@ final readonly class AssistanceContextPolicy
     }
 
     /**
-     * @param array<array-key, mixed> $values
+     * @param  array<array-key, mixed>  $values
      */
     private function assertAuthorizedResultSchema(array $values): void
     {
@@ -117,8 +122,8 @@ final readonly class AssistanceContextPolicy
     }
 
     /**
-     * @param array<array-key, mixed> $values
-     * @param list<string> $allowedKeys
+     * @param  array<array-key, mixed>  $values
+     * @param  list<string>  $allowedKeys
      */
     private function hasOnlyAllowedKeys(array $values, array $allowedKeys): bool
     {
@@ -132,11 +137,11 @@ final readonly class AssistanceContextPolicy
     }
 
     /**
-     * @param array<array-key, mixed> $values
+     * @param  array<array-key, mixed>  $values
      */
     private function assertUntrustedDataSafe(array $values): void
     {
-        foreach ($values as $value) {
+        foreach ($values as $key => $value) {
             if (is_array($value)) {
                 $this->assertUntrustedDataSafe($value);
 
@@ -144,6 +149,14 @@ final readonly class AssistanceContextPolicy
             }
 
             if (! is_string($value)) {
+                continue;
+            }
+
+            if ($key === 'reference') {
+                if (! $this->isSafeApplicationReference($value)) {
+                    throw new AssistancePolicyViolationException('unsafe_context_value');
+                }
+
                 continue;
             }
 

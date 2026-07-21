@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Tools;
 
+use function ai_config_nullable_string;
+
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\ActionRequestService;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\Core\Models\User;
 use NeuronAI\Tools\PropertyType;
-
-use function ai_config_nullable_string;
 use NeuronAI\Tools\Tool;
 
 /**
@@ -79,6 +79,26 @@ final class ToolRegistry
     ): array {
         $definitions = $provider->tools($context);
 
+        if ($allowedToolNames !== null) {
+            $definitions = array_values(array_filter(
+                $definitions,
+                static fn (ToolDefinition $definition): bool => in_array($definition->name, $allowedToolNames, true),
+            ));
+        }
+
+        return array_map(
+            fn (ToolDefinition $definition): Tool => $this->buildNeuronTool($definition),
+            $definitions,
+        );
+    }
+
+    /**
+     * @param  list<ToolDefinition>  $definitions
+     * @param  list<string>|null  $allowedToolNames
+     * @return list<Tool>
+     */
+    public function getNeuronToolsForDefinitions(array $definitions, ?array $allowedToolNames = null): array
+    {
         if ($allowedToolNames !== null) {
             $definitions = array_values(array_filter(
                 $definitions,

@@ -10,7 +10,9 @@ use Illuminate\Support\Str;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext;
 use Modules\AI\Services\ApplicationContent\Enums\ApplicationContentRoutingStatus;
+use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\AssistantPromptContext;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
@@ -31,6 +33,8 @@ final readonly class ApplicationContentToolProvider implements ContextualToolPro
         private ApplicationContentSourceRouter $router,
         private ApplicationContentPromptProjector $projector,
         private ApplicationContentDeadlineExecutor $deadline,
+        private ApplicationContentCitationMapper $citations,
+        private AssistanceGuardrailPipeline $guardrails,
         private Request $request,
     ) {}
 
@@ -134,6 +138,8 @@ final readonly class ApplicationContentToolProvider implements ContextualToolPro
         mixed $limit,
     ): array {
         try {
+            $this->citations->markAttempted();
+
             if (! is_string($source) || $source !== $selectedSource || ! is_string($query)) {
                 return $this->unavailable();
             }
@@ -171,6 +177,14 @@ final readonly class ApplicationContentToolProvider implements ContextualToolPro
                 ),
                 $this->timeoutSeconds(),
             );
+
+            $this->guardrails->validateContext(new AssistantPromptContext(
+                policyVersion: 'application-content-tool-v1',
+                presentationPreferences: [],
+                safeCitations: $this->citations->citationsFor($result),
+                authorizedResults: $this->citations->resultsFor($result),
+            ));
+            $this->citations->record($result);
 
             return $this->projector->project($result);
         } catch (Throwable) {

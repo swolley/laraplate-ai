@@ -15,9 +15,9 @@ final readonly class AssistanceOutputPolicy
 
     public function validate(string $output): string
     {
-        $output = trim($output);
+        $output = mb_trim($output);
 
-        if ($output === '' || mb_strlen($output) > $this->max_length) {
+        if ($output === '' || $this->max_length < mb_strlen($output)) {
             throw new AssistancePolicyViolationException('output_bounds');
         }
 
@@ -33,5 +33,14 @@ final readonly class AssistanceOutputPolicy
         }
 
         return $output;
+    }
+
+    public function insufficientEvidence(string $locale): string
+    {
+        $message = str_starts_with(mb_strtolower($locale), 'it')
+            ? 'Non dispongo di informazioni visibili sufficienti per rispondere a questa richiesta.'
+            : 'I do not have enough visible information to answer this request.';
+
+        return $this->validate($message);
     }
 }
