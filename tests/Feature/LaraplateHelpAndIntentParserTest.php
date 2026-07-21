@@ -3,9 +3,10 @@
 declare(strict_types=1);
 
 use Modules\AI\Console\LaraplateHelpCommand;
+use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\DocumentationService;
-use Modules\AI\Services\LlmSearchService;
 use Modules\AI\Services\LlmQueryIntentParser;
+use Modules\AI\Services\LlmSearchService;
 
 it('fails when faq feature is disabled', function (): void {
     config(['ai.features.faq.enabled' => false]);
@@ -30,9 +31,9 @@ it('answers a one-shot question with citations', function (): void {
 
     $this->mock(DocumentationService::class, function ($mock): void {
         $mock->shouldReceive('isAvailable')->once()->andReturn(true);
-        $mock->shouldReceive('answerQuestion')
+        $mock->shouldReceive('answerDeveloperQuestion')
             ->once()
-            ->with('How do modules work?')
+            ->with('How do modules work?', AssistantProfile::DeveloperHelp)
             ->andReturn([
                 'answer' => 'Modules are self-contained packages.',
                 'citations' => [
@@ -52,8 +53,9 @@ it('reports empty answers and query failures', function (): void {
 
     $this->mock(DocumentationService::class, function ($mock): void {
         $mock->shouldReceive('isAvailable')->once()->andReturn(true);
-        $mock->shouldReceive('answerQuestion')
+        $mock->shouldReceive('answerDeveloperQuestion')
             ->once()
+            ->with('Empty?', AssistantProfile::DeveloperHelp)
             ->andReturn(['answer' => '', 'citations' => []]);
     });
 
@@ -63,8 +65,9 @@ it('reports empty answers and query failures', function (): void {
 
     $this->mock(DocumentationService::class, function ($mock): void {
         $mock->shouldReceive('isAvailable')->once()->andReturn(true);
-        $mock->shouldReceive('answerQuestion')
+        $mock->shouldReceive('answerDeveloperQuestion')
             ->once()
+            ->with('Fail?', AssistantProfile::DeveloperHelp)
             ->andThrow(new RuntimeException('RAG offline'));
     });
 
