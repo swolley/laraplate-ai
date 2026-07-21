@@ -197,14 +197,15 @@ The AI Module includes built-in features such as:
 
 -   **FAQ/RAG (Retrieval-Augmented Generation):**
     - Answers from a **documentation corpus** indexed under `docs/rag/` and `Modules/*/docs/rag/` (not from general `docs/` unless copied into `rag/`)
-    - **Two audiences, two entry points** (same indexed corpus today; write docs for the right reader):
+    - **Two audiences, two server-owned profiles and separate corpora:**
         - **End users** — in-app chat (`ChatService`): help using the application (workflows, screens, permissions). RAG runs when enabled and the message looks like a question, or when `use_rag: true` is passed in context.
-        - **Developers** — terminal assistant: `php artisan ai:laraplate-help` (interactive REPL or `--question="..."` one-shot). Same RAG stack; intended for contributors extending Laraplate/modules.
+        - **Developers** — terminal assistant: `php artisan ai:help` (interactive REPL or `--question="..."` one-shot), with access to the developer documentation corpus and no application-content tool.
     - Citations with source attribution in answers
     - **Commands:**
-        - `php artisan ai:index-docs` — build or update the vector store (`--path=`, `--full`)
+        - `php artisan ai:index-rag-docs` — build or update a profile corpus (`--profile=developer|user|all`, `--path=`, `--full`)
         - `php artisan ai:create-rag-es-index` — create Elasticsearch index when using `AI_FAQ_VECTOR_STORE=elasticsearch`
-        - `php artisan ai:laraplate-help` — developer documentation assistant in the terminal
+        - `php artisan ai:help` — developer documentation assistant in the terminal
+        - `php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` — provider retrieval evaluation without chat generation
     - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
     - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
 
@@ -215,6 +216,8 @@ The AI Module includes built-in features such as:
     - Medium risk: user confirmation required
     - High risk: admin approval required
     - Async execution via jobs
+    - Authenticated in-app read-only Core Graph tools with request permission and ACL enforcement
+    - Authenticated `application_content_search` with explicit module providers, server-side routing, safe citations, and evidence-free abstention
 
 -   **Conversation Memory:**
     - Automatic summarization after N messages
@@ -386,7 +389,8 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Evaluate hybrid search (keyword + vector) against the vector baseline
   - Evaluate cross-encoder reranking on a bounded candidate set
   - Consider graph retrieval only for measured residual multi-hop failures; Graphify/GraphRAG are not selected dependencies and graph remains optional and disabled by default
-  - Multi-document source types (database, API) require separate ingestion specs
+  - Keep application content retrieval outside documentation indexes; add module providers through the Core contract
+  - Public or anonymous content assistance requires a separate Phase 2 threat model, profile, dataset, and approval
 
 The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-16-rag-retrieval-strategy-design.md`; its phased plan is `docs/superpowers/plans/2026-07-16-rag-retrieval-strategy.md`. The Graph Explorer UI is unrelated to documentation RAG storage and retrieval.
 
@@ -399,6 +403,8 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Contextual Suggestions** - Proactive AI suggestions with rate limiting
 - [x] **Tool System Infrastructure** - ToolRegistry, ActionRequest, risk classification
 - [x] **Tool System API** - Full API exposure with confirm/approve/reject endpoints
+- [x] **Protected In-App Assistance** - Separate profile/corpus, fail-closed guardrails, read-only Graph and module evidence tools
+- [x] **Application Content Evaluation** - Synthetic datasets, sliced metrics, reproducible CMS record baseline
 - [x] **Event-Driven Architecture** - Clean decoupling from Core module
 
 ### Notes

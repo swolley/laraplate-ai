@@ -155,9 +155,19 @@ flowchart TB
 
 ### Tools ecosystem
 
-- Tool registry exposes executable tools to the AI agent.
-- Tools are wrapped with risk-aware policy logic.
-- Agent can choose tool execution or direct response depending on prompt and available capabilities.
+The assistant has three independent retrieval surfaces:
+
+| Surface | Purpose | Data and authorization |
+| --- | --- | --- |
+| Documentation RAG | Product and developer documentation | Separate `developer` and `user` corpora selected by a server-owned profile |
+| Core Graph tools | Authorized relation search, expansion, and statistics | Current request identity, entity permission, record ACL, read-only Graph gateway |
+| Application content tool | Bounded textual evidence from module-owned records | Current request identity, provider entity permission, row ACL, safe provider projection |
+
+`CompositeContextualToolProvider` combines independent request-local definitions. It does not discover module providers: Core owns the explicit `ApplicationContentRetrievalProviderRegistry`, and each optional module registers its provider without depending on AI. `ApplicationContentSourceRouter` first builds an authorized source allowlist, then uses verified server page context when present. Without page context it selects the sole authorized source, routes an explicit source intent, or exposes no application tool when the request is ambiguous. Client presentation context cannot forge module routing.
+
+`application_content_search` is available only to authenticated `InAppAssistance`. Its schema contains only the one server-selected source, query, locale, and bounded limit. It cannot accept user/tenant identity, roles, permissions, ACLs, filters, model/table/index/class names, prompts, or write operations. `graph_search`, `graph_expand`, and `graph_stats` remain separate read-only tools and may be used in the same turn.
+
+Retrieved application text is classified as untrusted data before it can influence generation. Safe hits are mapped to canonical application citations; unsafe evidence is discarded. If the model calls the application tool and retrieval is empty, denied, unavailable, timed out, or rejected by policy, `InAppAssistanceService` replaces any assumed answer with a localized insufficient-evidence response. The complete output is validated before persistence; streaming does not bypass full-response validation.
 
 ### Approvals flow for tools
 
@@ -195,14 +205,20 @@ flowchart TB
 
 ### Documentation indexing
 
-- `php artisan ai:index-docs`
-- `php artisan ai:index-docs --path=/some/path`
-- `php artisan ai:index-docs --full`
+- `php artisan ai:index-rag-docs`
+- `php artisan ai:index-rag-docs --profile=developer|user|all`
+- `php artisan ai:index-rag-docs --path=/some/path --full`
 
 ### Terminal help assistant
 
-- `php artisan ai:laraplate-help` opens interactive REPL chat over RAG.
-- `php artisan ai:laraplate-help --question="..."` executes one-shot query.
+- `php artisan ai:help` opens interactive developer-documentation chat.
+- `php artisan ai:help --question="..."` executes a one-shot developer query.
+
+### Application content evaluation
+
+`php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` evaluates a registered provider without calling the chat model. Datasets must declare synthetic data, typed evaluation-only authorization filters, provider/corpus revisions, and expected safe references. Reports contain aggregate and locale/category-sliced hit@5, reciprocal rank, citation precision, authorized-empty accuracy, supported-answer rate, abstention accuracy, unavailable rate, and latency; they omit queries, content, users, permissions, ACL expressions, and raw scores. Existing reports are not overwritten without `--force`.
+
+Phase 1 remains authenticated-only. Public or anonymous content assistance is a Phase 2 decision that requires a dedicated profile, fixed source/field allowlists, a separate threat model and dataset, abuse/rate limits, and explicit approval before any route is created. The provider contract is the extension point; it is not implicit permission to expose a provider publicly.
 
 ## Configuration surfaces
 
@@ -243,20 +259,23 @@ flowchart LR
 
 - RAG unavailable: index missing or vector store path not initialized.
 - Empty/weak answers: low-quality docs, missing sections, wrong root coverage.
+- Insufficient in-app evidence: no authorized module hit, ambiguous routing, provider timeout, or evidence rejected as unsafe.
 - Tool calls pending forever: approval workflow not completed in caller layer.
 - Slow responses: high top-k settings, large context, or provider latency.
 
 ## Security boundaries
 
-- Do not expose sensitive credentials or internals in indexed docs.
-- Treat tool execution as privileged: keep approval and risk policies enabled in production.
-- Keep guardrails enabled where user input can be untrusted.
+- Developer documentation and in-app user documentation use separate corpora and profiles.
+- End-user answers are limited to application usage assistance. Never expose licenses, code, tokens, secrets, databases, other users, hidden records, permission/ACL internals, or cryptographic implementation details.
+- Permissions and ACLs are enforced in backend gateways and provider queries; prompt rules do not replace authorization.
+- Guardrails are fail-closed on input, retrieved context, citations, and complete output.
+- Application content is never inserted into either documentation index.
 
 ## FAQ prompts for RAG
 
-- How does `ai:index-docs --full` differ from incremental indexing?
+- How does `ai:index-rag-docs --full` differ from incremental indexing?
 - How does the system decide between direct answer and tool invocation?
 - What happens when a tool call requires approval?
 - How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
 - Why is the assistant saying RAG is unavailable?
-- How do I use `ai:laraplate-help` in REPL versus one-shot mode?
+- How do I use `ai:help` in interactive versus one-shot mode?
