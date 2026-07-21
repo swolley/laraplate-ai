@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🚜 Refactor
 
+- *(ai)* Integrate HasModuleTablesUtils into AITables enum
+
+## [2.12.8] - 2026-07-13
+
+### 🚜 Refactor
+
 - *(ai)* Update command signatures and descriptions for clarity
 - *(ai)* Optimize translation commands for efficiency
 
