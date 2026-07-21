@@ -9,6 +9,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
+use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationService;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
@@ -54,6 +55,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->bind(GraphToolProvider::class);
         $this->app->scoped(ApplicationContentCitationMapper::class);
         $this->app->bind(ApplicationContentToolProvider::class);
+        $this->app->singleton(ApplicationContentEvaluationService::class);
         $this->app->bind(
             ContextualToolProviderInterface::class,
             static fn ($app): ContextualToolProviderInterface => new CompositeContextualToolProvider([
