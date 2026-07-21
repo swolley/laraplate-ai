@@ -246,18 +246,14 @@ it('does not expose an application tool when generic routing is ambiguous', func
     $service = inAppContentService(
         $this->request,
         [$cms, $erp],
-        function (string $input, string $systemPrompt, AssistantPromptContext $context, array $tools): string {
-            expect($tools)->toBe([]);
-
-            return 'Please specify which application area you mean.';
-        },
+        static fn (): never => throw new RuntimeException('Completion must not run for ambiguous routing.'),
     );
 
     $message = $service->respond($this->conversation, $this->user, 'How can I find the record?');
 
     expect($cms->calls)->toBe(0)
         ->and($erp->calls)->toBe(0)
-        ->and($message->content)->toBe('Please specify which application area you mean.');
+        ->and($message->content)->toBe('Please specify which application area your request refers to.');
 });
 
 it('routes explicit cross-module intent instead of forcing the page module', function (): void {
@@ -332,11 +328,7 @@ it('ignores client supplied routing context', function (): void {
     $service = inAppContentService(
         $this->request,
         [$cms, $erp],
-        function (string $input, string $systemPrompt, AssistantPromptContext $context, array $tools): string {
-            expect($tools)->toBe([]);
-
-            return 'Please specify which application area you mean.';
-        },
+        static fn (): never => throw new RuntimeException('Client context must not resolve ambiguity.'),
     );
 
     $service->respond($this->conversation, $this->user, 'How can I find the record?', [

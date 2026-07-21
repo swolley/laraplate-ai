@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Modules\AI\Enums\AssistantProfile;
+use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext;
 use Modules\AI\Services\ApplicationContent\Enums\ApplicationContentRoutingStatus;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
@@ -66,6 +67,7 @@ final readonly class ApplicationContentToolProvider implements ContextualToolPro
             $requestContext,
             $explicitSourceIntent,
         );
+        $this->citations->recordRoutingDecision($decision);
 
         if ($decision->status !== ApplicationContentRoutingStatus::Selected
             || $decision->selectedSource === null) {
@@ -197,7 +199,10 @@ final readonly class ApplicationContentToolProvider implements ContextualToolPro
      */
     private function authorizedDescriptors(AssistantAccessContext $context): array
     {
-        if ($context->profile !== AssistantProfile::InAppAssistance || ! $this->identityMatches($context)) {
+        if ($context->profile !== AssistantProfile::InAppAssistance
+            || $context->tenantScope !== AssistantTenantScope::Global
+            || $context->tenantId !== null
+            || ! $this->identityMatches($context)) {
             return [];
         }
 

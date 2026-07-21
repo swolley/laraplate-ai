@@ -62,4 +62,9 @@ final readonly class AssistanceGuardrailPipeline
     {
         return $this->output_policy->insufficientEvidence($locale);
     }
+
+    public function clarificationRequired(string $locale): string
+    {
+        return $this->output_policy->clarificationRequired($locale);
+    }
 }

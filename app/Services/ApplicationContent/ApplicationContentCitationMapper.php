@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\ApplicationContent;
 
+use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRoutingDecision;
+use Modules\AI\Services\ApplicationContent\Enums\ApplicationContentRoutingStatus;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 
 final class ApplicationContentCitationMapper
 {
     private bool $attempted = false;
+
+    private bool $clarificationRequired = false;
 
     /**
      * @var list<array<string, mixed>>
@@ -23,6 +27,7 @@ final class ApplicationContentCitationMapper
     public function reset(): void
     {
         $this->attempted = false;
+        $this->clarificationRequired = false;
         $this->citations = [];
         $this->results = [];
     }
@@ -30,6 +35,11 @@ final class ApplicationContentCitationMapper
     public function markAttempted(): void
     {
         $this->attempted = true;
+    }
+
+    public function recordRoutingDecision(ApplicationContentRoutingDecision $decision): void
+    {
+        $this->clarificationRequired = $decision->status === ApplicationContentRoutingStatus::ClarificationRequired;
     }
 
     public function record(ApplicationContentResult $result): void
@@ -81,6 +91,11 @@ final class ApplicationContentCitationMapper
     public function hasEvidence(): bool
     {
         return $this->results !== [];
+    }
+
+    public function clarificationRequired(): bool
+    {
+        return $this->clarificationRequired;
     }
 
     /**

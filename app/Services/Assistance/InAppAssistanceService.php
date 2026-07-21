@@ -76,9 +76,14 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 $this->promptContext($policy, $documents, $request_context),
             );
             $tools = $this->contextualTools($access, $input, $policy);
-            $output = $this->completion instanceof Closure
-                ? ($this->completion)($input, $policy->systemPrompt, $prompt_context, $tools)
-                : $this->complete($input, $policy, $prompt_context, $tools);
+
+            if ($application_content->clarificationRequired()) {
+                $output = $this->guardrails->clarificationRequired($access->locale);
+            } else {
+                $output = $this->completion instanceof Closure
+                    ? ($this->completion)($input, $policy->systemPrompt, $prompt_context, $tools)
+                    : $this->complete($input, $policy, $prompt_context, $tools);
+            }
 
             if ($application_content->attempted() && ! $application_content->hasEvidence()) {
                 $output = $this->guardrails->insufficientEvidence($access->locale);

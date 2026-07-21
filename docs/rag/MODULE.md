@@ -167,6 +167,8 @@ The assistant has three independent retrieval surfaces:
 
 `application_content_search` is available only to authenticated `InAppAssistance`. Its schema contains only the one server-selected source, query, locale, and bounded limit. It cannot accept user/tenant identity, roles, permissions, ACLs, filters, model/table/index/class names, prompts, or write operations. `graph_search`, `graph_expand`, and `graph_stats` remain separate read-only tools and may be used in the same turn.
 
+The current tenant resolver supports only the global scope. Application content tools fail closed for `Tenant` scope until a server-owned per-tenant source policy is implemented; tenant identity or source policy can never be supplied through a tool argument or client context.
+
 Retrieved application text is classified as untrusted data before it can influence generation. Safe hits are mapped to canonical application citations; unsafe evidence is discarded. If the model calls the application tool and retrieval is empty, denied, unavailable, timed out, or rejected by policy, `InAppAssistanceService` replaces any assumed answer with a localized insufficient-evidence response. The complete output is validated before persistence; streaming does not bypass full-response validation.
 
 ### Approvals flow for tools

@@ -43,4 +43,13 @@ final readonly class AssistanceOutputPolicy
 
         return $this->validate($message);
     }
+
+    public function clarificationRequired(string $locale): string
+    {
+        $message = str_starts_with(mb_strtolower($locale), 'it')
+            ? 'Specifica a quale area dell’applicazione si riferisce la richiesta.'
+            : 'Please specify which application area your request refers to.';
+
+        return $this->validate($message);
+    }
 }
