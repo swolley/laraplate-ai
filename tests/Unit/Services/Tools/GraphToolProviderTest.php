@@ -6,8 +6,9 @@ use Illuminate\Http\Request;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
-use Modules\AI\Services\Tools\GraphToolProvider;
+use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
+use Modules\AI\Services\Tools\GraphToolProvider;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Graph\Contracts\GraphToolGatewayInterface;
 use Modules\Core\Graph\Data\GraphSearchToolInput;
@@ -40,8 +41,8 @@ function graphToolRequest(string $userId = '7'): Request
     return $request;
 }
 
-it('binds the contextual provider to the read-only Graph implementation', function (): void {
-    expect(app(ContextualToolProviderInterface::class))->toBeInstanceOf(GraphToolProvider::class);
+it('keeps the read-only Graph implementation in the composite contextual provider', function (): void {
+    expect(app(ContextualToolProviderInterface::class))->toBeInstanceOf(CompositeContextualToolProvider::class);
 });
 
 it('provides exactly three bounded read-only graph tools for in-app assistance', function (): void {
