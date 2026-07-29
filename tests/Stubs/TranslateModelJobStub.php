@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stubs;
+namespace Modules\AI\Tests\Stubs;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +13,7 @@ use Override;
  * Stub model for TranslateModelJob tests.
  * Uses HasTranslations and allows configuring static getTranslatableFields + instance behavior.
  */
-class TranslateModelJobStub extends Model
+final class TranslateModelJobStub extends Model
 {
     use HasFactory;
     use HasTranslations;

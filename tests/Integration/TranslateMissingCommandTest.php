@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Console\TranslateMissingCommand;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
-use Stubs\TranslatableMissingTestModel;
+use Modules\AI\Tests\Stubs\TranslatableMissingTestModel;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**

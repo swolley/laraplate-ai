@@ -16,12 +16,11 @@ use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext
 use Modules\AI\Services\ApplicationContent\Enums\ApplicationContentRoutingStatus;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Tests\Stubs\ApplicationContent\AdversarialApplicationContentProvider;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalProviderRegistry;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface;
-use Modules\Core\ApplicationContent\Data\ApplicationContentAuthorization;
 use Modules\Core\ApplicationContent\Data\ApplicationContentHit;
-use Modules\Core\ApplicationContent\Data\ApplicationContentQuery;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\ApplicationContent\Exceptions\DuplicateApplicationContentSourceException;
@@ -30,40 +29,6 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\Authorization\AuthorizationService;
 
 uses(RefreshDatabase::class);
-
-final class AdversarialApplicationContentProvider implements ApplicationContentRetrievalProviderInterface
-{
-    public int $calls = 0;
-
-    public function __construct(
-        private readonly ApplicationContentSourceDescriptor $descriptor,
-        private readonly ApplicationContentResult $result,
-        private readonly int $delayMicroseconds = 0,
-        private readonly bool $fail = false,
-    ) {}
-
-    public function descriptor(): ApplicationContentSourceDescriptor
-    {
-        return $this->descriptor;
-    }
-
-    public function retrieve(
-        ApplicationContentQuery $query,
-        ApplicationContentAuthorization $authorization,
-    ): ApplicationContentResult {
-        $this->calls++;
-
-        if ($this->delayMicroseconds > 0) {
-            usleep($this->delayMicroseconds);
-        }
-
-        if ($this->fail) {
-            throw new RuntimeException('internal index and authorization diagnostics');
-        }
-
-        return $this->result;
-    }
-}
 
 function adversarialDescriptor(
     string $source = 'cms.contents',

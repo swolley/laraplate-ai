@@ -8,7 +8,8 @@ use Modules\AI\Console\TranslateContentCommand;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
-use Stubs\TranslatableTestModel;
+use Modules\AI\Tests\Stubs\TranslatableTestModel;
+use Modules\AI\Tests\Stubs\TranslatableTestModelTranslation;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -109,7 +110,7 @@ it('dispatches TranslateModelJob for each model', function (): void {
     });
 
     $model = TranslatableTestModel::query()->create([]);
-    Stubs\TranslatableTestModelTranslation::query()->create([
+    TranslatableTestModelTranslation::query()->create([
         'translatable_test_model_id' => $model->id,
         'locale' => config('app.locale'),
         'title' => 'Default title',

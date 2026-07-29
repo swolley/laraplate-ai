@@ -21,12 +21,11 @@ use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\AI\Tests\Stubs\ApplicationContent\InAppAssistanceContentProvider;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalProviderRegistry;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface;
-use Modules\Core\ApplicationContent\Data\ApplicationContentAuthorization;
 use Modules\Core\ApplicationContent\Data\ApplicationContentHit;
-use Modules\Core\ApplicationContent\Data\ApplicationContentQuery;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Models\Role;
@@ -35,35 +34,6 @@ use Modules\Core\Services\Authorization\AuthorizationService;
 use NeuronAI\Tools\Tool;
 
 uses(RefreshDatabase::class);
-
-final class InAppAssistanceContentProvider implements ApplicationContentRetrievalProviderInterface
-{
-    public int $calls = 0;
-
-    public function __construct(
-        private readonly ApplicationContentSourceDescriptor $descriptor,
-        private readonly ApplicationContentResult $result,
-        private readonly bool $fail = false,
-    ) {}
-
-    public function descriptor(): ApplicationContentSourceDescriptor
-    {
-        return $this->descriptor;
-    }
-
-    public function retrieve(
-        ApplicationContentQuery $query,
-        ApplicationContentAuthorization $authorization,
-    ): ApplicationContentResult {
-        $this->calls++;
-
-        if ($this->fail) {
-            throw new RuntimeException('Private provider failure.');
-        }
-
-        return $this->result;
-    }
-}
 
 function inAppContentDescriptor(
     string $source = 'cms.contents',

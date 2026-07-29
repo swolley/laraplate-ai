@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
-use Stubs\TranslateModelJobStub;
+use Modules\AI\Tests\Stubs\TranslateModelJobStub;
 
 beforeEach(function (): void {
     Config::set('app.locale', 'en');
