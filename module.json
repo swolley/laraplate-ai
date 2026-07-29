@@ -1,5 +1,6 @@
 {
     "name": "AI",
+    "laraplate_owned": true,
     "alias": "ai",
     "description": "AI Module for Embeddings, Vector Search and Automatic Translation",
     "keywords": [
