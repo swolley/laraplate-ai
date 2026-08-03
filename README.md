@@ -390,7 +390,7 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Evaluate cross-encoder reranking on a bounded candidate set
   - Consider graph retrieval only for measured residual multi-hop failures; Graphify/GraphRAG are not selected dependencies and graph remains optional and disabled by default
   - Keep application content retrieval outside documentation indexes; add module providers through the Core contract
-  - Public or anonymous content assistance requires a separate Phase 2 threat model, profile, dataset, and approval
+  - Session-based guest content assistance requires a separate Phase 2 threat model, `GuestAssistance` profile, session-level conversation isolation, dataset, and approval
 
 The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-16-rag-retrieval-strategy-design.md`; its phased plan is `docs/superpowers/plans/2026-07-16-rag-retrieval-strategy.md`. The Graph Explorer UI is unrelated to documentation RAG storage and retrieval.
 

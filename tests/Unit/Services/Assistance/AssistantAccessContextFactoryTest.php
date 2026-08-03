@@ -20,10 +20,12 @@ function assistanceUserMock(
     int $id = 7,
     string $locale = 'it',
     ?Collection $permissions = null,
+    bool $guest = false,
 ): User {
     $user = Mockery::mock(User::class)->makePartial();
     $user->shouldReceive('getKey')->andReturn($id);
     $user->shouldReceive('getAttribute')->with('lang')->andReturn($locale);
+    $user->shouldReceive('isGuest')->andReturn($guest);
     $user->shouldReceive('getAllPermissions')->andReturn($permissions ?? collect());
 
     return $user;
@@ -86,6 +88,31 @@ it('rejects an authenticated user who does not own the conversation', function (
     ))->toThrow(AuthorizationException::class);
 });
 
+it('rejects the configured guest before resolving tenant or permissions', function (): void {
+    $user = assistanceUserMock(guest: true);
+    $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
+    $resolver->shouldNotReceive('resolveFor');
+
+    expect(fn () => (new AssistantAccessContextFactory($resolver))->forInApp(
+        assistanceConversation(),
+        $user,
+    ))->toThrow(AuthorizationException::class);
+});
+
+it('fails closed when guest classification fails', function (): void {
+    $user = Mockery::mock(User::class)->makePartial();
+    $user->shouldReceive('getKey')->andReturn(7);
+    $user->shouldReceive('isGuest')->once()
+        ->andThrow(new UnexpectedValueException('invalid guest configuration'));
+    $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
+    $resolver->shouldNotReceive('resolveFor');
+
+    expect(fn () => (new AssistantAccessContextFactory($resolver))->forInApp(
+        assistanceConversation(),
+        $user,
+    ))->toThrow(AuthorizationException::class, 'Assistant access context is unavailable.');
+});
+
 it('fails closed when tenant resolution fails', function (): void {
     $user = assistanceUserMock();
     $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
@@ -102,6 +129,7 @@ it('fails closed when effective permissions cannot be resolved', function (): vo
     $user = Mockery::mock(User::class)->makePartial();
     $user->shouldReceive('getKey')->andReturn(7);
     $user->shouldReceive('getAttribute')->with('lang')->andReturn('it');
+    $user->shouldReceive('isGuest')->andReturnFalse();
     $user->shouldReceive('getAllPermissions')->once()
         ->andThrow(new RuntimeException('permission store unavailable'));
 

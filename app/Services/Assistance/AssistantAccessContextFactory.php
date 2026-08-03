@@ -34,6 +34,10 @@ final readonly class AssistantAccessContextFactory
         }
 
         try {
+            if ($authenticated_user->isGuest()) {
+                throw new AuthorizationException('Assistant access context is unavailable.');
+            }
+
             $tenant = $this->tenant_resolver->resolveFor($authenticated_user);
             $permissions = $this->effectivePermissions($authenticated_user);
         } catch (Throwable $exception) {

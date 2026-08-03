@@ -1,28 +1,28 @@
 {
   "schema_version": "1",
-  "evaluated_at": "2026-07-21",
+  "evaluated_at": "2026-08-03",
   "result": "pass",
   "policy_version": "in-app-v1",
   "application_tool_policy_version": "application-content-tool-v1",
   "cms_provider_version": "cms-record-v1",
   "release_suite": {
-    "tests_passed": 103,
+    "tests_passed": 116,
     "tests_failed": 0,
-    "assertions": 444,
-    "duration_seconds": 58.09
+    "assertions": 484,
+    "duration_seconds": 89.7
   },
   "adversarial_suite": {
     "tests_passed": 11,
     "tests_failed": 0,
     "assertions": 38,
-    "duration_seconds": 10.37
+    "duration_seconds": 7.59
   },
   "security_gate_failures": {
     "unauthorized_context": 0,
     "hidden_field": 0,
     "identity_spoofing": 0,
     "source_collision": 0,
-    "public_fallback": 0,
+    "guest_profile_leak": 0,
     "unsafe_output": 0
   }
 }
