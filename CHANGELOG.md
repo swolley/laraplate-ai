@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🐛 Bug Fixes
+
+- *(testing/ai)* Extract inline test providers into PSR-4 stubs
+
+### 🚜 Refactor
+
+- *(ai)* Seed definitions via SeedReconciler, stamped AI-owned
+
+### 🧪 Testing
+
+- *(ai)* Add route override tests for module-specific handling
+
+### ⚙️ Miscellaneous Tasks
+
+- *(ai)* Mark module as laraplate_owned
+
+## [2.13.0] - 2026-07-21
+
 ### 🚜 Refactor
 
 - *(ai)* Integrate HasModuleTablesUtils into AITables enum

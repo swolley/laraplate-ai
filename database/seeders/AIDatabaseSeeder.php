@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Modules\AI\Database\Seeders;
 
 use Modules\Core\Casts\SettingTypeEnum;
+use Modules\Core\Models\Setting;
 use Modules\Core\Overrides\Seeder;
+use Modules\Core\Seeding\SeedDefinition;
+use Modules\Core\Seeding\SeedReconciler;
 
 class AIDatabaseSeeder extends Seeder
 {
     /**
-     * @return array<int, array{name: string, value: mixed, type: SettingTypeEnum, group_name: string, description: string, choices?: array<int, mixed>}>
+     * @return array<int, array{name: string, value: mixed, encrypted: bool, choices: ?array<int, mixed>, type: SettingTypeEnum, group_name: string, description: string}>
      */
     public static function runtimeSettingDefinitions(): array
     {
@@ -45,23 +48,33 @@ class AIDatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->seedSettingDefinitions(self::runtimeSettingDefinitions());
+        $outcome = app(SeedReconciler::class)->reconcile(
+            SeedDefinition::for(Setting::class)
+                ->identity(['name'])
+                ->structural(['type', 'group_name', 'description', 'choices'])
+                ->initial(['value'])
+                ->ownedBy('AI')
+                ->rows(self::runtimeSettingDefinitions()),
+        );
+
+        $this->command?->line(
+            '    - created ' . count($outcome->created) . ', realigned ' . count($outcome->realigned) . ", unchanged {$outcome->unchanged}",
+        );
     }
 
+    /**
+     * @return array{name: string, value: mixed, encrypted: bool, choices: ?array<int, mixed>, type: SettingTypeEnum, group_name: string, description: string}
+     */
     private static function setting(string $name, mixed $value, SettingTypeEnum $type, string $group, string $description, ?array $choices = null): array
     {
-        $definition = [
+        return [
             'name' => $name,
             'value' => $value,
+            'encrypted' => false,
+            'choices' => $choices,
             'type' => $type,
             'group_name' => $group,
             'description' => $description,
         ];
-
-        if ($choices !== null) {
-            $definition['choices'] = $choices;
-        }
-
-        return $definition;
     }
 }
