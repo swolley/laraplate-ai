@@ -21,6 +21,7 @@ use Modules\AI\Services\ChatService;
 use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
+use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
 use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
@@ -56,6 +57,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->scoped(ApplicationContentCitationMapper::class);
         $this->app->bind(ApplicationContentToolProvider::class);
         $this->app->singleton(ApplicationContentEvaluationService::class);
+        $this->app->singleton(DocumentationEvaluationService::class);
         $this->app->bind(
             ContextualToolProviderInterface::class,
             static fn ($app): ContextualToolProviderInterface => new CompositeContextualToolProvider([
