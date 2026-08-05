@@ -42,7 +42,7 @@ final readonly class DocumentationEvaluationCase
             || $this->topK > 10
             || ! $this->validStringList($this->expectedSourceLabels, 200)
             || ! $this->validStringList($this->expectedCitationLabels, 200)
-            || ! $this->validSlugList($this->slices, 63)
+            || ! $this->validSlugList($this->slices, 64)
             || ! $this->validStringList($this->effectivePermissions, 200)
             || ($this->tenantScope === AssistantTenantScope::Global && $this->tenantId !== null)
             || ($this->tenantScope === AssistantTenantScope::Tenant

@@ -36,9 +36,13 @@ it('builds a valid case and an in-app access context', function (): void {
 });
 
 it('rejects a refusal case that still expects sources', function (): void {
-    expect(fn () => makeDocCase(['expectRefusal' => true, 'expectSupportedAnswer' => false]))
-        ->toThrow(InvalidArgumentException::class);
-})->with([[['expectedSourceLabels' => ['x'], 'expectedCitationLabels' => []]]]);
+    expect(fn () => makeDocCase([
+        'expectRefusal' => true,
+        'expectSupportedAnswer' => false,
+        'expectedSourceLabels' => ['x'],
+        'expectedCitationLabels' => ['x'],
+    ]))->toThrow(InvalidArgumentException::class);
+});
 
 it('rejects an authorized-empty case that expects sources', function (): void {
     expect(fn () => makeDocCase([
