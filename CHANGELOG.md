@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- *(tests)* Use distinct author for approve-modification fixtures
+
+## [2.13.1] - 2026-08-03
+
+### 🐛 Bug Fixes
+
 - *(testing/ai)* Extract inline test providers into PSR-4 stubs
 
 ### 🚜 Refactor
