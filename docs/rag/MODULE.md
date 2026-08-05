@@ -281,3 +281,13 @@ flowchart LR
 - How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
 - Why is the assistant saying RAG is unavailable?
 - How do I use `ai:help` in interactive versus one-shot mode?
+
+## Documentation evaluation
+
+`ai:evaluate-documentation` scores documentation retrieval per module and index
+profile (Level-1, deterministic, no chat model), mirroring
+`ai:evaluate-application-content`. Datasets are owned by each module under
+`docs/rag/evaluations/`. The deterministic regression gate lives in
+`Modules/AI/tests/Feature/DocumentationBaselineGateTest.php`. Live-generation
+(Level-2) scoring is specified but opt-in. Design:
+`docs/superpowers/specs/2026-08-04-documentation-rag-evaluation-baseline-design.md`.
