@@ -41,10 +41,11 @@ beforeEach(function (): void {
 function createCommentModification(array $changes = []): Modification
 {
     $content_id = test()->content->id;
+    $author = User::factory()->create();
 
     $defaults = [
         'content_id' => ['original' => null, 'modified' => $content_id],
-        'user_id' => ['original' => null, 'modified' => test()->system_user->id],
+        'user_id' => ['original' => null, 'modified' => $author->id],
         'body' => ['original' => null, 'modified' => 'Test comment body'],
         'locale' => ['original' => null, 'modified' => 'en'],
     ];
@@ -52,7 +53,7 @@ function createCommentModification(array $changes = []): Modification
     return Modification::query()->create([
         'modifiable_type' => Comment::class,
         'modifiable_id' => null,
-        'modifier_id' => test()->system_user->id,
+        'modifier_id' => $author->id,
         'modifier_type' => User::class,
         'active' => true,
         'is_update' => false,
