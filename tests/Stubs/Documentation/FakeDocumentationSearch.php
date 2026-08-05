@@ -1,0 +1,130 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\AI\Tests\Stubs\Documentation;
+
+use Closure;
+use Modules\AI\Ai\Rag\Retrieval\DocumentationRetrievalContext;
+use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
+use NeuronAI\RAG\Document;
+
+final class FakeDocumentationSearch
+{
+    /**
+     * @param  array<int, list<Document>>  $rankedByHash
+     */
+    private array $rankedByHash;
+
+    /**
+     * @param  array<string, list<Document>>  $rankedByQuery
+     */
+    public function __construct(array $rankedByQuery)
+    {
+        $indexed = [];
+
+        foreach ($rankedByQuery as $query => $documents) {
+            $indexed[crc32((string) $query)] = $documents;
+        }
+
+        $this->rankedByHash = $indexed;
+    }
+
+    /**
+     * @param  list<float>  $embedding
+     * @return list<Document>
+     */
+    public function __invoke(array $embedding, DocumentationRetrievalContext $context): array
+    {
+        $key = (int) ($embedding[0] ?? 0);
+        $candidates = $this->rankedByHash[$key] ?? [];
+        $allowed = [];
+
+        foreach ($candidates as $document) {
+            if ($this->isVisible($document, $context)) {
+                $allowed[] = $document;
+            }
+
+            if ($context->topK <= count($allowed)) {
+                break;
+            }
+        }
+
+        return $allowed;
+    }
+
+    /**
+     * @param  array<string, list<Document>>  $rankedByQuery
+     */
+    public static function forInAppRetrieval(array $rankedByQuery): InAppDocumentationRetrieval
+    {
+        $search = new self($rankedByQuery);
+
+        return new InAppDocumentationRetrieval(
+            new StubDocumentationEmbeddingService,
+            Closure::fromCallable($search),
+        );
+    }
+
+    /**
+     * @param  list<string>  $breadcrumb
+     * @param  list<string>  $requiredPermissions
+     */
+    public static function document(
+        string $label,
+        string $locale,
+        string $content,
+        array $breadcrumb,
+        array $requiredPermissions = [],
+        string $tenantScope = 'global',
+        ?string $tenantId = null,
+        string $classificationVersion = 'in-app-docs-v1',
+    ): Document {
+        $document = new Document($content);
+        $document->sourceType = 'documentation';
+        $document->sourceName = $label;
+        $document->metadata = [
+            'audience' => 'user',
+            'module' => 'core',
+            'locale' => $locale,
+            'canonical_source' => 'core/' . mb_strtolower(str_replace([' · ', ' '], ['/', '-'], $label)),
+            'safe_source_label' => $label,
+            'version' => '1',
+            'policy_classification' => 'user_safe',
+            'policy_classification_version' => $classificationVersion,
+            'required_permissions' => $requiredPermissions,
+            'required_permissions_count' => count($requiredPermissions),
+            'permissions_metadata_validated' => true,
+            'heading_breadcrumb' => $breadcrumb,
+            'tenant_scope' => $tenantScope,
+        ];
+
+        if ($tenantId !== null) {
+            $document->metadata['tenant_id'] = $tenantId;
+        }
+
+        $document->setScore(1.0);
+
+        return $document;
+    }
+
+    private function isVisible(Document $document, DocumentationRetrievalContext $context): bool
+    {
+        $metadata = $document->metadata;
+
+        if (($metadata['locale'] ?? null) !== $context->locale) {
+            return false;
+        }
+
+        $scope = $metadata['tenant_scope'] ?? null;
+
+        if ($scope === 'tenant'
+            && ($context->tenantScope->value !== 'tenant' || ($metadata['tenant_id'] ?? null) !== $context->tenantId)) {
+            return false;
+        }
+
+        $required = $metadata['required_permissions'] ?? [];
+
+        return array_values(array_diff($required, $context->effectivePermissions)) === [];
+    }
+}
