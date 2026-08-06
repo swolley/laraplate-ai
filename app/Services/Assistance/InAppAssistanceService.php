@@ -18,6 +18,9 @@ use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\AI\Services\Assistance\Policies\CompiledAssistantPolicy;
+use Modules\AI\Services\Assistance\Scope\AssistantScope;
+use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
+use Modules\AI\Services\Assistance\Scope\DataAccess;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
@@ -32,7 +35,7 @@ use Throwable;
 final readonly class InAppAssistanceService implements InAppAssistanceServiceInterface
 {
     /**
-     * @param  (Closure(string, AssistantAccessContext): list<Document>)|null  $documentation_retrieval
+     * @param  (Closure(string, AssistantAccessContext, AssistantScope): list<Document>)|null  $documentation_retrieval
      * @param  (Closure(string, string, AssistantPromptContext, list<Tool>): string)|null  $completion
      */
     public function __construct(
@@ -44,6 +47,7 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
         private ToolRegistry $tool_registry,
         private ChatService $chat_service,
         private Request $request,
+        private AssistantScopeResolver $scope_resolver,
         private ?Closure $documentation_retrieval = null,
         private ?Closure $completion = null,
         private ?ApplicationContentCitationMapper $application_content_citations = null,
@@ -69,13 +73,17 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 ['application_content', 'in_app_rag', 'read_only_graph'],
             );
             $input = $this->guardrails->validateInput($user_input);
+            $module_context = $this->serverApplicationContext();
+            $scope = $this->scope_resolver->resolve($access->profile, $module_context?->module);
             $documents = $this->documentation_retrieval instanceof Closure
-                ? ($this->documentation_retrieval)($input, $access)
-                : $this->documentation->retrieveForInApp($input, $access);
+                ? ($this->documentation_retrieval)($input, $access, $scope)
+                : $this->documentation->retrieveForInApp($input, $access, $scope);
             $prompt_context = $this->guardrails->validateContext(
                 $this->promptContext($policy, $documents, $request_context),
             );
-            $tools = $this->contextualTools($access, $input, $policy);
+            $tools = $scope->dataAccess === DataAccess::None
+                ? []
+                : $this->contextualTools($access, $input, $policy);
 
             if ($application_content->clarificationRequired()) {
                 $output = $this->guardrails->clarificationRequired($access->locale);

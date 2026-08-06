@@ -15,6 +15,7 @@ use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\AssistantPromptContext;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
+use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
@@ -115,6 +116,7 @@ function inAppContentService(
         new ToolRegistry,
         app(ChatService::class),
         $request,
+        new AssistantScopeResolver,
         static fn (): array => [],
         $completion,
         $citations,
