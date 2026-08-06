@@ -79,13 +79,15 @@ final class FakeDocumentationSearch
         string $tenantScope = 'global',
         ?string $tenantId = null,
         string $classificationVersion = 'in-app-docs-v1',
+        string $module = 'core',
+        bool $crossCuttingUser = false,
     ): Document {
         $document = new Document($content);
         $document->sourceType = 'documentation';
         $document->sourceName = $label;
         $document->metadata = [
             'audience' => 'user',
-            'module' => 'core',
+            'module' => $module,
             'locale' => $locale,
             'canonical_source' => 'core/' . mb_strtolower(str_replace([' · ', ' '], ['/', '-'], $label)),
             'safe_source_label' => $label,
@@ -97,6 +99,7 @@ final class FakeDocumentationSearch
             'permissions_metadata_validated' => true,
             'heading_breadcrumb' => $breadcrumb,
             'tenant_scope' => $tenantScope,
+            'cross_cutting_user' => $crossCuttingUser,
         ];
 
         if ($tenantId !== null) {
@@ -121,6 +124,15 @@ final class FakeDocumentationSearch
         if ($scope === 'tenant'
             && ($context->tenantScope->value !== 'tenant' || ($metadata['tenant_id'] ?? null) !== $context->tenantId)) {
             return false;
+        }
+
+        if ($context->docScope === \Modules\AI\Services\Assistance\Scope\DocScope::Module && $context->moduleKey !== null) {
+            $module = $metadata['module'] ?? null;
+            $crossCutting = ($metadata['cross_cutting_user'] ?? false) === true;
+
+            if ($module !== $context->moduleKey && ! $crossCutting) {
+                return false;
+            }
         }
 
         $required = $metadata['required_permissions'] ?? [];
