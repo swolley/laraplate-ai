@@ -12,6 +12,7 @@ use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use NeuronAI\RAG\Document;
 use RuntimeException;
@@ -20,7 +21,7 @@ use Throwable;
 final readonly class InAppDocumentationRetrieval
 {
     /**
-     * @param (Closure(array<float>, DocumentationRetrievalContext): array<Document>)|null $search
+     * @param  (Closure(array<float>, DocumentationRetrievalContext): array<Document>)|null  $search
      */
     public function __construct(
         private IEmbeddingService $embedding_service,
@@ -30,15 +31,17 @@ final readonly class InAppDocumentationRetrieval
     /**
      * @return list<Document>
      */
-    public function retrieve(string $question, AssistantAccessContext $access): array
+    public function retrieve(string $question, AssistantAccessContext $access, ?AssistantScope $scope = null): array
     {
-        $question = trim($question);
+        $question = mb_trim($question);
 
         if ($question === '') {
             throw new InvalidArgumentException('In-app documentation question cannot be blank.');
         }
 
-        $context = DocumentationRetrievalContext::fromAccessContext($access);
+        $context = $scope === null
+            ? DocumentationRetrievalContext::fromAccessContext($access)
+            : DocumentationRetrievalContext::fromAccessContextAndScope($access, $scope);
 
         try {
             $embedding = $this->embedding_service->embedText($question);
@@ -58,7 +61,7 @@ final readonly class InAppDocumentationRetrieval
     }
 
     /**
-     * @param list<float> $embedding
+     * @param  list<float>  $embedding
      * @return list<Document>
      */
     private function searchUserIndex(array $embedding, DocumentationRetrievalContext $context): array
@@ -76,7 +79,7 @@ final readonly class InAppDocumentationRetrieval
     }
 
     /**
-     * @param array<Document> $documents
+     * @param  array<Document>  $documents
      * @return list<Document>
      */
     private function safeDocuments(array $documents): array

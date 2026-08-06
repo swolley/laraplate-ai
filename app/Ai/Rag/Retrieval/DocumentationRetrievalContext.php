@@ -11,11 +11,13 @@ use InvalidArgumentException;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\Scope\AssistantScope;
+use Modules\AI\Services\Assistance\Scope\DocScope;
 
 final readonly class DocumentationRetrievalContext
 {
     /**
-     * @param list<string> $effectivePermissions
+     * @param  list<string>  $effectivePermissions
      */
     private function __construct(
         public AssistantTenantScope $tenantScope,
@@ -23,6 +25,8 @@ final readonly class DocumentationRetrievalContext
         public string $locale,
         public array $effectivePermissions,
         public int $topK,
+        public ?string $moduleKey = null,
+        public DocScope $docScope = DocScope::Application,
     ) {
         if ($topK < 1 || $topK > 10) {
             throw new InvalidArgumentException('In-app documentation retrieval topK must be between 1 and 10.');
@@ -51,30 +55,60 @@ final readonly class DocumentationRetrievalContext
     }
 
     /**
+     * @throws AuthorizationException
+     */
+    public static function fromAccessContextAndScope(AssistantAccessContext $access, AssistantScope $scope): self
+    {
+        $base = self::fromAccessContext($access);
+
+        return new self(
+            tenantScope: $base->tenantScope,
+            tenantId: $base->tenantId,
+            locale: $base->locale,
+            effectivePermissions: $base->effectivePermissions,
+            topK: $base->topK,
+            moduleKey: $scope->moduleKey,
+            docScope: $scope->docScope,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function elasticsearchFilter(string $classificationVersion): array
     {
-        if (trim($classificationVersion) === '') {
+        if (mb_trim($classificationVersion) === '') {
             throw new InvalidArgumentException('Documentation classification version cannot be blank.');
         }
 
-        return [
-            'bool' => [
-                'filter' => [
-                    ['terms' => ['metadata.audience' => ['user', 'shared']]],
-                    ['term' => ['metadata.locale' => $this->locale]],
-                    ['term' => ['metadata.policy_classification' => 'user_safe']],
-                    ['term' => ['metadata.policy_classification_version' => $classificationVersion]],
-                    ['term' => ['metadata.permissions_metadata_validated' => true]],
-                    $this->tenantFilter(),
-                    $this->permissionFilter(),
-                ],
-            ],
+        $filter = [
+            ['terms' => ['metadata.audience' => ['user', 'shared']]],
+            ['term' => ['metadata.locale' => $this->locale]],
+            ['term' => ['metadata.policy_classification' => 'user_safe']],
+            ['term' => ['metadata.policy_classification_version' => $classificationVersion]],
+            ['term' => ['metadata.permissions_metadata_validated' => true]],
+            $this->tenantFilter(),
+            $this->permissionFilter(),
         ];
+
+        if ($this->docScope === DocScope::Module && $this->moduleKey !== null) {
+            $filter[] = [
+                'bool' => [
+                    'should' => [
+                        ['term' => ['metadata.module' => $this->moduleKey]],
+                        ['term' => ['metadata.cross_cutting_user' => true]],
+                    ],
+                    'minimum_should_match' => 1,
+                ],
+            ];
+        }
+
+        return ['bool' => ['filter' => $filter]];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @return array<string, mixed>
+     */
     private function tenantFilter(): array
     {
         if ($this->tenantScope === AssistantTenantScope::Global) {
@@ -99,7 +133,9 @@ final readonly class DocumentationRetrievalContext
         ];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @return array<string, mixed>
+     */
     private function permissionFilter(): array
     {
         $should = [

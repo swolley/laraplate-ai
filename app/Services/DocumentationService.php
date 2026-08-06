@@ -10,12 +10,14 @@ use function ai_config_string;
 
 use Closure;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
-use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Enums\AssistantProfile;
+use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use Modules\AI\Services\Documentation\FileDocumentReader;
@@ -48,8 +50,7 @@ final readonly class DocumentationService
         ?string $path = null,
         bool $fullRebuild = false,
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-    ): int
-    {
+    ): int {
         $roots = $path !== null
             ? [['path' => $path, 'prefix' => $this->singlePathPrefix($path)]]
             : $this->helperRoots();
@@ -95,7 +96,7 @@ final readonly class DocumentationService
     public function answerDeveloperQuestion(string $question, AssistantProfile $profile): array
     {
         if ($profile !== AssistantProfile::DeveloperHelp) {
-            throw new \InvalidArgumentException('Developer documentation requires the developer help profile.');
+            throw new InvalidArgumentException('Developer documentation requires the developer help profile.');
         }
 
         return $this->answerQuestion($question);
@@ -106,11 +107,11 @@ final readonly class DocumentationService
      *
      * @return list<Document>
      */
-    public function retrieveForInApp(string $question, AssistantAccessContext $access): array
+    public function retrieveForInApp(string $question, AssistantAccessContext $access, ?AssistantScope $scope = null): array
     {
         $retrieval = $this->in_app_retrieval ?? app(InAppDocumentationRetrieval::class);
 
-        return $retrieval->retrieve($question, $access);
+        return $retrieval->retrieve($question, $access, $scope);
     }
 
     /**
@@ -241,8 +242,7 @@ final readonly class DocumentationService
         array $roots,
         bool $fullRebuild,
         DocumentationIndexProfile $profile,
-    ): int
-    {
+    ): int {
         $documents = $this->gatherDocumentsFromRoots($roots);
         $audience_policy = new DocumentAudiencePolicy(
             ai_config_string('ai.features.faq.policy_classification_version', 'in-app-docs-v1'),
@@ -307,8 +307,7 @@ final readonly class DocumentationService
     private function shouldUseIncrementalReindex(
         string $driver,
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-    ): bool
-    {
+    ): bool {
         if ($driver === 'memory') {
             return true;
         }
@@ -322,8 +321,7 @@ final readonly class DocumentationService
 
     private function filesystemVectorStoreHasData(
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-    ): bool
-    {
+    ): bool {
         $path = $this->getFilesystemVectorStoreFilePath($profile);
 
         return is_file($path) && filesize($path) > 0;
@@ -331,8 +329,7 @@ final readonly class DocumentationService
 
     private function getFilesystemVectorStoreFilePath(
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-    ): string
-    {
+    ): string {
         $configured = config('ai.features.faq.vector_store_path');
         $path = is_string($configured) && $configured !== ''
             ? $configured
@@ -352,8 +349,7 @@ final readonly class DocumentationService
     private function resetVectorStoreForFullRebuild(
         string $driver,
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-    ): void
-    {
+    ): void {
         if ($driver === 'memory') {
             DocumentationAgent::resetSharedMemoryVectorStore($profile);
 
