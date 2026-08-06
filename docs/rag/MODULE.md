@@ -291,3 +291,5 @@ profile (Level-1, deterministic, no chat model), mirroring
 `Modules/AI/tests/Feature/DocumentationBaselineGateTest.php`. Live-generation
 (Level-2) scoring is specified but opt-in. Design:
 `docs/superpowers/specs/2026-08-04-documentation-rag-evaluation-baseline-design.md`.
+Guides: `DOCUMENTATION_EVALUATION_USER.md` (operator) and
+`DOCUMENTATION_EVALUATION_DEVELOPER.md` (internals + how to add a module report card).
