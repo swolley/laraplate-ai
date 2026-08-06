@@ -27,5 +27,6 @@ it('keeps the Core/user documentation baseline at or above committed thresholds'
         ->and($report['metrics']['mean_reciprocal_rank'])->toBeGreaterThanOrEqual(1.0)
         ->and($report['metrics']['citation_precision'])->toBeGreaterThanOrEqual(1.0)
         ->and($report['metrics']['refusal_accuracy'])->toBeGreaterThanOrEqual(1.0)
-        ->and($report['metrics']['supported_answer_rate'])->toBeGreaterThanOrEqual(1.0);
+        ->and($report['metrics']['supported_answer_rate'])->toBeGreaterThanOrEqual(1.0)
+        ->and($report['metrics']['unavailable_rate'])->toBe(0.0);
 })->skip(fn (): bool => ! is_file(base_path('Modules/Core/docs/rag/evaluations/2026-08-documentation-user.json')), 'Core dataset missing');

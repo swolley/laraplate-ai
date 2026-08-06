@@ -6,7 +6,7 @@ use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationDataset;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
 use Modules\AI\Tests\Stubs\Documentation\FakeDocumentationSearch;
 
-function docDatasetArray(array $overrides = []): array
+function docServiceDatasetArray(array $overrides = []): array
 {
     return array_replace([
         'version' => '1',
@@ -38,7 +38,7 @@ beforeEach(function (): void {
 });
 
 it('scores a perfect hit, a citation, and a correct refusal', function (): void {
-    $dataset = DocumentationEvaluationDataset::fromArray(docDatasetArray([
+    $dataset = DocumentationEvaluationDataset::fromArray(docServiceDatasetArray([
         'cases' => [
             [
                 'id' => 'hit', 'query' => 'how do I export a grid?', 'locale' => 'en', 'top_k' => 5,
@@ -80,7 +80,7 @@ it('scores a perfect hit, a citation, and a correct refusal', function (): void 
 });
 
 it('counts a retrieval that throws as unavailable', function (): void {
-    $dataset = DocumentationEvaluationDataset::fromArray(docDatasetArray());
+    $dataset = DocumentationEvaluationDataset::fromArray(docServiceDatasetArray());
     $service = new DocumentationEvaluationService;
 
     $report = $service->evaluate($dataset, 'fake', static function (): array {
