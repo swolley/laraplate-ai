@@ -4,26 +4,25 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Rag;
 
+use function ai_config_int;
+use function ai_config_string;
+use function is_array;
+use function is_numeric;
+use function is_string;
+use function min;
+
 use Elastic\Elasticsearch\Client;
 use Elastic\Elasticsearch\Exception\ClientResponseException;
 use Elastic\Elasticsearch\Exception\ServerResponseException;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
-use Modules\Core\Services\ElasticsearchService;
 use Modules\AI\Ai\Rag\Retrieval\DocumentationRetrievalContext;
+use Modules\Core\Services\ElasticsearchService;
 use NeuronAI\Exceptions\VectorStoreException;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\VectorStore\VectorStoreInterface;
 use stdClass;
 use Throwable;
-
-use function ai_config_int;
-use function ai_config_string;
-use function count;
-use function is_array;
-use function is_numeric;
-use function is_string;
-use function min;
 
 /**
  * Elasticsearch-backed vector store for documentation RAG.
@@ -77,6 +76,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
                         'required_permissions' => ['type' => 'keyword'],
                         'permissions_metadata_validated' => ['type' => 'boolean'],
                         'required_permissions_count' => ['type' => 'integer'],
+                        'cross_cutting_user' => ['type' => 'boolean'],
                         'tenant_scope' => ['type' => 'keyword'],
                         'tenant_id' => ['type' => 'keyword'],
                         'version' => ['type' => 'keyword'],
@@ -238,14 +238,13 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
     }
 
     /**
-     * @param float[] $embedding
+     * @param  float[]  $embedding
      * @return Document[]
      */
     public function similaritySearchForContext(
         array $embedding,
         DocumentationRetrievalContext $context,
-    ): array
-    {
+    ): array {
         if ($this->indexProfile !== DocumentationIndexProfile::User) {
             throw new InvalidArgumentException('Scoped in-app retrieval requires the user documentation index.');
         }
@@ -259,8 +258,8 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
     }
 
     /**
-     * @param float[] $embedding
-     * @param array<string, mixed>|null $filter
+     * @param  float[]  $embedding
+     * @param  array<string, mixed>|null  $filter
      * @return Document[]
      */
     private function search(array $embedding, ?array $filter = null): array
@@ -358,5 +357,4 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
             'indexed_at' => now()->toIso8601String(),
         ];
     }
-
 }

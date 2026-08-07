@@ -272,6 +272,7 @@ flowchart LR
 - Permissions and ACLs are enforced in backend gateways and provider queries; prompt rules do not replace authorization.
 - Guardrails are fail-closed on input, retrieved context, citations, and complete output.
 - Application content is never inserted into either documentation index.
+- `InAppAssistance` scopes documentation retrieval (and, for tools, `dataAccess`) to the current module and falls back to generic full-corpus behavior when no module is recognizable; scope is server-owned and additive to these filters — see `ASSISTANT_SCOPE.md`.
 
 ## FAQ prompts for RAG
 
