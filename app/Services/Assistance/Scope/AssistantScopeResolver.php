@@ -15,7 +15,7 @@ final readonly class AssistantScopeResolver
         }
 
         if ($moduleKey === null || preg_match('/^[a-z][a-z0-9_]*$/', $moduleKey) !== 1) {
-            return AssistantScope::generic();
+            return new AssistantScope(null, DataAccess::Application, DocScope::Application);
         }
 
         return new AssistantScope($moduleKey, DataAccess::Module, DocScope::Module);

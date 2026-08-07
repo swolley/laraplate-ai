@@ -80,9 +80,8 @@ it('passes a module-scoped AssistantScope to documentation retrieval when a modu
         ->and($capturedScope->dataAccess)->toBe(DataAccess::Module);
 });
 
-it('resolves DataAccess::None and builds no application-data tools when no module context is present', function (): void {
+it('stays generic and resolves DataAccess::Application when no module context is present', function (): void {
     $capturedScope = null;
-    $capturedTools = null;
     $service = scopedAssistanceService(
         $this->request,
         function (string $input, AssistantAccessContext $access, AssistantScope $scope) use (&$capturedScope): array {
@@ -90,16 +89,11 @@ it('resolves DataAccess::None and builds no application-data tools when no modul
 
             return [];
         },
-        function (string $input, string $systemPrompt, mixed $context, array $tools) use (&$capturedTools): string {
-            $capturedTools = $tools;
-
-            return 'Open Settings and select Profile.';
-        },
+        static fn (): string => 'Open Settings and select Profile.',
     );
 
     $service->respond($this->conversation, $this->user, 'How do I update my profile?');
 
     expect($capturedScope)->toBeInstanceOf(AssistantScope::class)
-        ->and($capturedScope->dataAccess)->toBe(DataAccess::None)
-        ->and($capturedTools)->toBe([]);
+        ->and($capturedScope->dataAccess)->toBe(DataAccess::Application);
 });

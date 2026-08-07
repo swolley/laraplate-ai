@@ -14,10 +14,10 @@ it('scopes in-app assistance to a verified module', function (): void {
         ->and($scope->docScope)->toBe(DocScope::Module);
 });
 
-it('falls back to documentation-only when in-app has no recognizable module', function (): void {
+it('stays generic when in-app has no recognizable module', function (): void {
     $scope = (new AssistantScopeResolver)->resolve(AssistantProfile::InAppAssistance, null);
     expect($scope->moduleKey)->toBeNull()
-        ->and($scope->dataAccess)->toBe(DataAccess::None)
+        ->and($scope->dataAccess)->toBe(DataAccess::Application)
         ->and($scope->docScope)->toBe(DocScope::Application);
 });
 
