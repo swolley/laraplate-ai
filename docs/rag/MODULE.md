@@ -230,6 +230,7 @@ Important groups include:
 - `ai.features.tools.*` for tools and approval pipeline.
 - `ai.features.guardrails.*` for prompt-injection and input hardening behavior.
 - `ai.features.search_orchestration.*` for AI-driven search planner/reranking bindings.
+- `ai.features.embeddings.modules` / `ai.features.translation.modules` — optional per-module allowlist gating auto embedding/translation by the model's owning `Modules\{Name}\` namespace (empty = every module; enforced by `FeatureModuleGate` in the indexing/translation listeners).
 - `AI_FAQ_DOCS_PATH` / `ai.features.faq.documentation_path` for extra documentation roots.
 
 The current retrieval strategy is vector similarity. Do not document `graph` as a configuration value unless a separate graph spike spec passes the adoption gate and is explicitly approved.

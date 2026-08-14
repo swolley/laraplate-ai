@@ -25,14 +25,20 @@ return [
         'embeddings' => [
             //     'enabled' => env('AI_EMBEDDINGS_ENABLED', true),
             'default_provider' => env('AI_EMBEDDINGS_PROVIDER', 'sentence_transformers'),
-            //     // NOTE: Future - attivazione per modulo specifico
-            //     // 'modules' => ['cms'], // Se abilitato, permette di attivare embeddings solo per certi moduli
+
+            // Optional per-module allowlist. Empty = every module (default).
+            // When non-empty, only models whose owning module is listed are embedded,
+            // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
+            'modules' => [],
         ],
         'translation' => [
             //     'enabled' => env('AI_TRANSLATION_ENABLED', true),
             'default_provider' => env('AI_TRANSLATION_PROVIDER', 'deepl'),
-            //     // NOTE: Future - attivazione per modulo specifico
-            //     // 'modules' => ['cms'], // Se abilitato, permette di attivare traduzione solo per certi moduli
+
+            // Optional per-module allowlist. Empty = every module (default).
+            // When non-empty, only models whose owning module is listed are translated,
+            // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
+            'modules' => [],
         ],
         'chat' => [
             //     'enabled' => env('AI_CHAT_ENABLED', true),

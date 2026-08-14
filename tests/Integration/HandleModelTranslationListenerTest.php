@@ -135,3 +135,28 @@ it('skips indexing cache registration when searchable model key is not scalar', 
     Cache::shouldNotHaveReceived('get');
     Cache::shouldNotHaveReceived('put');
 });
+
+it('does nothing when the translation module allowlist excludes the model module', function (): void {
+    // TranslatableModelStub is Modules\AI\..., so a CMS-only allowlist excludes it.
+    Config::set('ai.features.translation.modules', ['cms']);
+
+    $model = new TranslatableModelStub;
+    $model->id = 1;
+
+    $event = new TranslatedModelSaved($model, ['it'], false);
+    new HandleModelTranslationListener()->handle($event);
+
+    Queue::assertNothingPushed();
+});
+
+it('dispatches when the translation module allowlist includes the model module', function (): void {
+    Config::set('ai.features.translation.modules', ['ai']);
+
+    $model = new TranslatableModelStub;
+    $model->id = 1;
+
+    $event = new TranslatedModelSaved($model, ['it'], false);
+    new HandleModelTranslationListener()->handle($event);
+
+    Queue::assertPushed(TranslateModelJob::class);
+});

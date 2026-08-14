@@ -7,6 +7,7 @@ namespace Modules\AI\Listeners;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\AI\Services\FeatureModuleGate;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Search\Traits\Searchable;
 
@@ -40,6 +41,11 @@ final class HandleModelIndexingListener
     {
         // Check if AI embeddings feature is enabled
         if (! config('ai.features.embeddings.enabled', true)) {
+            return false;
+        }
+
+        // Respect the optional per-module allowlist for embeddings.
+        if (! FeatureModuleGate::allows('embeddings', $model)) {
             return false;
         }
 

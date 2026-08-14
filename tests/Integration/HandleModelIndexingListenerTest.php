@@ -141,3 +141,28 @@ it('executes GenerateEmbeddingsJob synchronously when sync=true in CLI context',
     Queue::assertNothingPushed();
     expect($event->required_pre_processing)->toContain('embeddings');
 });
+
+it('does nothing when the embeddings module allowlist excludes the model module', function (): void {
+    // SearchableModelStub is Modules\AI\..., so a CMS-only allowlist excludes it.
+    Config::set('ai.features.embeddings.modules', ['cms']);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new ModelRequiresIndexing($model, false);
+    new HandleModelIndexingListener()->handle($event);
+
+    Queue::assertNothingPushed();
+});
+
+it('dispatches when the embeddings module allowlist includes the model module', function (): void {
+    Config::set('ai.features.embeddings.modules', ['ai']);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new ModelRequiresIndexing($model, false);
+    new HandleModelIndexingListener()->handle($event);
+
+    Queue::assertPushed(GenerateEmbeddingsJob::class);
+});

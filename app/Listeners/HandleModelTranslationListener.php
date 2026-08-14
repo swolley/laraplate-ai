@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace Modules\AI\Listeners;
 
+use function ai_config_bool;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\TranslateModelJob;
+use Modules\AI\Services\FeatureModuleGate;
 use Modules\Core\Contracts\ITranslatableModel;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
-
-use function ai_config_bool;
 
 final class HandleModelTranslationListener
 {
@@ -34,6 +35,11 @@ final class HandleModelTranslationListener
     private function shouldHandle(Model $model): bool
     {
         if (! ai_config_bool('ai.features.translation.enabled', true)) {
+            return false;
+        }
+
+        // Respect the optional per-module allowlist for translation.
+        if (! FeatureModuleGate::allows('translation', $model)) {
             return false;
         }
 

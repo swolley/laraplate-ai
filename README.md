@@ -362,11 +362,6 @@ This section tracks all pending tasks and issues that need to be addressed in th
 
 ### Medium Priority
 
-- [ ] **Per-Module Feature Activation**
-  - Implement `features.*.modules` configuration
-  - Allow enabling embeddings/translation per specific module
-  - Currently commented in config for future implementation
-
 - [ ] **Frontend UI for AI Features**
   - Chat widget component
   - Action confirmation dialogs
@@ -406,6 +401,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Protected In-App Assistance** - Separate profile/corpus, fail-closed guardrails, read-only Graph and module evidence tools
 - [x] **Application Content Evaluation** - Synthetic datasets, sliced metrics, reproducible CMS record baseline
 - [x] **Event-Driven Architecture** - Clean decoupling from Core module
+- [x] **Per-Module Feature Activation** - Optional `ai.features.{embeddings,translation}.modules` allowlist gating auto-indexing/translation by the model's owning module (empty = all; `FeatureModuleGate`)
 
 ### Notes
 
