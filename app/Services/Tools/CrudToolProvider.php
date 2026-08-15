@@ -47,7 +47,7 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'bulk_update', 'bulk_delete', 'pending_approvals', 'approve', 'disapprove'];
 
     /**
      * Upper bound on rows materialized for an in-memory aggregation, so a
@@ -60,6 +60,13 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
      * Upper bound on rows written to an export file.
      */
     private const int EXPORT_ROW_CAP = 5000;
+
+    /**
+     * Hard upper bound on records a single bulk operation may affect. A bulk
+     * call matching more than this refuses to apply and asks for a narrower
+     * filter, so a runaway update/delete is impossible.
+     */
+    private const int BULK_CAP = 200;
 
     /**
      * Aggregation functions supported by the `summarize` tool.
@@ -79,6 +86,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         'create' => 'insert',
         'update' => 'update',
         'delete' => 'forceDelete',
+        'bulk_update' => 'update',
+        'bulk_delete' => 'forceDelete',
         'pending_approvals' => 'approve',
         'approve' => 'approve',
         'disapprove' => 'approve',
@@ -118,7 +127,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             }
 
             foreach ($operations as $operation) {
-                if (! $this->userCan($model, self::ABILITY[$operation])) {
+                if (! $this->userCanAll($model, $this->requiredAbilities($operation))) {
                     continue;
                 }
 
@@ -216,6 +225,36 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         }
     }
 
+    /**
+     * @param  list<string>  $abilities
+     */
+    private function userCanAll(Model $model, array $abilities): bool
+    {
+        foreach ($abilities as $ability) {
+            if (! $this->userCan($model, $ability)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The CRUD abilities an operation requires to be offered. Bulk operations
+     * also require `select`, since they resolve the affected records by reading
+     * them first.
+     *
+     * @return list<string>
+     */
+    private function requiredAbilities(string $operation): array
+    {
+        return match ($operation) {
+            'bulk_update' => ['select', 'update'],
+            'bulk_delete' => ['select', 'forceDelete'],
+            default => [self::ABILITY[$operation]],
+        };
+    }
+
     private function describe(string $operation, string $label): string
     {
         return match ($operation) {
@@ -228,6 +267,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
             'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
             'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
+            'bulk_update' => "Update many {$label} records matched by filters. Preview first (default): returns the match count and a sample without changing anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each change is captured for approval.',
+            'bulk_delete' => "Delete many {$label} records matched by filters. Preview first (default): returns the match count and a sample without deleting anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each deletion is captured for approval.',
             'pending_approvals' => "List pending {$label} changes awaiting approval, each with its author; optionally filter by author (name, email or user id).",
             'approve' => "Approve the pending change on a {$label} record by id.",
             'disapprove' => "Reject the pending change on a {$label} record by id.",
@@ -281,6 +322,15 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
                 ['name' => 'attributes', 'type' => 'object', 'description' => 'Field values to change.', 'required' => true],
             ],
+            'bulk_update' => [
+                $filters,
+                ['name' => 'attributes', 'type' => 'object', 'description' => 'Field values to apply to every matched record.', 'required' => true],
+                ['name' => 'confirm', 'type' => 'boolean', 'description' => 'False (default) previews the match without changing anything; true applies the update.', 'required' => false],
+            ],
+            'bulk_delete' => [
+                $filters,
+                ['name' => 'confirm', 'type' => 'boolean', 'description' => 'False (default) previews the match without deleting anything; true applies the deletion.', 'required' => false],
+            ],
             'pending_approvals' => [
                 ['name' => 'author', 'type' => 'string', 'description' => 'Optional filter: modifier name, email, or user id.', 'required' => false],
             ],
@@ -307,6 +357,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
             'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
             'delete' => fn (mixed $id = null): array => $this->runDelete($module, $entity, $id),
+            'bulk_update' => fn (mixed $filters = null, mixed $attributes = null, mixed $confirm = null): array => $this->runBulk('bulk_update', $module, $entity, $filters, $attributes, $confirm),
+            'bulk_delete' => fn (mixed $filters = null, mixed $confirm = null): array => $this->runBulk('bulk_delete', $module, $entity, $filters, null, $confirm),
             'pending_approvals' => fn (mixed $author = null): array => $this->runPendingApprovals($module, $entity, $author),
             'approve' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'approve'),
             'disapprove' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'disapprove'),
@@ -745,6 +797,123 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
+     * Bulk update/delete matched by filters with a mandatory preview and a hard
+     * cap. The preview (confirm=false) reports the match count and a sample of
+     * ids without touching anything. On confirm, records are resolved through
+     * CrudService::list (permission + ACL enforced) and each one is updated or
+     * deleted individually so every write is authorized, ACL-scoped and — on
+     * moderated entities — captured for approval per record. A match larger than
+     * the cap is refused so a bulk call can never affect an unbounded set.
+     *
+     * @return array<string, mixed>
+     */
+    private function runBulk(string $operation, string $module, string $entity, mixed $filters, mixed $attributes, mixed $confirm): array
+    {
+        $normalizedFilters = $this->normalizeFilters($filters);
+        $changes = $operation === 'bulk_update' ? $this->toArray($attributes) : [];
+        $doApply = $this->toBool($confirm);
+
+        $request = ['verb' => $operation, 'module' => $module, 'entity' => $entity, 'filters' => $normalizedFilters, 'confirm' => $doApply];
+
+        if ($operation === 'bulk_update') {
+            $request['attributes'] = $changes;
+        }
+
+        if ($normalizedFilters === []) {
+            return ['request' => $request, 'error' => 'Bulk operations require at least one filter to scope the affected records.'];
+        }
+
+        if ($operation === 'bulk_update' && $changes === []) {
+            return ['request' => $request, 'error' => 'Bulk update requires at least one attribute to change.'];
+        }
+
+        try {
+            $key = $this->primaryKey($module, $entity);
+            $ids = $this->matchedIds($module, $entity, $normalizedFilters, $key);
+            $matched = count($ids);
+            $exceedsCap = $matched > self::BULK_CAP;
+
+            if (! $doApply) {
+                return [
+                    'request' => $request,
+                    'preview' => true,
+                    'meta' => [
+                        'matched_records' => $matched,
+                        'cap' => self::BULK_CAP,
+                        'exceeds_cap' => $exceedsCap,
+                        'sample_ids' => array_slice($ids, 0, 20),
+                    ],
+                ];
+            }
+
+            if ($exceedsCap) {
+                return [
+                    'request' => $request,
+                    'error' => sprintf('Refusing to %s %d records: the hard cap is %d. Narrow the filters and retry.', $operation === 'bulk_update' ? 'update' : 'delete', $matched, self::BULK_CAP),
+                    'meta' => ['matched_records' => $matched, 'cap' => self::BULK_CAP, 'exceeds_cap' => true],
+                ];
+            }
+
+            $applied = 0;
+            $failed = 0;
+
+            foreach ($ids as $id) {
+                try {
+                    $data = $this->modifyData($module, $entity, [$key => $id] + $changes);
+
+                    if ($operation === 'bulk_update') {
+                        $this->crud->update($data);
+                    } else {
+                        $this->crud->delete($data);
+                    }
+
+                    $applied++;
+                } catch (Throwable) {
+                    $failed++;
+                }
+            }
+
+            return [
+                'request' => $request,
+                'meta' => [
+                    'matched_records' => $matched,
+                    'cap' => self::BULK_CAP,
+                    'applied' => $applied,
+                    'failed' => $failed,
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * Resolve the primary keys of the records matched by the bulk filters,
+     * ACL-scoped through CrudService::list, up to one past the cap so an
+     * over-cap match is detectable.
+     *
+     * @param  list<array<string, mixed>>  $filters
+     * @return list<string>
+     */
+    private function matchedIds(string $module, string $entity, array $filters, string $key): array
+    {
+        $validated = ['filters' => $filters, 'pagination' => self::BULK_CAP + 1, 'page' => 1];
+        $data = new ListRequestData($this->makeRequest(ListRequest::class), $entity, $validated, $key, $module);
+        $result = $this->crud->list($data);
+        $rows = $result->data;
+
+        if (! $rows instanceof Collection && ! $rows instanceof EloquentCollection) {
+            return [];
+        }
+
+        return $rows
+            ->map(fn (mixed $row): string => $this->toString($this->rowValue($row instanceof Model ? $row : (array) $row, $key)))
+            ->filter(static fn (string $id): bool => $id !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function runPendingApprovals(string $module, string $entity, mixed $author): array
@@ -1023,6 +1192,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function toString(mixed $value): string
     {
         return is_scalar($value) ? (string) $value : '';
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
     }
 
     /**

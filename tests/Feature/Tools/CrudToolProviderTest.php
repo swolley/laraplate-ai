@@ -312,6 +312,90 @@ it('exports records to a pdf file', function (): void {
     expect($pdf)->toStartWith('%PDF-1.4');
 });
 
+it('exposes bulk tools only with select plus the matching write permission', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'update'); // write ability, but no select yet
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['bulk_update', 'bulk_delete']]);
+
+    // Without select, bulk cannot resolve the affected set → not offered.
+    expect(toolNames(makeCrudToolProvider($user)->tools(inAppContext($user))))->toBe([]);
+
+    grantSettingAbility($user, 'select'); // now bulk_update is fully permitted
+    $names = toolNames(makeCrudToolProvider($user)->tools(inAppContext($user)));
+
+    expect($names)->toContain('crud_bulk_update_core_setting')
+        ->and($names)->not->toContain('crud_bulk_delete_core_setting'); // no forceDelete
+});
+
+it('previews a bulk update without changing anything', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    grantSettingAbility($user, 'update');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['bulk_update']]);
+
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b1', 'group_name' => 'bulk', 'description' => 'orig']);
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b2', 'group_name' => 'bulk', 'description' => 'orig']);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_bulk_update_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(
+        filters: [['property' => 'group_name', 'operator' => '=', 'value' => 'bulk']],
+        attributes: ['description' => 'changed'],
+    );
+
+    expect($result['preview'])->toBeTrue()
+        ->and($result['meta']['matched_records'])->toBe(2)
+        ->and($result['meta']['exceeds_cap'])->toBeFalse()
+        ->and($result['request']['confirm'])->toBeFalse();
+
+    expect(Modules\Core\Models\Setting::where('group_name', 'bulk')->where('description', 'orig')->count())->toBe(2);
+});
+
+it('applies a bulk update when confirmed', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    grantSettingAbility($user, 'update');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['bulk_update']]);
+
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b1', 'group_name' => 'bulk', 'description' => 'orig']);
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b2', 'group_name' => 'bulk', 'description' => 'orig']);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_bulk_update_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(
+        filters: [['property' => 'group_name', 'operator' => '=', 'value' => 'bulk']],
+        attributes: ['description' => 'changed'],
+        confirm: true,
+    );
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['meta']['applied'])->toBe(2)
+        ->and($result['meta']['failed'])->toBe(0);
+
+    expect(Modules\Core\Models\Setting::where('group_name', 'bulk')->where('description', 'changed')->count())->toBe(2);
+});
+
+it('refuses a bulk operation without filters', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    grantSettingAbility($user, 'forceDelete');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['bulk_delete']]);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_bulk_delete_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(confirm: true);
+
+    expect($result)->toHaveKey('error')
+        ->and($result['error'])->toContain('at least one filter');
+});
+
 it('lists pending approvals and echoes the author filter', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
