@@ -367,10 +367,6 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Action confirmation dialogs
   - Suggestion display component
 
-- [ ] **Register Default Tools**
-  - Create tool definitions for common CRUD operations
-  - Document tool registration best practices
-
 ### Low Priority
 
 - [ ] **Additional AI Providers**
@@ -402,6 +398,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Application Content Evaluation** - Synthetic datasets, sliced metrics, reproducible CMS record baseline
 - [x] **Event-Driven Architecture** - Clean decoupling from Core module
 - [x] **Per-Module Feature Activation** - Optional `ai.features.{embeddings,translation}.modules` allowlist gating auto-indexing/translation by the model's owning module (empty = all; `FeatureModuleGate`)
+- [x] **Default CRUD Tools** - Opt-in `ai.features.tools.crud.entities` exposing Core CRUD (list/detail/search/create/update/delete) as in-app assistant tools via `CrudToolProvider`; ACL-enforced by `CrudService`, with permission-driven approval (writes the user already can do run inline, otherwise admin approval)
 
 ### Notes
 

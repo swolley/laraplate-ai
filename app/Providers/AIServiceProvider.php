@@ -28,6 +28,7 @@ use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
+use Modules\AI\Services\Tools\CrudToolProvider;
 use Modules\AI\Services\Tools\GraphToolProvider;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
@@ -54,6 +55,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(GraphToolProvider::class);
+        $this->app->bind(CrudToolProvider::class);
         $this->app->scoped(ApplicationContentCitationMapper::class);
         $this->app->bind(ApplicationContentToolProvider::class);
         $this->app->singleton(ApplicationContentEvaluationService::class);
@@ -62,6 +64,7 @@ class AIServiceProvider extends ModuleServiceProvider
             ContextualToolProviderInterface::class,
             static fn ($app): ContextualToolProviderInterface => new CompositeContextualToolProvider([
                 $app->make(GraphToolProvider::class),
+                $app->make(CrudToolProvider::class),
                 $app->make(ApplicationContentToolProvider::class),
             ]),
         );

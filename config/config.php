@@ -92,6 +92,19 @@ return [
                 // 'update_record' => ['risk_level' => 'medium'],
                 // 'delete_record' => ['risk_level' => 'high'],
             ],
+
+            // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
+            // Empty = no CRUD tools (default). Each key is "module.entity"; the value
+            // lists the allowed operations. Reads (list/detail/search) run inline.
+            // For writes the approval requirement is permission-driven: if the acting
+            // user already holds the write permission the tool runs inline, otherwise
+            // it is routed through admin approval (ActionRequest). Every call is
+            // authorized and ACL-scoped by Core's CrudService as the acting user.
+            'crud' => [
+                'entities' => [
+                    // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],
+                ],
+            ],
         ],
         'guardrails' => [
             'enabled' => env('AI_GUARDRAILS_ENABLED', false),
