@@ -27,6 +27,8 @@ use Modules\Core\Models\DynamicEntity;
 use Modules\Core\Services\Authorization\AuthorizationService;
 use Modules\Core\Services\Crud\CrudService;
 use Modules\Core\Services\Crud\DTOs\CrudResult;
+use Modules\Core\Services\Export\TabularCsvExporter;
+use Modules\Core\Services\Export\TabularPdfExporter;
 use Throwable;
 
 /**
@@ -45,7 +47,7 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
 
     /**
      * Upper bound on rows materialized for an in-memory aggregation, so a
@@ -53,6 +55,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
      * total exceeds this cap the response is flagged as truncated.
      */
     private const int SUMMARIZE_ROW_CAP = 5000;
+
+    /**
+     * Upper bound on rows written to an export file.
+     */
+    private const int EXPORT_ROW_CAP = 5000;
 
     /**
      * Aggregation functions supported by the `summarize` tool.
@@ -68,6 +75,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         'detail' => 'select',
         'search' => 'select',
         'summarize' => 'select',
+        'export' => 'select',
         'create' => 'insert',
         'update' => 'update',
         'delete' => 'forceDelete',
@@ -80,6 +88,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         private CrudService $crud,
         private AuthorizationService $authorization,
         private Request $request,
+        private TabularCsvExporter $csvExporter,
+        private TabularPdfExporter $pdfExporter,
     ) {}
 
     public function tools(AssistantAccessContext $context): array
@@ -214,6 +224,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'detail' => "Fetch a single {$label} record by id.",
             'search' => "Full-text search {$label} records.",
             'summarize' => "Aggregate {$label} records: group by one or more columns and compute a count plus optional sum/avg/min/max metrics. Honours the same structured filters as list.",
+            'export' => "Export {$label} records the current user may read to a CSV or PDF file. Honours the same structured filters and sort as list; returns the file inline (base64).",
             'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
             'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
             'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
@@ -253,6 +264,13 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 ['name' => 'group_by', 'type' => 'array', 'required' => false, 'items' => ['type' => 'string'], 'description' => 'Column names to group by. Omit for a single overall bucket.'],
                 ['name' => 'metrics', 'type' => 'array', 'required' => false, 'items' => ['type' => 'object'], 'description' => 'Numeric metrics per group. Each item is {property, function} where function is one of sum, avg, min, max. A per-group count is always returned.'],
             ],
+            'export' => [
+                ['name' => 'format', 'type' => 'string', 'required' => false, 'description' => 'Output format: csv (default) or pdf.'],
+                $filters,
+                $sort,
+                ['name' => 'columns', 'type' => 'array', 'required' => false, 'items' => ['type' => 'string'], 'description' => 'Column names to include, in order. Omit to export all columns of the first row.'],
+                $limit,
+            ],
             'detail', 'delete' => [
                 ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
             ],
@@ -284,6 +302,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'list' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runList($module, $entity, $filters, $sort, $limit, $page),
             'search' => fn (mixed $query = null, mixed $filters = null, mixed $sort = null, mixed $limit = null): array => $this->runSearch($module, $entity, $query, $filters, $sort, $limit),
             'summarize' => fn (mixed $filters = null, mixed $group_by = null, mixed $metrics = null): array => $this->runSummarize($module, $entity, $filters, $group_by, $metrics),
+            'export' => fn (mixed $format = null, mixed $filters = null, mixed $sort = null, mixed $columns = null, mixed $limit = null): array => $this->runExport($module, $entity, $format, $filters, $sort, $columns, $limit),
             'detail' => fn (mixed $id = null): array => $this->runDetail($module, $entity, $id),
             'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
             'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
@@ -567,6 +586,92 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function numericValue(mixed $value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * Export an ACL-scoped, filtered recordset to CSV or PDF. Delegates row
+     * access to CrudService::list (permission + ACL enforced) and reuses Core's
+     * tabular exporters. The file is returned inline as base64 so the caller can
+     * offer it as a download without a second round-trip.
+     *
+     * @return array<string, mixed>
+     */
+    private function runExport(string $module, string $entity, mixed $format, mixed $filters, mixed $sort, mixed $columns, mixed $limit): array
+    {
+        $formatName = mb_strtolower($this->toString($format));
+        $formatName = in_array($formatName, ['csv', 'pdf'], true) ? $formatName : 'csv';
+        $normalizedFilters = $this->normalizeFilters($filters);
+        $normalizedSort = $this->normalizeSort($sort);
+        $requestedColumns = $this->normalizeStringList($columns);
+        $cap = min($this->toInt($limit) ?? self::EXPORT_ROW_CAP, self::EXPORT_ROW_CAP);
+
+        $request = ['verb' => 'export', 'format' => $formatName, 'module' => $module, 'entity' => $entity, 'filters' => $normalizedFilters, 'sort' => $normalizedSort, 'columns' => $requestedColumns, 'limit' => $cap];
+
+        try {
+            $validated = ['pagination' => $cap, 'page' => 1];
+
+            if ($normalizedFilters !== []) {
+                $validated['filters'] = $normalizedFilters;
+            }
+
+            if ($normalizedSort !== []) {
+                $validated['sort'] = $normalizedSort;
+            }
+
+            $data = new ListRequestData($this->makeRequest(ListRequest::class), $entity, $validated, $this->primaryKey($module, $entity), $module);
+            $result = $this->crud->list($data);
+
+            $rows = $result->data;
+            $rowList = $rows instanceof Collection || $rows instanceof EloquentCollection
+                ? array_map(static fn (mixed $row): array => $row instanceof Model ? $row->toArray() : (array) $row, $rows->all())
+                : [];
+
+            $exportColumns = $this->exportColumns($rowList, $requestedColumns);
+            $filename = sprintf('%s_%s_export.%s', mb_strtolower($module), mb_strtolower($entity), $formatName);
+
+            [$contents, $mime] = $formatName === 'pdf'
+                ? [$this->pdfExporter->export($exportColumns, $rowList, $filename), 'application/pdf']
+                : [$this->csvExporter->export($exportColumns, $rowList), 'text/csv'];
+
+            $totalRecords = $result->meta?->totalRecords ?? count($rowList);
+
+            return [
+                'request' => $request,
+                'file' => [
+                    'filename' => $filename,
+                    'mime' => $mime,
+                    'encoding' => 'base64',
+                    'contents' => base64_encode($contents),
+                ],
+                'meta' => [
+                    'total_records' => $totalRecords,
+                    'exported_rows' => count($rowList),
+                    'truncated' => $totalRecords > count($rowList),
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * Build the exporter column spec: the requested columns in order, or every
+     * column of the first row when none are requested.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  list<string>  $requested
+     * @return list<array{key: string, label: string}>
+     */
+    private function exportColumns(array $rows, array $requested): array
+    {
+        $keys = $requested !== []
+            ? $requested
+            : array_keys($rows[0] ?? []);
+
+        return array_values(array_map(
+            static fn (string $key): array => ['key' => $key, 'label' => $key],
+            array_map(static fn (mixed $key): string => (string) $key, $keys),
+        ));
     }
 
     /**

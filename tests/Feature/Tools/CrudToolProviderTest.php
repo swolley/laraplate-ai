@@ -28,6 +28,8 @@ function makeCrudToolProvider(object $user): CrudToolProvider
         resolve(CrudService::class),
         resolve(AuthorizationService::class),
         $request,
+        resolve(Modules\Core\Services\Export\TabularCsvExporter::class),
+        resolve(Modules\Core\Services\Export\TabularPdfExporter::class),
     );
 }
 
@@ -255,6 +257,59 @@ it('summarizes records with group-by count and sum metrics', function (): void {
         ->and($byGroup['alpha']['metrics']['sum(id)'])->toBe(30.0)
         ->and($byGroup['beta']['count'])->toBe(1)
         ->and($byGroup['beta']['metrics']['sum(id)'])->toBe(30.0);
+});
+
+it('exports records to a csv file with the selected columns', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['export']]);
+
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'alpha', 'group_name' => 'g1']);
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'beta', 'group_name' => 'g2']);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_export_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(format: 'csv', columns: ['name', 'group_name']);
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['request']['verb'])->toBe('export')
+        ->and($result['request']['format'])->toBe('csv')
+        ->and($result['request']['columns'])->toBe(['name', 'group_name'])
+        ->and($result['file']['mime'])->toBe('text/csv')
+        ->and($result['file']['encoding'])->toBe('base64')
+        ->and($result['file']['filename'])->toBe('core_setting_export.csv')
+        ->and($result['meta']['exported_rows'])->toBe(2)
+        ->and($result['meta']['truncated'])->toBeFalse();
+
+    $csv = base64_decode($result['file']['contents'], true);
+
+    expect($csv)->toContain('name,group_name')
+        ->and($csv)->toContain('alpha,g1')
+        ->and($csv)->toContain('beta,g2');
+});
+
+it('exports records to a pdf file', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['export']]);
+
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'alpha', 'group_name' => 'g1']);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_export_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(format: 'pdf', columns: ['name']);
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['file']['mime'])->toBe('application/pdf')
+        ->and($result['file']['filename'])->toBe('core_setting_export.pdf');
+
+    $pdf = base64_decode($result['file']['contents'], true);
+
+    expect($pdf)->toStartWith('%PDF-1.4');
 });
 
 it('lists pending approvals and echoes the author filter', function (): void {
