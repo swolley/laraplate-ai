@@ -101,7 +101,10 @@ return [
             // CrudService as the acting user. Moderation belongs to the model:
             // HasApprovals entities capture writes for approval on save unless the
             // writer holds the `approve` credit — the provider does not add its own
-            // approval step.
+            // approval step. list/search accept structured `filters` and `sort`
+            // (the CRUD request format), and every result echoes the executed
+            // `request` (verb/module/entity/filters/sort/page/limit) so a client can
+            // reapply the same filters to its tables.
             'crud' => [
                 'entities' => [
                     // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],

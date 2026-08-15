@@ -157,7 +157,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             description: $this->describe($operation, $label),
             parameters: $this->parameters($operation),
             riskLevel: 'low',
-            handler: fn (mixed ...$args): array => $this->run($operation, $module, $entity, $args),
+            handler: $this->handlerFor($operation, $module, $entity),
         );
     }
 
@@ -198,18 +198,26 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
-     * @return list<array{name: string, type: string, description: string, required?: bool}>
+     * @return list<array<string, mixed>>
      */
     private function parameters(string $operation): array
     {
+        $filters = ['name' => 'filters', 'type' => 'array', 'required' => false, 'items' => ['type' => 'object'], 'description' => 'Structured filters combined with AND. Each item is {property, operator, value}; operator is one of =, !=, >, >=, <, <=, like, in, between (in/between take an array value). Nested groups {operator: and|or, filters: [...]} are allowed.'];
+        $sort = ['name' => 'sort', 'type' => 'array', 'required' => false, 'items' => ['type' => 'object'], 'description' => 'Sort order. Each item is {property, direction} where direction is asc or desc.'];
+        $limit = ['name' => 'limit', 'type' => 'integer', 'description' => 'Maximum rows to return.', 'required' => false];
+
         return match ($operation) {
             'list' => [
-                ['name' => 'limit', 'type' => 'integer', 'description' => 'Maximum rows to return.', 'required' => false],
+                $filters,
+                $sort,
+                $limit,
                 ['name' => 'page', 'type' => 'integer', 'description' => 'Page number (1-based).', 'required' => false],
             ],
             'search' => [
                 ['name' => 'query', 'type' => 'string', 'description' => 'Text to search for.', 'required' => true],
-                ['name' => 'limit', 'type' => 'integer', 'description' => 'Maximum rows to return.', 'required' => false],
+                $filters,
+                $sort,
+                $limit,
             ],
             'detail', 'delete' => [
                 ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
@@ -226,76 +234,164 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
-     * @param  list<mixed>  $args
+     * Named-argument handler matching the tool's parameter names (NeuronAI
+     * invokes tools with named arguments, as GraphToolProvider does).
+     */
+    private function handlerFor(string $operation, string $module, string $entity): callable
+    {
+        return match ($operation) {
+            'list' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runList($module, $entity, $filters, $sort, $limit, $page),
+            'search' => fn (mixed $query = null, mixed $filters = null, mixed $sort = null, mixed $limit = null): array => $this->runSearch($module, $entity, $query, $filters, $sort, $limit),
+            'detail' => fn (mixed $id = null): array => $this->runDetail($module, $entity, $id),
+            'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
+            'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
+            'delete' => fn (mixed $id = null): array => $this->runDelete($module, $entity, $id),
+            default => static fn (): array => ['error' => 'Unsupported operation.'],
+        };
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    private function run(string $operation, string $module, string $entity, array $args): array
+    private function runList(string $module, string $entity, mixed $filters, mixed $sort, mixed $limit, mixed $page): array
     {
+        $normalizedFilters = $this->normalizeFilters($filters);
+        $normalizedSort = $this->normalizeSort($sort);
+        $limitInt = $this->toInt($limit);
+        $pageInt = $this->toInt($page);
+
+        $request = ['verb' => 'list', 'module' => $module, 'entity' => $entity, 'filters' => $normalizedFilters, 'sort' => $normalizedSort, 'page' => $pageInt, 'limit' => $limitInt];
+
         try {
-            return match ($operation) {
-                'list' => $this->present($this->crud->list($this->listData($module, $entity, $args))),
-                'detail' => $this->present($this->crud->detail($this->detailData($module, $entity, $args))),
-                'search' => $this->present($this->crud->search($this->searchData($module, $entity, $args))),
-                'create' => $this->present($this->crud->insert($this->modifyData($module, $entity, $this->attributes($args)))),
-                'update' => $this->present($this->crud->update($this->modifyData($module, $entity, $this->updateChanges($module, $entity, $args)))),
-                'delete' => $this->present($this->crud->delete($this->modifyData($module, $entity, [$this->primaryKey($module, $entity) => $this->stringArg($args, 0)]))),
-                default => ['error' => 'Unsupported operation.'],
-            };
+            $validated = [];
+
+            if ($normalizedFilters !== []) {
+                $validated['filters'] = $normalizedFilters;
+            }
+
+            if ($normalizedSort !== []) {
+                $validated['sort'] = $normalizedSort;
+            }
+
+            if ($limitInt !== null) {
+                $validated['limit'] = $limitInt;
+            }
+
+            if ($pageInt !== null) {
+                $validated['page'] = $pageInt;
+            }
+
+            $data = new ListRequestData($this->makeRequest(ListRequest::class), $entity, $validated, $this->primaryKey($module, $entity), $module);
+
+            return $this->present($this->crud->list($data), $request);
         } catch (Throwable $exception) {
-            return ['error' => $exception->getMessage()];
+            return $this->fail($request, $exception);
         }
     }
 
-    private function listData(string $module, string $entity, array $args): ListRequestData
+    /**
+     * @return array<string, mixed>
+     */
+    private function runSearch(string $module, string $entity, mixed $query, mixed $filters, mixed $sort, mixed $limit): array
     {
-        $validated = [];
+        $qs = $this->toString($query);
+        $normalizedFilters = $this->normalizeFilters($filters);
+        $normalizedSort = $this->normalizeSort($sort);
+        $limitInt = $this->toInt($limit);
 
-        if (($limit = $this->intArg($args, 0)) !== null) {
-            $validated['limit'] = $limit;
+        $request = ['verb' => 'search', 'module' => $module, 'entity' => $entity, 'query' => $qs, 'filters' => $normalizedFilters, 'sort' => $normalizedSort, 'limit' => $limitInt];
+
+        try {
+            $validated = ['qs' => $qs];
+
+            if ($normalizedFilters !== []) {
+                $validated['filters'] = $normalizedFilters;
+            }
+
+            if ($normalizedSort !== []) {
+                $validated['sort'] = $normalizedSort;
+            }
+
+            if ($limitInt !== null) {
+                $validated['limit'] = $limitInt;
+            }
+
+            $data = new SearchRequestData($this->makeRequest(SearchRequest::class), $entity, $validated, $this->primaryKey($module, $entity), $module);
+
+            return $this->present($this->crud->search($data), $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
         }
-
-        if (($page = $this->intArg($args, 1)) !== null) {
-            $validated['page'] = $page;
-        }
-
-        return new ListRequestData(
-            $this->makeRequest(ListRequest::class),
-            $entity,
-            $validated,
-            $this->primaryKey($module, $entity),
-            $module,
-        );
     }
 
-    private function detailData(string $module, string $entity, array $args): DetailRequestData
+    /**
+     * @return array<string, mixed>
+     */
+    private function runDetail(string $module, string $entity, mixed $id): array
     {
         $key = $this->primaryKey($module, $entity);
-        $id = $this->stringArg($args, 0);
+        $recordId = $this->toString($id);
+        $request = ['verb' => 'detail', 'module' => $module, 'entity' => $entity, 'id' => $recordId];
 
-        return new DetailRequestData(
-            $this->makeRequest(DetailRequest::class, [$key => $id]),
-            $entity,
-            [],
-            $key,
-            $module,
-        );
+        try {
+            $data = new DetailRequestData($this->makeRequest(DetailRequest::class, [$key => $recordId]), $entity, [], $key, $module);
+
+            return $this->present($this->crud->detail($data), $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
     }
 
-    private function searchData(string $module, string $entity, array $args): SearchRequestData
+    /**
+     * @return array<string, mixed>
+     */
+    private function runCreate(string $module, string $entity, mixed $attributes): array
     {
-        $validated = ['qs' => $this->stringArg($args, 0)];
+        $request = ['verb' => 'create', 'module' => $module, 'entity' => $entity];
 
-        if (($limit = $this->intArg($args, 1)) !== null) {
-            $validated['limit'] = $limit;
+        try {
+            $data = $this->modifyData($module, $entity, $this->toArray($attributes));
+
+            return $this->present($this->crud->insert($data), $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
         }
+    }
 
-        return new SearchRequestData(
-            $this->makeRequest(SearchRequest::class),
-            $entity,
-            $validated,
-            $this->primaryKey($module, $entity),
-            $module,
-        );
+    /**
+     * @return array<string, mixed>
+     */
+    private function runUpdate(string $module, string $entity, mixed $id, mixed $attributes): array
+    {
+        $key = $this->primaryKey($module, $entity);
+        $recordId = $this->toString($id);
+        $request = ['verb' => 'update', 'module' => $module, 'entity' => $entity, 'id' => $recordId];
+
+        try {
+            $data = $this->modifyData($module, $entity, [$key => $recordId] + $this->toArray($attributes));
+
+            return $this->present($this->crud->update($data), $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runDelete(string $module, string $entity, mixed $id): array
+    {
+        $key = $this->primaryKey($module, $entity);
+        $recordId = $this->toString($id);
+        $request = ['verb' => 'delete', 'module' => $module, 'entity' => $entity, 'id' => $recordId];
+
+        try {
+            $data = $this->modifyData($module, $entity, [$key => $recordId]);
+
+            return $this->present($this->crud->delete($data), $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
     }
 
     /**
@@ -313,25 +409,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
-     * @param  list<mixed>  $args
-     * @return array<string, mixed>
+     * @param  array<string, mixed>  $routeParameters
      */
-    private function attributes(array $args): array
-    {
-        $attributes = $args[0] ?? [];
-
-        return is_array($attributes) ? $attributes : [];
-    }
-
-    /**
-     * @param  list<mixed>  $args
-     * @return array<string, mixed>
-     */
-    private function updateChanges(string $module, string $entity, array $args): array
-    {
-        return [$this->primaryKey($module, $entity) => $this->stringArg($args, 0)] + $this->attributes([$args[1] ?? []]);
-    }
-
     private function makeRequest(string $requestClass, array $routeParameters = []): Request
     {
         /** @var Request $request */
@@ -365,9 +444,13 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
+     * Present a CrudResult alongside the structured request that produced it, so
+     * the frontend can reapply the same filters/sort/pagination to its tables.
+     *
+     * @param  array<string, mixed>  $request
      * @return array<string, mixed>
      */
-    private function present(CrudResult $result): array
+    private function present(CrudResult $result, array $request): array
     {
         $data = $result->data;
 
@@ -378,26 +461,69 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             default => (array) $data,
         };
 
-        return ['data' => $payload];
+        $out = ['request' => $request, 'data' => $payload];
+
+        if ($result->meta !== null) {
+            $out['meta'] = ['total_records' => $result->meta->totalRecords, 'current_page' => $result->meta->currentPage];
+        }
+
+        return $out;
     }
 
     /**
-     * @param  list<mixed>  $args
+     * @param  array<string, mixed>  $request
+     * @return array<string, mixed>
      */
-    private function stringArg(array $args, int $index): string
+    private function fail(array $request, Throwable $exception): array
     {
-        $value = $args[$index] ?? null;
+        return ['request' => $request, 'error' => $exception->getMessage()];
+    }
 
+    /**
+     * Keep only well-formed filter nodes; the shape is passed through unchanged
+     * so the same structure round-trips to the frontend.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeFilters(mixed $filters): array
+    {
+        if (! is_array($filters)) {
+            return [];
+        }
+
+        return array_values(array_filter($filters, static fn (mixed $node): bool => is_array($node)));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeSort(mixed $sort): array
+    {
+        if (! is_array($sort)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $sort,
+            static fn (mixed $node): bool => is_array($node) && isset($node['property']) && is_string($node['property']),
+        ));
+    }
+
+    private function toInt(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function toString(mixed $value): string
+    {
         return is_scalar($value) ? (string) $value : '';
     }
 
     /**
-     * @param  list<mixed>  $args
+     * @return array<string, mixed>
      */
-    private function intArg(array $args, int $index): ?int
+    private function toArray(mixed $value): array
     {
-        $value = $args[$index] ?? null;
-
-        return is_numeric($value) ? (int) $value : null;
+        return is_array($value) ? $value : [];
     }
 }

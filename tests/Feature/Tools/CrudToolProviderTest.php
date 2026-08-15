@@ -160,3 +160,27 @@ it('runs the read handler and returns data for a permitted user', function (): v
     expect($result)->toHaveKey('data')
         ->and($result)->not->toHaveKey('error');
 });
+
+it('echoes the executed filters and sort in the request block', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list']]);
+
+    $list = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_list_core_setting');
+
+    $filters = [['property' => 'group_name', 'operator' => '=', 'value' => 'base']];
+    $sort = [['property' => 'name', 'direction' => 'asc']];
+
+    /** @var array<string, mixed> $result */
+    $result = ($list->handler)(filters: $filters, sort: $sort, limit: 5);
+
+    expect($result)->toHaveKey('request')
+        ->and($result)->not->toHaveKey('error')
+        ->and($result['request']['verb'])->toBe('list')
+        ->and($result['request']['module'])->toBe('core')
+        ->and($result['request']['entity'])->toBe('setting')
+        ->and($result['request']['filters'])->toBe($filters)
+        ->and($result['request']['sort'])->toBe($sort)
+        ->and($result['request']['limit'])->toBe(5);
+});
