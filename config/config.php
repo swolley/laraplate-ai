@@ -95,11 +95,13 @@ return [
 
             // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
             // Empty = no CRUD tools (default). Each key is "module.entity"; the value
-            // lists the allowed operations. Reads (list/detail/search) run inline.
-            // For writes the approval requirement is permission-driven: if the acting
-            // user already holds the write permission the tool runs inline, otherwise
-            // it is routed through admin approval (ActionRequest). Every call is
-            // authorized and ACL-scoped by Core's CrudService as the acting user.
+            // lists the allowed operations. A tool is exposed only for an operation
+            // the acting user is actually permitted to perform (otherwise it is not
+            // offered at all). Every call is authorized and ACL-scoped by Core's
+            // CrudService as the acting user. Moderation belongs to the model:
+            // HasApprovals entities capture writes for approval on save unless the
+            // writer holds the `approve` credit — the provider does not add its own
+            // approval step.
             'crud' => [
                 'entities' => [
                     // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],

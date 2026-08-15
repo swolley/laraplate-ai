@@ -398,7 +398,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Application Content Evaluation** - Synthetic datasets, sliced metrics, reproducible CMS record baseline
 - [x] **Event-Driven Architecture** - Clean decoupling from Core module
 - [x] **Per-Module Feature Activation** - Optional `ai.features.{embeddings,translation}.modules` allowlist gating auto-indexing/translation by the model's owning module (empty = all; `FeatureModuleGate`)
-- [x] **Default CRUD Tools** - Opt-in `ai.features.tools.crud.entities` exposing Core CRUD (list/detail/search/create/update/delete) as in-app assistant tools via `CrudToolProvider`; ACL-enforced by `CrudService`, with permission-driven approval (writes the user already can do run inline, otherwise admin approval)
+- [x] **Default CRUD Tools** - Opt-in `ai.features.tools.crud.entities` exposing Core CRUD (list/detail/search/create/update/delete) as in-app assistant tools via `CrudToolProvider`; a tool is exposed only for operations the user is permitted to perform, ACL-enforced by `CrudService`. Moderation is the model's job: `HasApprovals` entities capture writes for approval on save unless the writer holds the `approve` credit
 
 ### Notes
 

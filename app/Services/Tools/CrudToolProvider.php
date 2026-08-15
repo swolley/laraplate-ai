@@ -30,22 +30,25 @@ use Throwable;
  *
  * Every call is delegated to {@see CrudService}, which enforces the acting
  * user's permission and row-level ACL — this provider adds no data access of
- * its own. Reads (list/detail/search) run inline. For writes the approval
- * requirement is permission-driven: a user who already holds the write
- * permission for the entity gets a low-risk (inline) tool, while a user who
- * lacks it gets a high-risk tool routed through admin approval. Approval is
- * therefore required only when the user could not perform the write directly.
+ * its own. A tool is exposed only for an operation the user is actually
+ * permitted to perform: if the user cannot do it, no tool is offered (there is
+ * no "escalate to approval" path). Approval, when it happens, belongs to the
+ * model: entities using {@see \Modules\Core\Models\Concerns\HasApprovals}
+ * capture writes as pending modifications on save unless the writer holds the
+ * `approve` credit — that moderation is applied by Core inside the write, not
+ * by this provider. All exposed tools therefore run inline.
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array READ_OPERATIONS = ['list', 'detail', 'search'];
-
     private const array VALID_OPERATIONS = ['list', 'detail', 'search', 'create', 'update', 'delete'];
 
     /**
-     * Maps a tool write operation to the CRUD permission ability it needs.
+     * Maps a tool operation to the CRUD permission ability it needs.
      */
-    private const array WRITE_ABILITY = [
+    private const array ABILITY = [
+        'list' => 'select',
+        'detail' => 'select',
+        'search' => 'select',
         'create' => 'insert',
         'update' => 'update',
         'delete' => 'forceDelete',
@@ -76,12 +79,18 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 continue;
             }
 
-            foreach ($operations as $operation) {
-                $definition = $this->buildTool($module, $entity, (string) $operation);
+            $model = $this->resolveModel($module, $entity);
 
-                if ($definition instanceof ToolDefinition) {
-                    $tools[] = $definition;
+            if (! $model instanceof Model) {
+                continue;
+            }
+
+            foreach ($operations as $operation) {
+                if (! $this->userCan($model, self::ABILITY[$operation])) {
+                    continue;
                 }
+
+                $tools[] = $this->buildTool($module, $entity, (string) $operation);
             }
         }
 
@@ -138,12 +147,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             && $context->userId === (string) $identifier;
     }
 
-    private function buildTool(string $module, string $entity, string $operation): ?ToolDefinition
+    private function buildTool(string $module, string $entity, string $operation): ToolDefinition
     {
-        if (! in_array($operation, self::VALID_OPERATIONS, true)) {
-            return null;
-        }
-
         $name = sprintf('crud_%s_%s_%s', $operation, mb_strtolower($module), mb_strtolower($entity));
         $label = mb_strtolower($module) . '.' . mb_strtolower($entity);
 
@@ -151,30 +156,23 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             name: $name,
             description: $this->describe($operation, $label),
             parameters: $this->parameters($operation),
-            riskLevel: $this->riskFor($operation, $module, $entity),
+            riskLevel: 'low',
             handler: fn (mixed ...$args): array => $this->run($operation, $module, $entity, $args),
         );
     }
 
-    /**
-     * Reads are always inline. Writes are inline (low) when the acting user
-     * already holds the matching CRUD permission, otherwise gated at high risk
-     * so the registry routes them through admin approval.
-     */
-    private function riskFor(string $operation, string $module, string $entity): string
-    {
-        if (in_array($operation, self::READ_OPERATIONS, true)) {
-            return 'low';
-        }
-
-        return $this->userCanWrite($module, $entity, self::WRITE_ABILITY[$operation]) ? 'low' : 'high';
-    }
-
-    private function userCanWrite(string $module, string $entity, string $ability): bool
+    private function resolveModel(string $module, string $entity): ?Model
     {
         try {
-            $model = DynamicEntity::resolve($entity, request: $this->request, module: $module);
+            return DynamicEntity::resolve($entity, request: $this->request, module: $module);
+        } catch (Throwable) {
+            return null;
+        }
+    }
 
+    private function userCan(Model $model, string $ability): bool
+    {
+        try {
             return $this->authorization->checkPermission(
                 $this->request,
                 $model->getTable(),
@@ -192,9 +190,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'list' => "List {$label} records the current user may read.",
             'detail' => "Fetch a single {$label} record by id.",
             'search' => "Full-text search {$label} records.",
-            'create' => "Create a {$label} record. Requires approval unless you already hold the create permission.",
-            'update' => "Update a {$label} record by id. Requires approval unless you already hold the update permission.",
-            'delete' => "Delete a {$label} record by id. Requires approval unless you already hold the delete permission.",
+            'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
+            'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
+            'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
             default => "Operate on {$label}.",
         };
     }

@@ -45,9 +45,28 @@ function inAppContext(object $user): AssistantAccessContext
 }
 
 /**
+ * Grant the acting user a CRUD permission on the core.setting entity.
+ */
+function grantSettingAbility(object $user, string $ability): void
+{
+    $model = DynamicEntity::resolve('setting', module: 'core');
+    $name = PermissionName::forModel($model, $ability);
+    Permission::factory()->create(['name' => $name, 'guard_name' => 'web']);
+    $user->givePermissionTo($name);
+}
+
+/**
  * @param  list<ToolDefinition>  $tools
  */
-function tool(array $tools, string $name): ?ToolDefinition
+function toolNames(array $tools): array
+{
+    return array_map(static fn (ToolDefinition $t): string => $t->name, $tools);
+}
+
+/**
+ * @param  list<ToolDefinition>  $tools
+ */
+function findTool(array $tools, string $name): ?ToolDefinition
 {
     foreach ($tools as $definition) {
         if ($definition->name === $name) {
@@ -65,6 +84,7 @@ beforeEach(function (): void {
 it('offers no tools for a non in-app profile', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
+    grantSettingAbility($user, 'select');
     Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list']]);
 
     $context = new AssistantAccessContext(
@@ -84,6 +104,7 @@ it('offers no tools when the request user does not match the context', function 
     $user = user_class()::factory()->create();
     $other = user_class()::factory()->create();
     Auth::login($user);
+    grantSettingAbility($user, 'select');
     Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list']]);
 
     expect(makeCrudToolProvider($user)->tools(inAppContext($other)))->toBe([]);
@@ -92,63 +113,50 @@ it('offers no tools when the request user does not match the context', function 
 it('offers no tools when the allowlist is empty', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
+    grantSettingAbility($user, 'select');
 
     expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
 });
 
-it('builds the allowlisted operations as named tools', function (): void {
+it('offers no tools for a user without any permission on the entity', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list', 'create', 'delete']]);
+
+    expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
+});
+
+it('exposes only the operations the user is permitted to perform', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select'); // covers list/detail/search
+    grantSettingAbility($user, 'insert'); // covers create
+    // No 'forceDelete' → delete must not be exposed.
     Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list', 'create', 'delete', 'bogus']]);
 
     $tools = makeCrudToolProvider($user)->tools(inAppContext($user));
-    $names = array_map(static fn (ToolDefinition $t): string => $t->name, $tools);
+    $names = toolNames($tools);
 
     expect($names)->toContain('crud_list_core_setting')
         ->toContain('crud_create_core_setting')
-        ->toContain('crud_delete_core_setting')
-        // Unknown operations are ignored.
+        ->and($names)->not->toContain('crud_delete_core_setting')
         ->and($names)->not->toContain('crud_bogus_core_setting')
-        // Reads are always inline.
-        ->and(tool($tools, 'crud_list_core_setting')?->riskLevel)->toBe('low');
+        // Every exposed tool runs inline; moderation is handled by the model.
+        ->and(findTool($tools, 'crud_create_core_setting')?->riskLevel)->toBe('low')
+        ->and(findTool($tools, 'crud_list_core_setting')?->riskLevel)->toBe('low');
 });
 
-it('requires approval for a write the user is not permitted to do', function (): void {
+it('runs the read handler and returns data for a permitted user', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
-    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['create']]);
-
-    $create = tool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_create_core_setting');
-
-    expect($create?->riskLevel)->toBe('high');
-});
-
-it('runs inline (no approval) for a write the user is already permitted to do', function (): void {
-    $user = user_class()::factory()->create();
-    Auth::login($user);
-    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['create']]);
-
-    $model = DynamicEntity::resolve('setting', module: 'core');
-    Permission::factory()->create([
-        'name' => PermissionName::forModel($model, 'insert'),
-        'guard_name' => 'web',
-    ]);
-    $user->givePermissionTo(PermissionName::forModel($model, 'insert'));
-
-    $create = tool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_create_core_setting');
-
-    expect($create?->riskLevel)->toBe('low');
-});
-
-it('enforces ACL on the read handler for an unpermitted user', function (): void {
-    $user = user_class()::factory()->create();
-    Auth::login($user);
+    grantSettingAbility($user, 'select');
     Config::set('ai.features.tools.crud.entities', ['core.setting' => ['list']]);
 
-    $list = tool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_list_core_setting');
+    $list = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_list_core_setting');
 
     /** @var array<string, mixed> $result */
     $result = ($list->handler)();
 
-    expect($result)->toHaveKey('error');
+    expect($result)->toHaveKey('data')
+        ->and($result)->not->toHaveKey('error');
 });
