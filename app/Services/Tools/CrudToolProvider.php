@@ -45,7 +45,19 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
+
+    /**
+     * Upper bound on rows materialized for an in-memory aggregation, so a
+     * `summarize` call can never load an unbounded result set. When the true
+     * total exceeds this cap the response is flagged as truncated.
+     */
+    private const int SUMMARIZE_ROW_CAP = 5000;
+
+    /**
+     * Aggregation functions supported by the `summarize` tool.
+     */
+    private const array SUMMARIZE_FUNCTIONS = ['sum', 'avg', 'min', 'max'];
 
     /**
      * Maps a tool operation to the CRUD permission ability it needs.
@@ -55,6 +67,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         'list' => 'select',
         'detail' => 'select',
         'search' => 'select',
+        'summarize' => 'select',
         'create' => 'insert',
         'update' => 'update',
         'delete' => 'forceDelete',
@@ -200,6 +213,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'list' => "List {$label} records the current user may read.",
             'detail' => "Fetch a single {$label} record by id.",
             'search' => "Full-text search {$label} records.",
+            'summarize' => "Aggregate {$label} records: group by one or more columns and compute a count plus optional sum/avg/min/max metrics. Honours the same structured filters as list.",
             'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
             'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
             'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
@@ -234,6 +248,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 $sort,
                 $limit,
             ],
+            'summarize' => [
+                $filters,
+                ['name' => 'group_by', 'type' => 'array', 'required' => false, 'items' => ['type' => 'string'], 'description' => 'Column names to group by. Omit for a single overall bucket.'],
+                ['name' => 'metrics', 'type' => 'array', 'required' => false, 'items' => ['type' => 'object'], 'description' => 'Numeric metrics per group. Each item is {property, function} where function is one of sum, avg, min, max. A per-group count is always returned.'],
+            ],
             'detail', 'delete' => [
                 ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
             ],
@@ -264,6 +283,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'view' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runView($module, $entity, $filters, $sort, $limit, $page),
             'list' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runList($module, $entity, $filters, $sort, $limit, $page),
             'search' => fn (mixed $query = null, mixed $filters = null, mixed $sort = null, mixed $limit = null): array => $this->runSearch($module, $entity, $query, $filters, $sort, $limit),
+            'summarize' => fn (mixed $filters = null, mixed $group_by = null, mixed $metrics = null): array => $this->runSummarize($module, $entity, $filters, $group_by, $metrics),
             'detail' => fn (mixed $id = null): array => $this->runDetail($module, $entity, $id),
             'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
             'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
@@ -369,6 +389,184 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         } catch (Throwable $exception) {
             return $this->fail($request, $exception);
         }
+    }
+
+    /**
+     * Group-by aggregation. Delegates to CrudService::list (which enforces the
+     * acting user's permission and ACL), materializes up to SUMMARIZE_ROW_CAP
+     * rows, then computes per-group count plus the requested numeric metrics in
+     * memory. The true total is reported and the result is flagged truncated
+     * when it exceeds the cap.
+     *
+     * @return array<string, mixed>
+     */
+    private function runSummarize(string $module, string $entity, mixed $filters, mixed $groupBy, mixed $metrics): array
+    {
+        $normalizedFilters = $this->normalizeFilters($filters);
+        $groups = $this->normalizeStringList($groupBy);
+        $metricSpecs = $this->normalizeMetrics($metrics);
+
+        $request = ['verb' => 'summarize', 'module' => $module, 'entity' => $entity, 'filters' => $normalizedFilters, 'group_by' => $groups, 'metrics' => $metricSpecs];
+
+        try {
+            $validated = ['pagination' => self::SUMMARIZE_ROW_CAP, 'page' => 1];
+
+            if ($normalizedFilters !== []) {
+                $validated['filters'] = $normalizedFilters;
+            }
+
+            $data = new ListRequestData($this->makeRequest(ListRequest::class), $entity, $validated, $this->primaryKey($module, $entity), $module);
+            $result = $this->crud->list($data);
+
+            $rows = $result->data;
+            $rowList = $rows instanceof Collection || $rows instanceof EloquentCollection ? $rows->all() : [];
+            $buckets = $this->aggregateRows($rowList, $groups, $metricSpecs);
+
+            $aggregatedRows = count($rowList);
+            $totalRecords = $result->meta?->totalRecords ?? $aggregatedRows;
+
+            return [
+                'request' => $request,
+                'data' => $buckets,
+                'meta' => [
+                    'total_records' => $totalRecords,
+                    'aggregated_rows' => $aggregatedRows,
+                    'truncated' => $totalRecords > $aggregatedRows,
+                ],
+            ];
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * @param  list<mixed>  $rows
+     * @param  list<string>  $groups
+     * @param  list<array{property: string, function: string}>  $metrics
+     * @return list<array<string, mixed>>
+     */
+    private function aggregateRows(array $rows, array $groups, array $metrics): array
+    {
+        $buckets = [];
+
+        foreach ($rows as $row) {
+            $key = $this->bucketKey($row, $groups);
+
+            if (! isset($buckets[$key])) {
+                $buckets[$key] = ['group' => $this->bucketGroup($row, $groups), 'count' => 0, '_metrics' => []];
+            }
+
+            $buckets[$key]['count']++;
+
+            foreach ($metrics as $metric) {
+                $value = $this->numericValue($this->rowValue($row, $metric['property']));
+
+                if ($value === null) {
+                    continue;
+                }
+
+                $label = sprintf('%s(%s)', $metric['function'], $metric['property']);
+                $buckets[$key]['_metrics'][$label] = $this->foldMetric(
+                    $buckets[$key]['_metrics'][$label] ?? null,
+                    $metric['function'],
+                    $value,
+                );
+            }
+        }
+
+        return array_values(array_map(fn (array $bucket): array => [
+            'group' => $bucket['group'],
+            'count' => $bucket['count'],
+            'metrics' => $this->finalizeMetrics($bucket['_metrics']),
+        ], $buckets));
+    }
+
+    /**
+     * @param  array{sum: float, n: int, min: float, max: float}|null  $acc
+     * @return array{sum: float, n: int, min: float, max: float}
+     */
+    private function foldMetric(?array $acc, string $function, float $value): array
+    {
+        if ($acc === null) {
+            return ['sum' => $value, 'n' => 1, 'min' => $value, 'max' => $value];
+        }
+
+        return [
+            'sum' => $acc['sum'] + $value,
+            'n' => $acc['n'] + 1,
+            'min' => min($acc['min'], $value),
+            'max' => max($acc['max'], $value),
+        ];
+    }
+
+    /**
+     * @param  array<string, array{sum: float, n: int, min: float, max: float}>  $metrics
+     * @return array<string, float|int>
+     */
+    private function finalizeMetrics(array $metrics): array
+    {
+        $out = [];
+
+        foreach ($metrics as $label => $acc) {
+            $function = (string) mb_strstr($label, '(', true);
+            $out[$label] = match ($function) {
+                'sum' => $acc['sum'],
+                'avg' => $acc['n'] > 0 ? $acc['sum'] / $acc['n'] : 0,
+                'min' => $acc['min'],
+                'max' => $acc['max'],
+                default => $acc['sum'],
+            };
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $groups
+     */
+    private function bucketKey(mixed $row, array $groups): string
+    {
+        if ($groups === []) {
+            return '*';
+        }
+
+        return implode('||', array_map(
+            fn (string $group): string => (string) json_encode($this->rowValue($row, $group)),
+            $groups,
+        ));
+    }
+
+    /**
+     * @param  list<string>  $groups
+     * @return array<string, mixed>
+     */
+    private function bucketGroup(mixed $row, array $groups): array
+    {
+        $group = [];
+
+        foreach ($groups as $property) {
+            $group[$property] = $this->rowValue($row, $property);
+        }
+
+        return $group;
+    }
+
+    private function rowValue(mixed $row, string $property): mixed
+    {
+        if ($row instanceof Model) {
+            return $row->getAttribute($property);
+        }
+
+        if (is_array($row)) {
+            return $row[$property] ?? null;
+        }
+
+        return null;
+    }
+
+    private function numericValue(mixed $value): ?float
+    {
+        return is_numeric($value) ? (float) $value : null;
     }
 
     /**
@@ -662,6 +860,54 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             $sort,
             static fn (mixed $node): bool => is_array($node) && isset($node['property']) && is_string($node['property']),
         ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normalizeStringList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(static fn (mixed $item): string => is_scalar($item) ? (string) $item : '', $value),
+            static fn (string $item): bool => $item !== '',
+        ));
+    }
+
+    /**
+     * Keep only well-formed metric specs {property, function} with a supported
+     * aggregation function.
+     *
+     * @return list<array{property: string, function: string}>
+     */
+    private function normalizeMetrics(mixed $metrics): array
+    {
+        if (! is_array($metrics)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($metrics as $metric) {
+            if (! is_array($metric) || ! isset($metric['property']) || ! is_scalar($metric['property'])) {
+                continue;
+            }
+
+            $function = isset($metric['function']) && is_scalar($metric['function'])
+                ? mb_strtolower((string) $metric['function'])
+                : 'sum';
+
+            if (! in_array($function, self::SUMMARIZE_FUNCTIONS, true)) {
+                continue;
+            }
+
+            $normalized[] = ['property' => (string) $metric['property'], 'function' => $function];
+        }
+
+        return $normalized;
     }
 
     private function toInt(mixed $value): ?int

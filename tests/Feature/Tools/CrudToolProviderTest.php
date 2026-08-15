@@ -225,6 +225,38 @@ it('exposes approval tools only with the approve permission', function (): void 
         ->toContain('crud_disapprove_core_setting');
 });
 
+it('summarizes records with group-by count and sum metrics', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['summarize']]);
+
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['id' => 10, 'name' => 's1', 'group_name' => 'alpha']);
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['id' => 20, 'name' => 's2', 'group_name' => 'alpha']);
+    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['id' => 30, 'name' => 's3', 'group_name' => 'beta']);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_summarize_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(
+        group_by: ['group_name'],
+        metrics: [['property' => 'id', 'function' => 'sum']],
+    );
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['request']['verb'])->toBe('summarize')
+        ->and($result['request']['group_by'])->toBe(['group_name'])
+        ->and($result['meta']['total_records'])->toBe(3)
+        ->and($result['meta']['truncated'])->toBeFalse();
+
+    $byGroup = collect($result['data'])->keyBy(fn (array $b): string => $b['group']['group_name']);
+
+    expect($byGroup['alpha']['count'])->toBe(2)
+        ->and($byGroup['alpha']['metrics']['sum(id)'])->toBe(30.0)
+        ->and($byGroup['beta']['count'])->toBe(1)
+        ->and($byGroup['beta']['metrics']['sum(id)'])->toBe(30.0);
+});
+
 it('lists pending approvals and echoes the author filter', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
