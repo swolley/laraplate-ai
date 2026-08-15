@@ -104,7 +104,10 @@ return [
             // approval step. list/search accept structured `filters` and `sort`
             // (the CRUD request format), and every result echoes the executed
             // `request` (verb/module/entity/filters/sort/page/limit) so a client can
-            // reapply the same filters to its tables.
+            // reapply the same filters to its tables. The `view` operation is
+            // "configure mode": it returns only the request spec (apply=true) and
+            // does NOT fetch data — the UI applies the filters and loads them itself.
+            // Operations: view, list, detail, search, create, update, delete.
             'crud' => [
                 'entities' => [
                     // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],

@@ -184,3 +184,27 @@ it('echoes the executed filters and sort in the request block', function (): voi
         ->and($result['request']['sort'])->toBe($sort)
         ->and($result['request']['limit'])->toBe(5);
 });
+
+it('proposes a table view without fetching data (configure mode)', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['view']]);
+
+    $view = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_view_core_setting');
+
+    expect($view)->not->toBeNull()
+        ->and($view->riskLevel)->toBe('low');
+
+    $filters = [['property' => 'group_name', 'operator' => '=', 'value' => 'base']];
+
+    /** @var array<string, mixed> $result */
+    $result = ($view->handler)(filters: $filters, sort: [], limit: 10, page: 1);
+
+    expect($result['apply'])->toBeTrue()
+        ->and($result)->not->toHaveKey('data') // configure mode does not fetch
+        ->and($result['request']['verb'])->toBe('view')
+        ->and($result['request']['filters'])->toBe($filters)
+        ->and($result['request']['limit'])->toBe(10)
+        ->and($result['request']['page'])->toBe(1);
+});

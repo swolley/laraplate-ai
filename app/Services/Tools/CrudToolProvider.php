@@ -40,12 +40,13 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array VALID_OPERATIONS = ['list', 'detail', 'search', 'create', 'update', 'delete'];
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'create', 'update', 'delete'];
 
     /**
      * Maps a tool operation to the CRUD permission ability it needs.
      */
     private const array ABILITY = [
+        'view' => 'select',
         'list' => 'select',
         'detail' => 'select',
         'search' => 'select',
@@ -187,6 +188,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function describe(string $operation, string $label): string
     {
         return match ($operation) {
+            'view' => "Propose a {$label} table view (filters/sort) for the UI to apply and load itself. Does not fetch data — use this when the user wants to filter the on-screen table.",
             'list' => "List {$label} records the current user may read.",
             'detail' => "Fetch a single {$label} record by id.",
             'search' => "Full-text search {$label} records.",
@@ -206,12 +208,14 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         $sort = ['name' => 'sort', 'type' => 'array', 'required' => false, 'items' => ['type' => 'object'], 'description' => 'Sort order. Each item is {property, direction} where direction is asc or desc.'];
         $limit = ['name' => 'limit', 'type' => 'integer', 'description' => 'Maximum rows to return.', 'required' => false];
 
+        $page = ['name' => 'page', 'type' => 'integer', 'description' => 'Page number (1-based).', 'required' => false];
+
         return match ($operation) {
-            'list' => [
+            'view', 'list' => [
                 $filters,
                 $sort,
                 $limit,
-                ['name' => 'page', 'type' => 'integer', 'description' => 'Page number (1-based).', 'required' => false],
+                $page,
             ],
             'search' => [
                 ['name' => 'query', 'type' => 'string', 'description' => 'Text to search for.', 'required' => true],
@@ -240,6 +244,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function handlerFor(string $operation, string $module, string $entity): callable
     {
         return match ($operation) {
+            'view' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runView($module, $entity, $filters, $sort, $limit, $page),
             'list' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runList($module, $entity, $filters, $sort, $limit, $page),
             'search' => fn (mixed $query = null, mixed $filters = null, mixed $sort = null, mixed $limit = null): array => $this->runSearch($module, $entity, $query, $filters, $sort, $limit),
             'detail' => fn (mixed $id = null): array => $this->runDetail($module, $entity, $id),
@@ -248,6 +253,28 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'delete' => fn (mixed $id = null): array => $this->runDelete($module, $entity, $id),
             default => static fn (): array => ['error' => 'Unsupported operation.'],
         };
+    }
+
+    /**
+     * Configure mode: return the filter/sort spec for the UI to apply and load
+     * itself. No data is fetched. The frontend's own load enforces the ACL.
+     *
+     * @return array<string, mixed>
+     */
+    private function runView(string $module, string $entity, mixed $filters, mixed $sort, mixed $limit, mixed $page): array
+    {
+        return [
+            'apply' => true,
+            'request' => [
+                'verb' => 'view',
+                'module' => $module,
+                'entity' => $entity,
+                'filters' => $this->normalizeFilters($filters),
+                'sort' => $this->normalizeSort($sort),
+                'page' => $this->toInt($page),
+                'limit' => $this->toInt($limit),
+            ],
+        ];
     }
 
     /**
