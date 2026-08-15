@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Tools;
 
+use function user_class;
+
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Fluent;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\Core\Casts\CrudRequestData;
 use Modules\Core\Casts\DetailRequestData;
 use Modules\Core\Casts\ListRequestData;
 use Modules\Core\Casts\ModifyRequestData;
@@ -17,6 +21,7 @@ use Modules\Core\Casts\SearchRequestData;
 use Modules\Core\Http\Requests\DetailRequest;
 use Modules\Core\Http\Requests\ListRequest;
 use Modules\Core\Http\Requests\ModifyRequest;
+use Modules\Core\Http\Requests\PendingApprovalsRequest;
 use Modules\Core\Http\Requests\SearchRequest;
 use Modules\Core\Models\DynamicEntity;
 use Modules\Core\Services\Authorization\AuthorizationService;
@@ -40,7 +45,7 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
-    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'create', 'update', 'delete'];
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'create', 'update', 'delete', 'pending_approvals', 'approve', 'disapprove'];
 
     /**
      * Maps a tool operation to the CRUD permission ability it needs.
@@ -53,6 +58,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         'create' => 'insert',
         'update' => 'update',
         'delete' => 'forceDelete',
+        'pending_approvals' => 'approve',
+        'approve' => 'approve',
+        'disapprove' => 'approve',
     ];
 
     public function __construct(
@@ -195,6 +203,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
             'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
             'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
+            'pending_approvals' => "List pending {$label} changes awaiting approval, each with its author; optionally filter by author (name, email or user id).",
+            'approve' => "Approve the pending change on a {$label} record by id.",
+            'disapprove' => "Reject the pending change on a {$label} record by id.",
             default => "Operate on {$label}.",
         };
     }
@@ -233,6 +244,12 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
                 ['name' => 'attributes', 'type' => 'object', 'description' => 'Field values to change.', 'required' => true],
             ],
+            'pending_approvals' => [
+                ['name' => 'author', 'type' => 'string', 'description' => 'Optional filter: modifier name, email, or user id.', 'required' => false],
+            ],
+            'approve', 'disapprove' => [
+                ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
+            ],
             default => [],
         };
     }
@@ -251,6 +268,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
             'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
             'delete' => fn (mixed $id = null): array => $this->runDelete($module, $entity, $id),
+            'pending_approvals' => fn (mixed $author = null): array => $this->runPendingApprovals($module, $entity, $author),
+            'approve' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'approve'),
+            'disapprove' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'disapprove'),
             default => static fn (): array => ['error' => 'Unsupported operation.'],
         };
     }
@@ -418,6 +438,114 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             return $this->present($this->crud->delete($data), $request);
         } catch (Throwable $exception) {
             return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runPendingApprovals(string $module, string $entity, mixed $author): array
+    {
+        $authorFilter = $this->toString($author);
+        $request = ['verb' => 'pending_approvals', 'module' => $module, 'entity' => $entity, 'author' => $authorFilter === '' ? null : $authorFilter];
+
+        try {
+            $data = new CrudRequestData($this->makeRequest(PendingApprovalsRequest::class), $entity, [], $this->primaryKey($module, $entity), $module);
+            $result = $this->crud->pendingApprovals($data);
+
+            return ['request' => $request, 'data' => $this->enrichApprovals($result->data, $authorFilter)];
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runApproval(string $module, string $entity, mixed $id, string $operation): array
+    {
+        $key = $this->primaryKey($module, $entity);
+        $recordId = $this->toString($id);
+        $request = ['verb' => $operation, 'module' => $module, 'entity' => $entity, 'id' => $recordId];
+
+        try {
+            $data = $this->modifyData($module, $entity, [$key => $recordId]);
+            $result = $operation === 'approve' ? $this->crud->approve($data) : $this->crud->disapprove($data);
+
+            return $this->present($result, $request);
+        } catch (Throwable $exception) {
+            return $this->fail($request, $exception);
+        }
+    }
+
+    /**
+     * Turn pending-approval rows into arrays, add the modifier's display name,
+     * and optionally keep only those authored by the given user (name/email/id).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function enrichApprovals(mixed $rows, string $author): array
+    {
+        if (! $rows instanceof Collection && ! $rows instanceof EloquentCollection) {
+            return [];
+        }
+
+        $authorIds = $author === '' ? null : $this->resolveAuthorIds($author);
+
+        return $rows
+            ->map(fn (mixed $row): array => $this->approvalRow($row))
+            ->filter(static fn (array $row): bool => $authorIds === null || in_array($row['modifier_id'] ?? null, $authorIds, true))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function approvalRow(mixed $row): array
+    {
+        $data = $row instanceof Fluent ? $row->toArray() : (array) $row;
+        $data['modifier_name'] = $this->modifierName($data['modifier_id'] ?? null, $data['modifier_type'] ?? null);
+
+        return $data;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function resolveAuthorIds(string $author): array
+    {
+        $ids = is_numeric($author) ? [(int) $author] : [];
+
+        try {
+            $matched = user_class()::query()
+                ->where('name', 'like', "%{$author}%")
+                ->orWhere('email', 'like', "%{$author}%")
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->all();
+            $ids = array_merge($ids, $matched);
+        } catch (Throwable) {
+            // Fall through to whatever numeric id was provided.
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    private function modifierName(mixed $id, mixed $type): ?string
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        $class = is_string($type) && class_exists($type) ? $type : user_class();
+
+        try {
+            $name = $class::query()->whereKey($id)->value('name');
+
+            return is_string($name) ? $name : null;
+        } catch (Throwable) {
+            return null;
         }
     }
 

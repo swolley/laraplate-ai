@@ -107,7 +107,9 @@ return [
             // reapply the same filters to its tables. The `view` operation is
             // "configure mode": it returns only the request spec (apply=true) and
             // does NOT fetch data — the UI applies the filters and loads them itself.
-            // Operations: view, list, detail, search, create, update, delete.
+            // Operations: view, list, detail, search, create, update, delete,
+            // plus the approval verbs pending_approvals, approve, disapprove
+            // (gated by the `approve` permission).
             'crud' => [
                 'entities' => [
                     // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],

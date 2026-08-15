@@ -208,3 +208,36 @@ it('proposes a table view without fetching data (configure mode)', function (): 
         ->and($result['request']['limit'])->toBe(10)
         ->and($result['request']['page'])->toBe(1);
 });
+
+it('exposes approval tools only with the approve permission', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['pending_approvals', 'approve', 'disapprove']]);
+
+    // Without the approve permission → no approval tools.
+    expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
+
+    grantSettingAbility($user, 'approve');
+    $names = toolNames(makeCrudToolProvider($user)->tools(inAppContext($user)));
+
+    expect($names)->toContain('crud_pending_approvals_core_setting')
+        ->toContain('crud_approve_core_setting')
+        ->toContain('crud_disapprove_core_setting');
+});
+
+it('lists pending approvals and echoes the author filter', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'approve');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['pending_approvals']]);
+
+    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_pending_approvals_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($tool->handler)(author: 'Marco');
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['request']['verb'])->toBe('pending_approvals')
+        ->and($result['request']['author'])->toBe('Marco')
+        ->and($result['data'])->toBeArray();
+});
