@@ -46,6 +46,14 @@ return [
             //     'max_context_messages' => env('AI_CHAT_MAX_CONTEXT', 50),
             //     'enable_summary' => env('AI_CHAT_ENABLE_SUMMARY', false),
         ],
+
+        // Optional one-shot text generation answering Core's
+        // AiTextGenerationRequested event (e.g. SAO ownership-suggestion
+        // phrasing). Opt-in: off unless explicitly enabled.
+        'text_generation' => [
+            'enabled' => env('AI_TEXT_GENERATION_ENABLED', false),
+            'default_provider' => env('AI_TEXT_GENERATION_PROVIDER', env('AI_CHAT_PROVIDER', 'ollama')),
+        ],
         'faq' => [
             // 'enabled' => env('AI_FAQ_ENABLED', true),
             // Optional extra root for app-level custom docs. Default scan always includes `docs/rag` and active `Modules/*/docs/rag` (see `docs/README.md`).

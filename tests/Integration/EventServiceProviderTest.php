@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\AI\Providers\EventServiceProvider;
+use Modules\Core\Events\AiTextGenerationRequested;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
 
@@ -36,15 +37,16 @@ it('uses TranslatedModelSaved with HandleModelTranslationListener', function ():
     expect($listen[TranslatedModelSaved::class])->toContain(HandleModelTranslationListener::class);
 });
 
-it('has exactly two event mappings in listen array', function (): void {
+it('registers a listener mapping for every handled event', function (): void {
     $provider = new EventServiceProvider(app());
     $reflection = new ReflectionClass($provider);
     $property = $reflection->getProperty('listen');
     $listen = $property->getValue($provider);
 
-    expect($listen)->toHaveCount(4)
+    expect($listen)->toHaveCount(5)
         ->and(array_keys($listen))->toContain(ModelRequiresIndexing::class)
-        ->and(array_keys($listen))->toContain(TranslatedModelSaved::class);
+        ->and(array_keys($listen))->toContain(TranslatedModelSaved::class)
+        ->and(array_keys($listen))->toContain(AiTextGenerationRequested::class);
 });
 
 it('registers and boots without error', function (): void {

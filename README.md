@@ -106,6 +106,10 @@ AI_CHAT_PROVIDER=ollama              # Chat provider (ollama, openai, mistral, a
 AI_CHAT_MAX_CONTEXT=50               # Max messages in context window
 AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarization
 
+# Optional Text Generation (answers Core's AiTextGenerationRequested event)
+AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
+AI_TEXT_GENERATION_PROVIDER=ollama   # Provider for those requests (defaults to AI_CHAT_PROVIDER)
+
 # FAQ/RAG Configuration
 AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
 AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/newline); see docs/README.md and rag_paths()
@@ -253,6 +257,7 @@ Core is the **event bus**; this module registers AI listeners and jobs. Full dia
 | **Overview** (indexing + moderation, comparison, extension) | [Modules/Core/docs/EVENT_ORCHESTRATION.md](../Core/docs/EVENT_ORCHESTRATION.md) |
 | **Embeddings, Elasticsearch, translations** | [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md) |
 | **Modification moderation (AI vote)** | [docs/MODERATION.md](docs/MODERATION.md) |
+| **Optional text generation** (answers `AiTextGenerationRequested`, e.g. SAO ownership phrasing) | `HandleAiTextGenerationListener`, gated by `AI_TEXT_GENERATION_ENABLED` |
 | Chat, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | **RAG corpus conventions** (what to put in `docs/rag/`) | [docs/rag/README.md](../../docs/rag/README.md) |
 | **RAG implementation** (pipeline, agents, stores) | [docs/rag/MODULE.md](docs/rag/MODULE.md) |
