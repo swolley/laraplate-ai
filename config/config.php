@@ -49,10 +49,25 @@ return [
 
         // Optional one-shot text generation answering Core's
         // AiTextGenerationRequested event (e.g. SAO ownership-suggestion
-        // phrasing). Opt-in: off unless explicitly enabled.
+        // phrasing). Opt-in: off unless explicitly enabled. Any failure or a
+        // guard tripping leaves the request unfulfilled so the caller falls back.
         'text_generation' => [
             'enabled' => env('AI_TEXT_GENERATION_ENABLED', false),
             'default_provider' => env('AI_TEXT_GENERATION_PROVIDER', env('AI_CHAT_PROVIDER', 'ollama')),
+
+            // Hard cap on the returned text; longer generations are truncated on
+            // a word boundary rather than rejected.
+            'max_output_chars' => env('AI_TEXT_GENERATION_MAX_CHARS', 500),
+
+            // Optional short-TTL cache keyed by (purpose, prompt hash). 0 = off.
+            'cache_ttl_seconds' => env('AI_TEXT_GENERATION_CACHE_TTL', 0),
+
+            // Per-purpose rate limit; when exhausted the listener no-ops so a
+            // burst cannot run up cost.
+            'rate_limit' => [
+                'max' => env('AI_TEXT_GENERATION_RATE_MAX', 60),
+                'per_seconds' => env('AI_TEXT_GENERATION_RATE_WINDOW', 60),
+            ],
         ],
         'faq' => [
             // 'enabled' => env('AI_FAQ_ENABLED', true),

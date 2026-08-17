@@ -109,6 +109,11 @@ AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarizati
 # Optional Text Generation (answers Core's AiTextGenerationRequested event)
 AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
 AI_TEXT_GENERATION_PROVIDER=ollama   # Provider for those requests (defaults to AI_CHAT_PROVIDER)
+AI_TEXT_GENERATION_MAX_CHARS=500     # Hard cap on the returned text (truncated on a word boundary)
+AI_TEXT_GENERATION_CACHE_TTL=0       # Optional cache TTL (seconds) keyed by (purpose, prompt); 0 = off
+AI_TEXT_GENERATION_RATE_MAX=60       # Max requests per purpose within the window (0 = unlimited)
+AI_TEXT_GENERATION_RATE_WINDOW=60    # Rate-limit window in seconds
+# Live smoke test (tests/Integration/AiTextGenerationLiveSmokeTest.php) runs only with AI_LIVE_TESTS=1 + provider credentials.
 
 # FAQ/RAG Configuration
 AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
