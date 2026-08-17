@@ -157,10 +157,13 @@ final readonly class HandleAiTextGenerationListener
             return ($this->chatAgentFactory)();
         }
 
+        $model = ai_config_string('ai.features.text_generation.model');
+
         /** @var ChatAgent */
         return ChatAgent::make( // @codeCoverageIgnore
             providerName: ai_config_string('ai.features.text_generation.default_provider'),
             systemPrompt: self::SYSTEM_PROMPT,
+            model: $model === '' ? null : $model,
         );
     }
 }

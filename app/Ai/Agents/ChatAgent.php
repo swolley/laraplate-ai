@@ -17,11 +17,9 @@ class ChatAgent extends Agent
     public function __construct(
         protected ?string $providerName = null,
         protected ?string $systemPrompt = null,
+        protected ?string $model = null,
     ) {}
 
-    /**
-     * @param  mixed  ...$arguments
-     */
     public static function make(mixed ...$arguments): static
     {
         /** @phpstan-ignore new.static */
@@ -30,7 +28,7 @@ class ChatAgent extends Agent
 
     protected function provider(): AIProviderInterface
     {
-        return ProviderFactory::make($this->providerName);
+        return ProviderFactory::make($this->providerName, $this->model);
     }
 
     protected function instructions(): string

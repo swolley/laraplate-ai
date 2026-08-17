@@ -109,6 +109,7 @@ AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarizati
 # Optional Text Generation (answers Core's AiTextGenerationRequested event)
 AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
 AI_TEXT_GENERATION_PROVIDER=ollama   # Provider for those requests (defaults to AI_CHAT_PROVIDER)
+AI_TEXT_GENERATION_MODEL=            # Optional model override for this feature only (blank = provider default)
 AI_TEXT_GENERATION_MAX_CHARS=500     # Hard cap on the returned text (truncated on a word boundary)
 AI_TEXT_GENERATION_CACHE_TTL=0       # Optional cache TTL (seconds) keyed by (purpose, prompt); 0 = off
 AI_TEXT_GENERATION_RATE_MAX=60       # Max requests per purpose within the window (0 = unlimited)
