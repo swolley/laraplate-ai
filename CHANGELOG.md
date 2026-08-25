@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- *(ai)* Per-module allowlist for embeddings and translation
+- *(ai)* Default CRUD tools for the in-app assistant
+- *(ai)* Structured filters/sort and request echo for CRUD tools
+- *(ai)* Configure-mode `view` CRUD tool (propose filters without fetching)
+- *(ai)* Approval verbs (pending_approvals/approve/disapprove) for CRUD tools
+- *(ai)* Summarize CRUD tool (group-by count + sum/avg/min/max)
+- *(ai)* Export CRUD tool (CSV/PDF) via Core tabular exporters
+- *(ai)* Bulk_update/bulk_delete CRUD tools with mandatory preview and cap
+- *(ai)* Optional listener answering Core's AI text-generation request
+- *(ai)* Production-ready live text generation behind its flag
+- *(ai)* Bind text generation to a configurable model
+
+### 🐛 Bug Fixes
+
+- *(ai)* Gate CRUD tools by permission, drop approval-for-unpermitted
+
+### 📚 Documentation
+
+- *(ai)* Assistant scope model + cross_cutting_user marker convention
+- *(ai)* Record verified HasApprovals moderation behavior for CRUD tools
+- *(ai)* Add user RAG guide for assistant CRUD data tools
+
 ## [2.14.0] - 2026-08-05
 
 ### 🐛 Bug Fixes
