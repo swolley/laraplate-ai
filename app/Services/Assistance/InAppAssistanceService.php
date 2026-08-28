@@ -81,6 +81,8 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             $prompt_context = $this->guardrails->validateContext(
                 $this->promptContext($policy, $documents, $request_context),
             );
+            // DataAccess::None is currently unreachable via respond() (forInApp always resolves InAppAssistance profile);
+            // reserved as a seam for future guest/superadmin profiles routed through this service (see docs/rag/ASSISTANT_SCOPE.md).
             $tools = $scope->dataAccess === DataAccess::None
                 ? []
                 : $this->contextualTools($access, $input, $policy);
