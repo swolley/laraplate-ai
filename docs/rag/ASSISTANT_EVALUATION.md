@@ -16,18 +16,22 @@ See also: `ASSISTANT_SCOPE.md` (module-scoped documentation retrieval that L1 ve
 | Dataset schema and case value object | AI | `Modules\AI\Services\Assistance\Evaluation\{AssistantEvaluationCase, AssistantEvaluationDataset}` |
 | Level-1 scoring service (deterministic) | AI | `Modules\AI\Services\Assistance\Evaluation\AssistantEvaluationService::evaluate()` |
 | Scripted-completion fixture | AI | `Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantRunner`, `ScriptedAssistantFixtures` |
-| CLI command (Level 1 and Level 2 interface) | AI | `Modules\AI\Console\EvaluateAssistantCommand` (`ai:evaluate-assistant`) |
 | CI regression gate (Level 1) | AI | `Modules\AI\Tests\Feature\Assistance\AssistantBaselineGateTest` |
 | Per-module dataset (JSON) | Each module | `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json` |
 | Baseline report (committed) | Each module | `Modules/{Module}/docs/rag/evaluations/assistant-{slug}-baseline.json` |
 
+**Deferred (Level 2):**
+| Concern | Owner | Artifact |
+|---------|-------|----------|
+| CLI command (`ai:evaluate-assistant --live`) | AI | `Modules\AI\Console\EvaluateAssistantCommand` — not yet implemented; will be the future interface for Level-2 live evaluation |
+
 The dataset contract mirrors `DocumentationEvaluationDataset`: JSON with exact-key validation, bounded sizes, and synthetic-only data classification.
 
-## InternalFlow
+## Internal Flow
 
 ### Level 1 (deterministic, built)
 
-1. `EvaluateAssistantCommand` loads a dataset JSON from `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json` into `AssistantEvaluationDataset`.
+1. The regression gate test loads a dataset JSON from `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json` into `AssistantEvaluationDataset`.
 2. For each case, `AssistantEvaluationService::evaluate()`:
    - Resolves the case's `AssistantAccessContext` (profile fixed to `InAppAssistance`, module/locale/permissions from the case).
    - Constructs `InAppAssistanceService` with:
@@ -73,9 +77,9 @@ flowchart TB
 
 ### Level 2 (live, defined, deferred)
 
-When built, will run the same dataset over the real LLM (not a scripted completion) and measure actual surface-routing accuracy, citation precision across sources, real clarification/refusal behavior, and answer grounding against retrieved evidence. The command flag `ai:evaluate-assistant --live` will switch modes; it currently fails with a clear message until Level 2 is implemented.
+When built, will run the same dataset over the real LLM (not a scripted completion) and measure actual surface-routing accuracy, citation precision across sources, real clarification/refusal behavior, and answer grounding against retrieved evidence. The future `ai:evaluate-assistant --live` command will switch to Level-2 mode. **Level 2 is not yet implemented; this is a specification of the intended interface for a later phase.**
 
-## HowToUse — add a report card for a new module
+## How To Use — Add a Report Card for a New Module
 
 1. **Author the dataset**: Create `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json`.
 
@@ -139,9 +143,9 @@ When built, will run the same dataset over the real LLM (not a scripted completi
    - Assert each Level-1 metric at or above committed thresholds (read from a baseline report JSON).
    - Assert `unavailable_rate === 0.0`.
 
-4. **Run the evaluation**:
+4. **Run the gate test**:
    ```bash
-   php artisan ai:evaluate-assistant --module=cms --dataset=assistant-cms --output=/tmp/cms-eval.json --force
+   php artisan test Modules/AI/tests/Feature/Assistance/AssistantCMSBaselineGateTest.php
    ```
 
 5. **Commit the dataset and baseline report**:
@@ -151,18 +155,15 @@ When built, will run the same dataset over the real LLM (not a scripted completi
    git commit -m "test(cms): assistant evaluation baseline"
    ```
 
-6. **Verify the gate**:
-   ```bash
-   php artisan test Modules/AI/tests/Feature/Assistance/AssistantCMSBaselineGateTest.php
-   ```
-
 ## Configuration
+
+
 
 - `ai.features.faq.max_documents` — resolved top-K for documentation retrieval in evaluated cases (clamped 1–10). Tests set this to the dataset's intended K.
 - `ai.features.faq.policy_classification_version` — must match the fixture documents' `policy_classification_version` (default `in-app-docs-v1`).
 - No new configuration surface for assistant evaluation. Scope and profile are server-owned and fixed per-request, never read from config or model output.
 
-## PermissionsAndSecurity
+## Permissions and Security
 
 - **Scope is server-owned**: the module context comes from the case, never from user input or the assistant's own choice.
 - **No live LLM or Elasticsearch in Level 1**: the real `respond()` path (scope resolution, guardrails, ACL-preserving tool authorization, output validation) runs; only the scripted completion provider is faked.
@@ -171,7 +172,7 @@ When built, will run the same dataset over the real LLM (not a scripted completi
 - **Data classification**: restricted to `synthetic` to signal test-only data.
 - **Level 2 (when built)** will run under the same server-owned profile/scope/ACL guarantees and remain opt-in, outside CI.
 
-## PerformanceAndLimits
+## Performance and Limits
 
 - **Deterministic Level 1 only**: no external services in tests.
 - **Per-module, dataset-driven**: each module owns its evaluation dataset under `Modules/{Module}/docs/rag/evaluations/assistant-*.json`; datasets are bounded to 100 cases per module to keep gate time reasonable.
@@ -179,14 +180,14 @@ When built, will run the same dataset over the real LLM (not a scripted completi
 - **Citation precision over deterministic scoring**: after a scripted surface tool invocation, the message metadata citations must match the case's `expected_citations` exactly — no fuzzy scoring.
 - **Fail-closed on retrieval failure**: if `respond()` throws or returns unexpectedly, the case counts as `unavailable` with no impact on other metrics.
 
-## ErrorsAndTroubleshooting
+## Errors and Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
 | Gate test fails with mismatched citations | Verify fixture provider returns same citation labels as `expected_citations`; check safe label alignment byte-for-byte (e.g. Unicode middle dot) |
 | Clarification/abstention does not fire in a case | Confirm the fake provider returns empty/ambiguous results for that case; check `ApplicationContentCitationMapper::clarificationRequired()` / `insufficientEvidence()` logic |
 | `respond()` throws unexpectedly in Level 1 | Check fixture metadata (audience, locale, permissions); compare against `InAppAssistanceService` and guardrails requirements |
-| Level-2 invoked before implementation | The command will fail with a clear message; Level 2 is not yet built |
+| Level-2 attempted | The `ai:evaluate-assistant --live` command is not yet implemented; Level 2 is deferred |
 | Dataset validation rejects a new case | Check exact-key validation and bounded sizes; verify `expected_surface` and boolean flags agree; confirm slug patterns match `^[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?$` |
 
 ## Related
