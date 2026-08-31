@@ -8,12 +8,14 @@ use InvalidArgumentException;
 
 final readonly class AssistantScope
 {
+    public const string MODULE_KEY_PATTERN = '/^[a-z][a-z0-9_]*$/';
+
     public function __construct(
         public ?string $moduleKey,
         public DataAccess $dataAccess,
         public DocScope $docScope,
     ) {
-        if ($this->moduleKey !== null && preg_match('/^[a-z][a-z0-9_]*$/', $this->moduleKey) !== 1) {
+        if ($this->moduleKey !== null && preg_match(self::MODULE_KEY_PATTERN, $this->moduleKey) !== 1) {
             throw new InvalidArgumentException('Assistant scope module key is invalid.');
         }
 
