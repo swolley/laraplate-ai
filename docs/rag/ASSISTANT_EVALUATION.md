@@ -18,7 +18,6 @@ See also: `ASSISTANT_SCOPE.md` (module-scoped documentation retrieval that L1 ve
 | Scripted-completion fixture | AI | `Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantRunner`, `ScriptedAssistantFixtures` |
 | CI regression gate (Level 1) | AI | `Modules\AI\Tests\Feature\Assistance\AssistantBaselineGateTest` |
 | Per-module dataset (JSON) | Each module | `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json` |
-| Baseline report (committed) | Each module | `Modules/{Module}/docs/rag/evaluations/assistant-{slug}-baseline.json` |
 
 **Deferred (Level 2):**
 | Concern | Owner | Artifact |
@@ -46,8 +45,7 @@ The dataset contract mirrors `DocumentationEvaluationDataset`: JSON with exact-k
      - For `documentation` surface, uses the pre-retrieved documentation context.
    - `respond()` then runs post-processing (citation merge, abstention check, output validation, persistence) unchanged.
 3. Scores the case per module:
-   - `surface_offered` — resolved `AssistantScope` made `expected_surface` available.
-   - `citation_assembly` — returned `Message` metadata citations match `expected_citations`.
+   - `citation_assembly` — returned `Message` metadata citations contain the expected set.
    - `clarification_trigger_accuracy` — clarification output iff `expect_clarification`.
    - `abstention_accuracy` — abstention output iff a surface was attempted with no evidence (refuse cases).
    - `output_valid` — scripted output passed mandatory validation.
@@ -71,7 +69,7 @@ flowchart TB
   Cite --> Respond["respond() post-processing"]
   GraphTool --> Respond
   Nothing --> Respond
-  Respond --> Score["Score case: surface_offered, citation_assembly, clarification_trigger_accuracy, abstention_accuracy, output_valid"]
+  Respond --> Score["Score case: citation_assembly, clarification_trigger_accuracy, abstention_accuracy, output_valid"]
   Score --> Report["Aggregate metrics + slices (floats, slugs only)"]
 ```
 
@@ -88,22 +86,22 @@ When built, will run the same dataset over the real LLM (not a scripted completi
    - `corpus_revision` — commit/version of the test fixtures (string).
    - `module` — lowercase module name (string, e.g. `"cms"`).
    - `data_classification` — restricted to `"synthetic"` (string).
-   - `cases` — bounded array (max 100 entries). Each case:
+   - `cases` — bounded array (max 1000 entries). Each case:
      - `id` — unique case slug (string, kebab-case).
      - `query` — the question asked (string).
      - `locale` — language code (string, e.g. `"en"`).
-     - `module` — expected module scope (string, or null for generic/no-module case).
+     - `module_key` — expected module scope (string, or null for generic/no-module case).
      - `expected_surface` — one of `"documentation"`, `"application_content"`, `"graph"`, `"clarify"`, `"refuse"` (string).
      - `expected_citations` — bounded list of safe citation labels/references (array of strings; empty for `clarify`/`refuse`).
      - `expect_clarification` — true iff `expected_surface == "clarify"` (boolean).
      - `expect_refusal` — true iff `expected_surface == "refuse"` (boolean).
-     - `slices` — lowercase slug tags for breakdowns (array of strings, e.g. `["topic:crud", "hop:single"]`).
+     - `slices` — lowercase slug tags for breakdowns (array of strings, e.g. `["publishing", "single_hop"]`).
 
    Validation invariants:
    - `clarify`/`refuse` cases carry no expected citations.
    - `expected_surface` and boolean flags must agree (`clarify` → `expect_clarification=true`, etc.).
-   - `graph` and `application_content` surfaces are valid only where the module scope could offer them (determined by case `module` and server configuration).
-   - Slug patterns match `^[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?$`.
+   - `graph` and `application_content` surfaces are valid only where the module scope could offer them (determined by case `module_key` and server configuration).
+   - Slug patterns match `^[a-z0-9][a-z0-9_-]{0,63}$` (lowercase, digits, underscores, hyphens only; no colons).
 
    Example excerpt:
    ```json
@@ -117,12 +115,12 @@ When built, will run the same dataset over the real LLM (not a scripted completi
          "id": "cms-doc-content-search",
          "query": "How do I search for pages by keyword?",
          "locale": "en",
-         "module": "cms",
+         "module_key": "cms",
          "expected_surface": "documentation",
          "expected_citations": ["user:cms-search-guide"],
          "expect_clarification": false,
          "expect_refusal": false,
-         "slices": ["topic:search", "hop:single"]
+         "slices": ["search"]
        }
      ]
    }
@@ -136,23 +134,22 @@ When built, will run the same dataset over the real LLM (not a scripted completi
    - For `graph` surface: return `GraphResult` with relation/expansion results.
    - For `clarify`/`refuse` cases: return empty/ambiguous results so the guardrails fire.
 
-3. **Add the gate test**: Create `Modules/AI/tests/Feature/Assistance/AssistantCMSBaselineGateTest.php` (mirror `DocumentationBaselineGateTest`).
+3. **Add the gate test**: Extend `Modules/AI/tests/Feature/Assistance/AssistantBaselineGateTest.php` with a new test case for your module (mirror the existing CMS test).
 
-   - Load the dataset via `base_path('Modules/CMS/docs/rag/evaluations/assistant-cms.json')`.
+   - Load the dataset via `base_path('Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json')`.
    - Run `AssistantEvaluationService::evaluate()` with the fixture providers.
-   - Assert each Level-1 metric at or above committed thresholds (read from a baseline report JSON).
+   - Assert each Level-1 metric at `>= 1.0` (hardcoded thresholds: `citation_assembly`, `clarification_trigger_accuracy`, `abstention_accuracy`, `output_valid`).
    - Assert `unavailable_rate === 0.0`.
 
 4. **Run the gate test**:
    ```bash
-   php artisan test Modules/AI/tests/Feature/Assistance/AssistantCMSBaselineGateTest.php
+   php artisan test Modules/AI/tests/Feature/Assistance/AssistantBaselineGateTest.php
    ```
 
-5. **Commit the dataset and baseline report**:
+5. **Commit the dataset**:
    ```bash
-   git add Modules/CMS/docs/rag/evaluations/assistant-cms.json
-   git add Modules/CMS/docs/rag/evaluations/assistant-cms-baseline.json
-   git commit -m "test(cms): assistant evaluation baseline"
+   git add Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json
+   git commit -m "test({module}): assistant evaluation baseline"
    ```
 
 ## Configuration
@@ -175,9 +172,9 @@ When built, will run the same dataset over the real LLM (not a scripted completi
 ## Performance and Limits
 
 - **Deterministic Level 1 only**: no external services in tests.
-- **Per-module, dataset-driven**: each module owns its evaluation dataset under `Modules/{Module}/docs/rag/evaluations/assistant-*.json`; datasets are bounded to 100 cases per module to keep gate time reasonable.
+- **Per-module, dataset-driven**: each module owns its evaluation dataset under `Modules/{Module}/docs/rag/evaluations/assistant-*.json`; datasets allow up to 1000 cases per module.
 - **Measures plumbing, not routing**: the scripted completion choice means L1 proves "given surface X, the plumbing handled X correctly," not "the assistant chose X." Routing accuracy is a Level-2 metric (not yet built).
-- **Citation precision over deterministic scoring**: after a scripted surface tool invocation, the message metadata citations must match the case's `expected_citations` exactly — no fuzzy scoring.
+- **Citation subset-coverage**: after a scripted surface tool invocation, the message metadata citations are scored by subset-coverage — the returned citation labels must contain the expected set (no extra citations needed, but no missing ones).
 - **Fail-closed on retrieval failure**: if `respond()` throws or returns unexpectedly, the case counts as `unavailable` with no impact on other metrics.
 
 ## Errors and Troubleshooting
@@ -188,7 +185,7 @@ When built, will run the same dataset over the real LLM (not a scripted completi
 | Clarification/abstention does not fire in a case | Confirm the fake provider returns empty/ambiguous results for that case; check `ApplicationContentCitationMapper::clarificationRequired()` / `insufficientEvidence()` logic |
 | `respond()` throws unexpectedly in Level 1 | Check fixture metadata (audience, locale, permissions); compare against `InAppAssistanceService` and guardrails requirements |
 | Level-2 attempted | The `ai:evaluate-assistant --live` command is not yet implemented; Level 2 is deferred |
-| Dataset validation rejects a new case | Check exact-key validation and bounded sizes; verify `expected_surface` and boolean flags agree; confirm slug patterns match `^[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*)?$` |
+| Dataset validation rejects a new case | Check exact-key validation and bounded sizes; verify `expected_surface` and boolean flags agree; confirm slug patterns match `^[a-z0-9][a-z0-9_-]{0,63}$` (no colons) |
 
 ## Related
 
