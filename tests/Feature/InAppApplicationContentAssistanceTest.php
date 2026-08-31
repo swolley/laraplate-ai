@@ -5,33 +5,14 @@ declare(strict_types=1);
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Modules\AI\Models\Conversation;
-use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
-use Modules\AI\Services\ApplicationContent\ApplicationContentDeadlineExecutor;
-use Modules\AI\Services\ApplicationContent\ApplicationContentPromptProjector;
-use Modules\AI\Services\ApplicationContent\ApplicationContentSourceRouter;
-use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
-use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
-use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\AssistantPromptContext;
-use Modules\AI\Services\Assistance\InAppAssistanceService;
-use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
-use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
-use Modules\AI\Services\ChatService;
-use Modules\AI\Services\DocumentationService;
-use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
-use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\AI\Tests\Stubs\ApplicationContent\InAppAssistanceContentProvider;
-use Modules\Core\ApplicationContent\ApplicationContentRetrievalProviderRegistry;
-use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
-use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface;
-use Modules\Core\ApplicationContent\Data\ApplicationContentHit;
+use Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantFixtures;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
-use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\User;
-use Modules\Core\Services\Authorization\AuthorizationService;
 use NeuronAI\Tools\Tool;
 
 uses(RefreshDatabase::class);
@@ -41,40 +22,17 @@ function inAppContentDescriptor(
     string $module = 'cms',
     string $entity = 'contents',
     array $intents = ['cms', 'contents', 'content'],
-): ApplicationContentSourceDescriptor {
-    return new ApplicationContentSourceDescriptor(
-        $source,
-        $module,
-        $entity,
-        ['en', 'it'],
-        ['lexical'],
-        $intents,
-    );
+): Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor {
+    return ScriptedAssistantFixtures::inAppContentDescriptor($source, $module, $entity, $intents);
 }
 
 function inAppContentResult(string $excerpt = 'Use the visible publishing controls.'): ApplicationContentResult
 {
-    return new ApplicationContentResult('cms.contents', [
-        new ApplicationContentHit(
-            id: 'cms.contents:5',
-            source: 'cms.contents',
-            module: 'cms',
-            entity: 'contents',
-            recordKey: 5,
-            excerpt: $excerpt,
-            label: 'Publishing guide',
-            canonicalReference: '/app/cms/contents/5',
-            locale: 'en',
-            strategy: 'lexical',
-            score: 0.9,
-            revision: 'rev-1',
-            truncated: false,
-        ),
-    ], 'lexical', false);
+    return ScriptedAssistantFixtures::inAppContentResult($excerpt);
 }
 
 /**
- * @param  list<ApplicationContentRetrievalProviderInterface>  $providers
+ * @param  list<Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface>  $providers
  * @param  Closure(string, string, AssistantPromptContext, list<Tool>): string  $completion
  */
 function inAppContentService(
@@ -82,45 +40,8 @@ function inAppContentService(
     array $providers,
     Closure $completion,
     ?ContextualToolProviderInterface $graphTools = null,
-): InAppAssistanceService {
-    $registry = new ApplicationContentRetrievalProviderRegistry;
-
-    foreach ($providers as $provider) {
-        $registry->register($provider);
-    }
-
-    $citations = new ApplicationContentCitationMapper;
-    $content_tools = new ApplicationContentToolProvider(
-        $registry,
-        new ApplicationContentRetrievalService($registry, app(AuthorizationService::class)),
-        app(AuthorizationService::class),
-        new ApplicationContentSourceRouter,
-        new ApplicationContentPromptProjector,
-        new ApplicationContentDeadlineExecutor,
-        $citations,
-        AssistanceGuardrailPipeline::defaults(),
-        $request,
-    );
-
-    if ($graphTools === null) {
-        $graphTools = Mockery::mock(ContextualToolProviderInterface::class);
-        $graphTools->shouldReceive('tools')->andReturn([]);
-    }
-
-    return new InAppAssistanceService(
-        app(AssistantAccessContextFactory::class),
-        app(AssistantPolicyCompiler::class),
-        AssistanceGuardrailPipeline::defaults(),
-        app(DocumentationService::class),
-        new CompositeContextualToolProvider([$graphTools, $content_tools]),
-        new ToolRegistry,
-        app(ChatService::class),
-        $request,
-        new AssistantScopeResolver,
-        static fn (): array => [],
-        $completion,
-        $citations,
-    );
+): Modules\AI\Services\Assistance\InAppAssistanceService {
+    return ScriptedAssistantFixtures::inAppContentService($request, $providers, $completion, $graphTools);
 }
 
 /**
@@ -131,19 +52,7 @@ function executeInAppContentTool(
     string $query = 'publishing content',
     string $source = 'cms.contents',
 ): void {
-    $tool = collect($tools)->first(
-        static fn (Tool $candidate): bool => $candidate->getName() === 'application_content_search',
-    );
-
-    expect($tool)->toBeInstanceOf(Tool::class);
-
-    $tool->setInputs([
-        'source' => $source,
-        'query' => $query,
-        'locale' => 'en',
-        'limit' => 5,
-    ]);
-    $tool->execute();
+    ScriptedAssistantFixtures::executeInAppContentTool($tools, $query, $source);
 }
 
 beforeEach(function (): void {
