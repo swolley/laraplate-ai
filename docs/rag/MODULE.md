@@ -298,3 +298,15 @@ profile (Level-1, deterministic, no chat model), mirroring
 `docs/superpowers/specs/2026-08-04-documentation-rag-evaluation-baseline-design.md`.
 Guides: `DOCUMENTATION_EVALUATION_USER.md` (operator) and
 `DOCUMENTATION_EVALUATION_DEVELOPER.md` (internals + how to add a module report card).
+
+## Assistant end-to-end evaluation
+
+`ai:evaluate-assistant` measures the composed `InAppAssistanceService::respond()`
+per module (Level-1 deterministic, CI regression gate; Level-2 live, opt-in). L1
+runs the real `respond()` over a scripted router (no LLM) and fake providers to
+score composition plumbing — scope gating, citation assembly, clarification,
+abstention, output validation — not routing accuracy. Datasets are owned by each
+module under `docs/rag/evaluations/assistant-*.json`. The regression gate lives
+in `Modules/AI/tests/Feature/Assistance/AssistantBaselineGateTest.php`. Design:
+`docs/superpowers/specs/2026-08-29-assistant-end-to-end-evaluation-design.md`.
+Guide: `ASSISTANT_EVALUATION.md` (internals + how to add a module report card).
