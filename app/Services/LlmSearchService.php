@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_string;
+
+use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use NeuronAI\Chat\Messages\UserMessage;
-
-use function ai_config_string;
+use Throwable;
 
 /**
  * Search-specific LLM service wrapping NeuronAI via ChatAgent.
@@ -28,14 +30,24 @@ class LlmSearchService
      */
     public function generateSearchPlan(string $query): array
     {
-        $system_prompt = $this->getSearchPlanSystemPrompt();
-        $agent = $this->createAgent($system_prompt);
+        try {
+            $system_prompt = $this->getSearchPlanSystemPrompt();
+            $agent = $this->createAgent($system_prompt);
 
-        $response = $agent->chat(new UserMessage(
-            "Generate a search plan for: {$query}",
-        ))->getMessage();
+            $response = $agent->chat(new UserMessage(
+                "Generate a search plan for: {$query}",
+            ))->getMessage();
 
-        return $this->parseJsonResponse($response->getContent() ?? '');
+            return $this->parseJsonResponse($response->getContent() ?? '');
+        } catch (Throwable $exception) {
+            // Any LLM/agent failure must not break search: return an empty plan
+            // so the caller falls back to the rule-based planner.
+            Log::warning('LLM search plan generation failed; using rule-based fallback', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**
@@ -45,11 +57,21 @@ class LlmSearchService
      */
     public function extractSearchIntent(string $query): array
     {
-        $system_prompt = $this->getIntentExtractionSystemPrompt();
-        $agent = $this->createAgent($system_prompt);
+        try {
+            $system_prompt = $this->getIntentExtractionSystemPrompt();
+            $agent = $this->createAgent($system_prompt);
 
-        $response = $agent->chat(new UserMessage($query))->getMessage();
-        $parsed = $this->parseJsonResponse($response->getContent() ?? '');
+            $response = $agent->chat(new UserMessage($query))->getMessage();
+            $parsed = $this->parseJsonResponse($response->getContent() ?? '');
+        } catch (Throwable $exception) {
+            // Degrade gracefully: an LLM/agent failure falls back to the raw
+            // query (no expansion, no keywords) instead of breaking retrieval.
+            Log::warning('LLM intent extraction failed; falling back to the raw query', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            $parsed = [];
+        }
 
         return [
             'keywords' => $this->stringListValue($parsed, 'keywords'),
