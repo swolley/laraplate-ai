@@ -18,7 +18,6 @@ use JsonException;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Contracts\IEmbeddableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
-use Modules\Core\Search\Traits\Searchable;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
 
@@ -90,10 +89,16 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         try {
             $embedded_documents = $embedding_service->embedDocument($data);
 
-            foreach ($embedded_documents as $embedded_document) {
-                $model->embeddings()->create([
-                    'embedding' => $embedded_document->embedding,
-                ]);
+            if ($embedded_documents !== []) {
+                // Replace any previous embeddings so a retry or manual
+                // regeneration does not append duplicate ModelEmbedding rows.
+                $model->embeddings()->delete();
+
+                foreach ($embedded_documents as $embedded_document) {
+                    $model->embeddings()->create([
+                        'embedding' => $embedded_document->embedding,
+                    ]);
+                }
             }
 
             event(new ModelPreProcessingCompleted($model, 'embeddings'));
@@ -118,6 +123,12 @@ final class GenerateEmbeddingsJob implements ShouldQueue
             'model_id' => $this->model->getKey(),
             'error' => $exception->getMessage(),
         ]);
+
+        // Degrade gracefully: signal that this pre-processing step is done so the
+        // finalize listener still indexes the document (keyword-only, without the
+        // vector). Otherwise a failed embedding would keep the document out of the
+        // search index entirely.
+        event(new ModelPreProcessingCompleted($this->model, 'embeddings'));
     }
 
     /**

@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\Core\Events\ModelPreProcessingCompleted;
 use NeuronAI\RAG\Document;
 
 beforeEach(function (): void {
@@ -63,8 +65,13 @@ it('returns early when prepareDataToEmbed returns empty string', function (): vo
     $job->handle($embedding_service);
 });
 
-it('processes embeddings and creates records', function (): void {
+it('replaces existing embeddings then creates records (idempotent regeneration)', function (): void {
+    Event::fake([ModelPreProcessingCompleted::class]);
+
+    // A regeneration must delete the model's previous embeddings before creating
+    // the fresh set, otherwise retries append duplicate ModelEmbedding rows.
     $embeddingRelation = Mockery::mock();
+    $embeddingRelation->shouldReceive('delete')->once();
     $embeddingRelation->shouldReceive('create')
         ->once()
         ->with(['embedding' => [0.1, 0.2]])
@@ -88,9 +95,31 @@ it('processes embeddings and creates records', function (): void {
 
     $job = new GenerateEmbeddingsJob($model);
     $job->handle($embedding_service);
+
+    Event::assertDispatched(ModelPreProcessingCompleted::class);
+});
+
+it('failed dispatches ModelPreProcessingCompleted so indexing proceeds without the vector', function (): void {
+    // On permanent failure the document must still be indexed (keyword-only),
+    // so the finalize listener needs the completion signal to fire.
+    Event::fake([ModelPreProcessingCompleted::class]);
+
+    $model = Mockery::mock(Model::class)->makePartial();
+    $model->id = 7;
+    $model->shouldReceive('getTable')->andReturn('test');
+
+    $job = new GenerateEmbeddingsJob($model);
+    $job->failed(new Exception('boom'));
+
+    Event::assertDispatched(
+        ModelPreProcessingCompleted::class,
+        fn (ModelPreProcessingCompleted $event): bool => $event->model === $model && $event->processing_type === 'embeddings',
+    );
 });
 
 it('failed logs error', function (): void {
+    Event::fake([ModelPreProcessingCompleted::class]);
+
     $model = Mockery::mock(Model::class)->makePartial();
     $model->id = 1;
 
