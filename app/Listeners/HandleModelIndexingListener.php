@@ -60,14 +60,11 @@ final class HandleModelIndexingListener
             return false;
         }
 
-        // @codeCoverageIgnoreStart
-        if (! isset($model->embed) || $model->embed === []) {
-            return false;
-        }
-        // @codeCoverageIgnoreEnd
-
-        // Check if vector search is enabled for this model
-        return method_exists($model, 'vectorSearchEnabled') && $model->vectorSearchEnabled();
+        // Ask the model's own public capability query. Reaching into the
+        // protected `$embed` property or the private vector-enabled check from
+        // here silently fails (Eloquent __isset / __call), which previously
+        // stopped embeddings from ever being generated via indexing.
+        return method_exists($model, 'isEmbeddable') && $model->isEmbeddable();
     }
 
     private function saveEventToCache(ModelRequiresIndexing $event): void
