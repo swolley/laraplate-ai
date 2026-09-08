@@ -191,6 +191,7 @@ The AI Module includes built-in features such as:
     - Multilingual embeddings (concatenates all available translations)
     - Vector search integration with Elasticsearch and Typesense
     - Batch processing for large documents
+    - Graceful degradation: a permanent embedding failure indexes the document keyword-only instead of dropping it; backfill missing embeddings with `php artisan ai:embeddings:repair "<Model FQCN>"`. See [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md).
 
 -   **Automatic Translation:**
     - Automatic translation on model creation/update
