@@ -18,7 +18,13 @@ class ChatAgent extends Agent
         protected ?string $providerName = null,
         protected ?string $systemPrompt = null,
         protected ?string $model = null,
-    ) {}
+    ) {
+        // Agent extends NeuronAI's Workflow, whose constructor initialises the
+        // workflow executor. Without this call the executor stays uninitialised
+        // and running the agent throws "Workflow::$executor must not be accessed
+        // before initialization".
+        parent::__construct();
+    }
 
     public static function make(mixed ...$arguments): static
     {
