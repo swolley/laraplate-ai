@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Features
 
+- *(embeddings)* Add ai:embeddings:repair to backfill missing embeddings
+
+### 🧪 Testing
+
+- *(ai)* CMS assistant baseline regression gate
+
+## [2.17.0] - 2026-08-25
+
+### 🚀 Features
+
 - *(ai)* Per-module allowlist for embeddings and translation
 - *(ai)* Default CRUD tools for the in-app assistant
 - *(ai)* Structured filters/sort and request echo for CRUD tools
