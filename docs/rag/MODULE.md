@@ -220,7 +220,7 @@ flowchart TB
 
 ### Application content evaluation
 
-`php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` evaluates a registered provider without calling the chat model. Datasets must declare synthetic data, typed evaluation-only authorization filters, provider/corpus revisions, and expected safe references. Reports contain aggregate and locale/category-sliced hit@5, reciprocal rank, citation precision, authorized-empty accuracy, supported-answer rate, abstention accuracy, unavailable rate, and latency; they omit queries, content, users, permissions, ACL expressions, and raw scores. Existing reports are not overwritten without `--force`.
+`php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` evaluates a registered provider without calling the chat model. Datasets must declare synthetic data, typed evaluation-only authorization filters, provider/corpus revisions, and expected safe references. Reports contain aggregate and locale/category-sliced hit@5, reciprocal rank, precision/recall/nDCG at k, citation precision, authorized-empty accuracy, supported-answer rate, abstention accuracy, unavailable rate, and latency; they omit queries, content, users, permissions, ACL expressions, and raw scores. Existing reports are not overwritten without `--force`. Ranking metrics and committed baselines: see "Application content evaluation" below.
 
 Phase 1 remains authenticated and non-guest only. Laraplate may attach the configured guest account to the session guard, but that principal cannot receive `InAppAssistance` or invoke application content retrieval. Session-based guest assistance is a Phase 2 decision requiring a dedicated `GuestAssistance` profile, session-subject conversation isolation in addition to the shared guest user ID, fixed source/field allowlists, a separate threat model and dataset, abuse/rate limits, and explicit approval. The provider contract is the extension point; it is not implicit permission to expose a provider to the guest.
 
@@ -286,6 +286,37 @@ flowchart LR
 - How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
 - Why is the assistant saying RAG is unavailable?
 - How do I use `ai:help` in interactive versus one-shot mode?
+
+## Application content evaluation
+
+`ai:evaluate-application-content` scores a registered provider (`cms.contents`,
+`sao.tickets`) by running the real ranking pipeline — `provider->retrieve()` →
+`AdvancedSearchService` → `EnsembleSearchService` (keyword + vector + hybrid,
+RRF fusion, `IReranker`) with a DB `LIKE` lexical fallback — with no chat model.
+`ApplicationContentEvaluationService::metrics()` emits, per report and per
+locale/category slice: `hit_at_5`, `mean_reciprocal_rank`, `citation_precision`,
+`authorized_empty_accuracy`, `supported_answer_rate`, `abstention_accuracy`,
+`unavailable_rate`, plus IR ranking metrics `precision_at_k`, `recall_at_k`,
+`ndcg_at_k` for `k ∈ {1, 3, 5}`. The `@k` metrics use binary relevance from each
+case's `expected_hit_ids` and are averaged only over cases that carry ground
+truth (cases with no expected hits do not dilute the denominator).
+
+Two committed deterministic baselines — generated against a DB-seeded fixture
+corpus (driver `database-generated-fixture`), exact-match gated in CI:
+
+| Module | Baseline artifact | Fixture dataset | Gate test |
+|---|---|---|---|
+| CMS | `Modules/CMS/docs/evaluations/application-content/2026-07-record-baseline.json` | `Modules/CMS/tests/Fixtures/application-content/cms-contents.json` | `Modules/CMS/tests/Feature/ApplicationContent/CmsApplicationContentEvaluationBaselineTest.php` |
+| SAO | `Modules/SAO/docs/evaluations/application-content/2026-09-record-baseline.json` | `Modules/SAO/tests/Fixtures/application-content/sao-tickets.json` (anchored to the deterministic `SAO-1..SAO-8` dev tickets) | `Modules/SAO/tests/Feature/ApplicationContent/SaoApplicationContentEvaluationBaselineTest.php` |
+
+Regenerate a baseline by running its gate test with
+`APP_CONTENT_BASELINE_REGEN=1` — this rewrites the artifact from the fresh
+report (`JSON_PRESERVE_ZERO_FRACTION`, so whole-number floats stay floats).
+Without the flag the test asserts the report is identical to the committed
+artifact (`expect($report)->toBe($artifact)`). The live Elasticsearch
+(vector/hybrid/rerank) baseline is produced on demand with the same command
+against a dev-seeded + indexed corpus and is **not** part of the deterministic
+CI gate. Design: `docs/superpowers/specs/2026-09-09-r3-retrieval-quality-baseline-design.md`.
 
 ## Documentation evaluation
 
