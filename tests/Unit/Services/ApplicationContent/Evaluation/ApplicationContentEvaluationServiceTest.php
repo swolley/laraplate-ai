@@ -335,6 +335,46 @@ it('computes full recall at k when multiple relevant ids fall within the cutoff'
     ]);
 });
 
+it('computes precision, recall and nDCG at k when expected hit ids exceed the cutoff', function (): void {
+    $expected = [
+        'cms.contents:300', 'cms.contents:301', 'cms.contents:302',
+        'cms.contents:303', 'cms.contents:304', 'cms.contents:305', 'cms.contents:306',
+    ];
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('wide-ground-truth', $expected, [], false, true, false),
+        ],
+    );
+    $results = [
+        'wide-ground-truth' => new ApplicationContentResult('cms.contents', [
+            evaluationHit('300', '/app/cms/contents/300'),
+            evaluationHit('301', '/app/cms/contents/301'),
+            evaluationHit('302', '/app/cms/contents/302'),
+            evaluationHit('303', '/app/cms/contents/303'),
+            evaluationHit('304', '/app/cms/contents/304'),
+        ], 'lexical', false),
+    ];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    // |expectedHitIds| = 7 > k = 5; all 5 returned hits are relevant, in rank order.
+    // precision@5 = 5/5 = 1.0.
+    // recall@5 = 5/7 = 0.7143 (ground truth larger than k caps recall below 1.0 even at a perfect top-k).
+    // ndcg@5 = dcg/idcg = 1.0 (ideal = min(7, 5) = 5, matched exactly by the 5 relevant hits).
+    expect($report['metrics']['precision_at_5'])->toBe(1.0)
+        ->and($report['metrics']['recall_at_5'])->toBe(0.7143)
+        ->and($report['metrics']['ndcg_at_5'])->toBe(1.0);
+});
+
 it('excludes cases without expected hit ids from precision, recall and nDCG denominators', function (): void {
     $dataset = new ApplicationContentEvaluationDataset(
         version: '1',
