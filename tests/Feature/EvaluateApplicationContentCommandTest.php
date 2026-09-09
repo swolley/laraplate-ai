@@ -49,6 +49,9 @@ it('writes a payload-free provider evaluation report and refuses accidental over
 
         expect($report['metrics']['hit_at_5'])->toBe(1.0)
             ->and($report['metrics']['citation_precision'])->toBe(1.0)
+            ->and($report['metrics']['precision_at_5'])->toBe(0.2)
+            ->and($report['metrics']['recall_at_5'])->toBe(1.0)
+            ->and($report['metrics']['ndcg_at_5'])->toBe(1.0)
             ->and($report['source'])->toBe('cms.evaluation_records')
             ->and(json_encode($report))->not->toContain('private evaluation query')
             ->and(json_encode($report))->not->toContain('evaluation.contents.select');
