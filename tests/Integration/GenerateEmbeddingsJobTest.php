@@ -23,7 +23,19 @@ it('has correct properties', function (): void {
 
     expect($job->tries)->toBe(3)
         ->and($job->backoff)->toBe([30, 60, 120])
-        ->and($job->timeout)->toBe(300);
+        ->and($job->timeout)->toBe(300)
+        ->and($job->maxExceptions)->toBe(3);
+});
+
+it('uses a future time-based retryUntil so rate-limit releases do not kill the job', function (): void {
+    $model = Mockery::mock(Model::class)->makePartial();
+    $model->id = 1;
+    $model->shouldReceive('getTable')->andReturn('test');
+
+    $job = new GenerateEmbeddingsJob($model);
+
+    expect($job->retryUntil())->toBeInstanceOf(DateTimeInterface::class)
+        ->and($job->retryUntil()->getTimestamp())->toBeGreaterThan(now()->getTimestamp());
 });
 
 it('middleware returns ThrottlesExceptions and RateLimited', function (): void {

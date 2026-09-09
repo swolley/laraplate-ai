@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Jobs;
 
+use DateTimeInterface;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,9 +46,10 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     public int $timeout = 300;
 
     /**
-     * Maximum time to wait in the queue before execution.
+     * Unhandled exceptions allowed before the job fails. Rate-limit releases are
+     * not exceptions, so they do not consume this budget.
      */
-    public int $maxExceptionsThenWait = 300;
+    public int $maxExceptions = 3;
 
     public function __construct(
         private readonly Model $model,
@@ -64,6 +66,18 @@ final class GenerateEmbeddingsJob implements ShouldQueue
             new ThrottlesExceptions(10, 5),
             new RateLimited('embeddings'),
         ];
+    }
+
+    /**
+     * Time-based retry bound. It takes precedence over the tries count (including
+     * Horizon's supervisor `tries`), so a job repeatedly released by the
+     * `embeddings` rate limiter during a mass backfill waits for its slot instead
+     * of dying with MaxAttemptsExceeded. Real errors are still bounded by
+     * $maxExceptions.
+     */
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addMinutes((int) config('ai.features.embeddings.retry_until_minutes', 1440));
     }
 
     /**
