@@ -14,6 +14,11 @@ use Throwable;
 
 final readonly class ApplicationContentEvaluationService
 {
+    /**
+     * @var list<int>
+     */
+    private const array CUTOFFS = [1, 3, 5];
+
     private Closure $clock;
 
     public function __construct(?Closure $clock = null)
@@ -129,6 +134,9 @@ final readonly class ApplicationContentEvaluationService
         $supported_answers = 0;
         $abstention_correct = 0;
         $unavailable = 0;
+        $precision_sum = array_fill_keys(self::CUTOFFS, 0.0);
+        $recall_sum = array_fill_keys(self::CUTOFFS, 0.0);
+        $ndcg_sum = array_fill_keys(self::CUTOFFS, 0.0);
 
         foreach ($records as $record) {
             /** @var ApplicationContentEvaluationCase $case */
@@ -140,9 +148,10 @@ final readonly class ApplicationContentEvaluationService
             if ($case->expectedHitIds !== []) {
                 $relevant_cases++;
                 $first_rank = null;
+                $expected = $case->expectedHitIds;
 
                 foreach ($hit_ids as $index => $id) {
-                    if (in_array($id, $case->expectedHitIds, true)) {
+                    if (in_array($id, $expected, true)) {
                         $first_rank ??= $index + 1;
                     }
                 }
@@ -150,6 +159,30 @@ final readonly class ApplicationContentEvaluationService
                 if ($first_rank !== null) {
                     $hits_at_k++;
                     $reciprocal_rank += 1 / $first_rank;
+                }
+
+                foreach (self::CUTOFFS as $k) {
+                    $top = array_slice($hit_ids, 0, $k);
+                    $relevant_in_top = 0;
+                    $dcg = 0.0;
+
+                    foreach ($top as $rank => $id) {
+                        if (in_array($id, $expected, true)) {
+                            $relevant_in_top++;
+                            $dcg += 1.0 / log($rank + 2, 2);
+                        }
+                    }
+
+                    $ideal = min(count($expected), $k);
+                    $idcg = 0.0;
+
+                    for ($i = 0; $i < $ideal; $i++) {
+                        $idcg += 1.0 / log($i + 2, 2);
+                    }
+
+                    $precision_sum[$k] += $relevant_in_top / $k;
+                    $recall_sum[$k] += $relevant_in_top / count($expected);
+                    $ndcg_sum[$k] += $idcg > 0.0 ? $dcg / $idcg : 0.0;
                 }
             }
 
@@ -173,6 +206,15 @@ final readonly class ApplicationContentEvaluationService
         }
 
         $count = count($records);
+        $precision = [];
+        $recall = [];
+        $ndcg = [];
+
+        foreach (self::CUTOFFS as $k) {
+            $precision["precision_at_{$k}"] = $this->ratio($precision_sum[$k], $relevant_cases);
+            $recall["recall_at_{$k}"] = $this->ratio($recall_sum[$k], $relevant_cases);
+            $ndcg["ndcg_at_{$k}"] = $this->ratio($ndcg_sum[$k], $relevant_cases);
+        }
 
         return [
             'hit_at_5' => $this->ratio($hits_at_k, $relevant_cases),
@@ -182,6 +224,9 @@ final readonly class ApplicationContentEvaluationService
             'supported_answer_rate' => $this->ratio($supported_answers, $supported_cases),
             'abstention_accuracy' => $this->ratio($abstention_correct, $count),
             'unavailable_rate' => $this->ratio($unavailable, $count),
+            ...$precision,
+            ...$recall,
+            ...$ndcg,
         ];
     }
 

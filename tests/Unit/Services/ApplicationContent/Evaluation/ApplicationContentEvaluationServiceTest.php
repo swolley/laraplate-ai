@@ -205,3 +205,167 @@ it('loads only typed evaluation cases and ACL filters from JSON', function (): v
         'system_prompt' => 'forbidden',
     ]))->toThrow(InvalidArgumentException::class);
 });
+
+it('computes precision, recall and nDCG at k', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('rank2', ['cms.contents:200'], [], false, true, false),
+        ],
+    );
+    $results = [
+        'rank2' => new ApplicationContentResult('cms.contents', [
+            evaluationHit('199', '/app/cms/contents/199'),
+            evaluationHit('200', '/app/cms/contents/200'),
+            evaluationHit('201', '/app/cms/contents/201'),
+        ], 'lexical', false),
+    ];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    // Relevant id sits at rank 2 of 3 returned hits.
+    // precision@1 = 0/1 = 0, @3 = 1/3 = 0.3333, @5 = 1/5 = 0.2 (denominator is k, not hit count).
+    // recall@1 = 0/1 = 0, @3 = 1/1 = 1.0, @5 = 1/1 = 1.0.
+    // ndcg@1 = 0, @3 = @5 = (1/log2(3)) / (1/log2(2)) = 0.6309.
+    expect($report['metrics'])->toMatchArray([
+        'precision_at_1' => 0.0, 'precision_at_3' => 0.3333, 'precision_at_5' => 0.2,
+        'recall_at_1' => 0.0, 'recall_at_3' => 1.0, 'recall_at_5' => 1.0,
+        'ndcg_at_1' => 0.0, 'ndcg_at_3' => 0.6309, 'ndcg_at_5' => 0.6309,
+    ]);
+});
+
+it('returns zero precision, recall and nDCG at k when no hits are returned', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('none', ['cms.contents:1'], [], false, true, false),
+        ],
+    );
+    $results = ['none' => new ApplicationContentResult('cms.contents', [], 'lexical', false)];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    expect($report['metrics'])->toMatchArray([
+        'precision_at_1' => 0.0, 'precision_at_3' => 0.0, 'precision_at_5' => 0.0,
+        'recall_at_1' => 0.0, 'recall_at_3' => 0.0, 'recall_at_5' => 0.0,
+        'ndcg_at_1' => 0.0, 'ndcg_at_3' => 0.0, 'ndcg_at_5' => 0.0,
+    ]);
+});
+
+it('returns zero precision, recall and nDCG at k when the relevant hit ranks beyond the cutoffs, while hit_at_5 and MRR still see it', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('deep', ['cms.contents:900'], [], false, true, false),
+        ],
+    );
+    $results = [
+        'deep' => new ApplicationContentResult('cms.contents', [
+            evaluationHit('101', '/app/cms/contents/101'),
+            evaluationHit('102', '/app/cms/contents/102'),
+            evaluationHit('103', '/app/cms/contents/103'),
+            evaluationHit('104', '/app/cms/contents/104'),
+            evaluationHit('105', '/app/cms/contents/105'),
+            evaluationHit('900', '/app/cms/contents/900'),
+        ], 'lexical', false),
+    ];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    expect($report['metrics'])->toMatchArray([
+        'precision_at_1' => 0.0, 'precision_at_3' => 0.0, 'precision_at_5' => 0.0,
+        'recall_at_1' => 0.0, 'recall_at_3' => 0.0, 'recall_at_5' => 0.0,
+        'ndcg_at_1' => 0.0, 'ndcg_at_3' => 0.0, 'ndcg_at_5' => 0.0,
+        'hit_at_5' => 1.0,
+        'mean_reciprocal_rank' => 0.1667,
+    ]);
+});
+
+it('computes full recall at k when multiple relevant ids fall within the cutoff', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('multi', ['cms.contents:100', 'cms.contents:101'], [], false, true, false),
+        ],
+    );
+    $results = [
+        'multi' => new ApplicationContentResult('cms.contents', [
+            evaluationHit('100', '/app/cms/contents/100'),
+            evaluationHit('101', '/app/cms/contents/101'),
+            evaluationHit('999', '/app/cms/contents/999'),
+        ], 'lexical', false),
+    ];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    expect($report['metrics'])->toMatchArray([
+        'recall_at_3' => 1.0,
+    ]);
+});
+
+it('excludes cases without expected hit ids from precision, recall and nDCG denominators', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            evaluationCase('rank2', ['cms.contents:200'], [], false, true, false),
+            evaluationCase('no-expectation', [], [], false, false, true),
+        ],
+    );
+    $results = [
+        'rank2' => new ApplicationContentResult('cms.contents', [
+            evaluationHit('199', '/app/cms/contents/199'),
+            evaluationHit('200', '/app/cms/contents/200'),
+            evaluationHit('201', '/app/cms/contents/201'),
+        ], 'lexical', false),
+        'no-expectation' => new ApplicationContentResult('cms.contents', [], 'lexical', false),
+    ];
+    $service = new ApplicationContentEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'database',
+        static fn (ApplicationContentQuery $query, ApplicationContentAuthorization $authorization, ApplicationContentEvaluationCase $case): ApplicationContentResult => $results[$case->id],
+    );
+
+    // Denominators (relevant_cases) stay based on the single case with expectedHitIds,
+    // so values match the single-case computation, not diluted by the skipped case.
+    expect($report['metrics'])->toMatchArray([
+        'precision_at_3' => 0.3333, 'precision_at_5' => 0.2,
+        'recall_at_3' => 1.0, 'ndcg_at_3' => 0.6309,
+    ]);
+});
