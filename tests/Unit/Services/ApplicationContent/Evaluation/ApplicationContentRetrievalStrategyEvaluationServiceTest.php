@@ -229,6 +229,104 @@ it('omits a keyword/vector/hybrid strategy from the report when it never appears
         ->and($report['metrics'])->not->toHaveKey('hybrid');
 });
 
+it('averages a partially-present strategy over only the cases where it actually ran, not diluted by the absent ones', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            retrievalStrategyEvaluationCase('vector-ran', ['cms.contents:2']),
+            retrievalStrategyEvaluationCase('vector-absent', ['cms.contents:2']),
+        ],
+    );
+
+    // Vector runs (and is correct) for the first case only, e.g. because the second case's
+    // content has no embedding. Keyword runs for both cases so it stays the control group.
+    $withVector = retrievalStrategyResult(
+        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        perStrategy: [
+            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+            'vector' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+        ],
+    );
+    $withoutVector = retrievalStrategyResult(
+        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        perStrategy: [
+            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+        ],
+    );
+    $on = retrievalStrategyResult(finalIds: ['cms.contents:2', 'cms.contents:1']);
+    $service = new ApplicationContentRetrievalStrategyEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'elasticsearch',
+        static fn (ApplicationContentEvaluationCase $case, bool $useReranker): AdvancedSearchResult => match (true) {
+            $useReranker => $on,
+            $case->id === 'vector-ran' => $withVector,
+            default => $withoutVector,
+        },
+    );
+
+    expect($report['case_count'])->toBe(2)
+        // vector ran (and hit) on 1 of the 2 scored cases: its average must reflect
+        // only that case (precision_at_1 = 1.0), not be diluted to 0.5 by the absent case.
+        ->and($report['metrics']['vector'])->toMatchArray([
+            'precision_at_1' => 1.0,
+            'recall_at_1' => 1.0,
+            'hit_at_5' => 1.0,
+            'mean_reciprocal_rank' => 1.0,
+        ])
+        // keyword ran (and hit) on both scored cases: unaffected control group.
+        ->and($report['metrics']['keyword'])->toMatchArray([
+            'precision_at_1' => 1.0,
+            'recall_at_1' => 1.0,
+            'hit_at_5' => 1.0,
+            'mean_reciprocal_rank' => 1.0,
+        ]);
+});
+
+it('produces a zero-safe latency report when every case is skipped for having no expected hit ids', function (): void {
+    $dataset = new ApplicationContentEvaluationDataset(
+        version: '1',
+        providerVersion: 'p',
+        corpusRevision: 'c',
+        cases: [
+            retrievalStrategyEvaluationCase('unscored-1', []),
+            retrievalStrategyEvaluationCase('unscored-2', []),
+        ],
+    );
+    $service = new ApplicationContentRetrievalStrategyEvaluationService;
+
+    $report = $service->evaluate(
+        $dataset,
+        'cms.contents',
+        'elasticsearch',
+        static function (): never {
+            throw new RuntimeException('retrieval must not be called for skipped cases');
+        },
+    );
+
+    expect($report['case_count'])->toBe(0)
+        ->and($report['latency_ms'])->toBe([
+            'average' => 0.0,
+            'p50' => 0.0,
+            'p95' => 0.0,
+            'max' => 0.0,
+        ])
+        // No case ever scored, so keyword/vector/hybrid never executed and are omitted;
+        // fused/reranked stay present with zero-safe (not NaN/division-by-zero) metrics.
+        ->and($report['metrics'])->toHaveKeys(['fused', 'reranked'])
+        ->and($report['metrics'])->not->toHaveKey('keyword')
+        ->and($report['metrics'])->not->toHaveKey('vector')
+        ->and($report['metrics'])->not->toHaveKey('hybrid')
+        ->and($report['metrics']['fused'])->toMatchArray([
+            'precision_at_1' => 0.0, 'recall_at_1' => 0.0, 'ndcg_at_1' => 0.0,
+            'hit_at_5' => 0.0, 'mean_reciprocal_rank' => 0.0,
+        ]);
+});
+
 it('rejects a driver or dataset source that does not match the requested source before calling retrieval', function (): void {
     $dataset = new ApplicationContentEvaluationDataset(
         version: '1',

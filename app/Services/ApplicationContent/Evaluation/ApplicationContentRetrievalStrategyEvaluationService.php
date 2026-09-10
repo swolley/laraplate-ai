@@ -196,12 +196,40 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
     }
 
     /**
+     * The denominator for a strategy's averaged metrics: for `fused`/`reranked`
+     * (always present, sourced straight from `AdvancedSearchResult::ids()`) this
+     * is every scored case; for keyword/vector/hybrid it is only the scored
+     * cases where the strategy actually executed (had a key in
+     * `meta['per_strategy']`), so a strategy that ran on a subset of cases
+     * (e.g. vector skipped for cases without an embedding) is not diluted by
+     * the cases where it did not run.
+     *
+     * @param  list<array<string, mixed>>  $records
+     */
+    private function strategyCaseCount(array $records, string $name): int
+    {
+        if (! in_array($name, self::RANKED_STRATEGIES, true)) {
+            return count($records);
+        }
+
+        $count = 0;
+
+        foreach ($records as $record) {
+            if ($record['executed'][$name]) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $records
      * @return array<string, float>
      */
     private function strategyMetrics(array $records, string $name): array
     {
-        $relevant_cases = count($records);
+        $relevant_cases = $this->strategyCaseCount($records, $name);
         $hits_at_k = 0;
         $reciprocal_rank = 0.0;
         $precision_sum = array_fill_keys(self::CUTOFFS, 0.0);
@@ -209,6 +237,10 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
         $ndcg_sum = array_fill_keys(self::CUTOFFS, 0.0);
 
         foreach ($records as $record) {
+            if (in_array($name, self::RANKED_STRATEGIES, true) && ! $record['executed'][$name]) {
+                continue;
+            }
+
             /** @var ApplicationContentEvaluationCase $case */
             $case = $record['case'];
             $ids = $record['orderings'][$name];
