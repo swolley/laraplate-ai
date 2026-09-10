@@ -318,6 +318,33 @@ artifact (`expect($report)->toBe($artifact)`). The live Elasticsearch
 against a dev-seeded + indexed corpus and is **not** part of the deterministic
 CI gate. Design: `docs/superpowers/specs/2026-09-09-r3-retrieval-quality-baseline-design.md`.
 
+### Per-strategy retrieval quality breakdown
+
+`php artisan ai:evaluate-retrieval-strategies --source=<source> --dataset=<file>
+--output=<file> [--force]` scores ranking quality **per strategy**
+(`keyword`, `vector`, `hybrid`, `fused`, `reranked`) instead of one
+end-to-end ordering. For every dataset case with `expected_hit_ids` it calls
+`EnsembleSearchService` directly (via `PerStrategyEngineRetrieverInterface`,
+raw engine ranking) **twice**: reranker off, reading the `keyword`/`vector`/
+`hybrid` orderings from `AdvancedSearchResult.meta['per_strategy']` plus the
+`fused` ordering from `ids()`; and reranker on, reading the `reranked`
+ordering. This skips `provider->retrieve()` and its ACL/projection — the
+report carries `pre_authorization: true`; it is a ranking diagnostic, not an
+access-control check (the eval corpus is fully authorized). Real vector/
+hybrid numbers need Elasticsearch.
+
+`ApplicationContentRetrievalStrategyEvaluationService::metrics()` nests the
+same IR metrics (`precision_at_{1,3,5}`, `recall_at_{1,3,5}`,
+`ndcg_at_{1,3,5}`, plus `hit_at_5`/`mean_reciprocal_rank`) per strategy under
+`metrics`, sharing the `@k` math with Phase 1 via
+`Modules\AI\Services\ApplicationContent\Evaluation\IrMetrics::atK()`.
+Per-strategy averages divide by the scored cases where that strategy
+actually ran (`meta['per_strategy']` had a key for it) — a case it didn't
+run on isn't counted against it; `fused`/`reranked` always run, so they
+divide by every scored case. A strategy that never runs on any scored case
+is omitted from the report. Design:
+`docs/superpowers/specs/2026-09-10-r3-phase2-per-strategy-breakdown-design.md`.
+
 ## Documentation evaluation
 
 `ai:evaluate-documentation` scores documentation retrieval per module and index
