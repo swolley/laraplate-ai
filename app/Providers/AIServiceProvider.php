@@ -10,6 +10,9 @@ use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationService;
+use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentRetrievalStrategyEvaluationService;
+use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
+use Modules\AI\Services\ApplicationContent\Evaluation\PerStrategyEngineRetriever;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
@@ -59,6 +62,8 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->scoped(ApplicationContentCitationMapper::class);
         $this->app->bind(ApplicationContentToolProvider::class);
         $this->app->singleton(ApplicationContentEvaluationService::class);
+        $this->app->singleton(ApplicationContentRetrievalStrategyEvaluationService::class);
+        $this->app->bind(PerStrategyEngineRetrieverInterface::class, PerStrategyEngineRetriever::class);
         $this->app->singleton(DocumentationEvaluationService::class);
         $this->app->bind(
             ContextualToolProviderInterface::class,
