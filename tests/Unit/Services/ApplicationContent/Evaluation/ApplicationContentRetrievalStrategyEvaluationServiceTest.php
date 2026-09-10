@@ -83,15 +83,18 @@ it('scores keyword, vector, hybrid, fused and reranked orderings against the gro
         ],
     );
 
+    // Engine ids are bare (`EnsembleSearchService` emits `(string) $model->getKey()`), not
+    // pre-namespaced with the source. The service is responsible for prefixing them to
+    // "cms.contents:{id}" before comparing against `expectedHitIds`.
     $off = retrievalStrategyResult(
-        finalIds: ['cms.contents:2', 'cms.contents:1', 'cms.contents:3'],
+        finalIds: ['2', '1', '3'],
         perStrategy: [
-            'keyword' => retrievalStrategyRanking(['cms.contents:1', 'cms.contents:2', 'cms.contents:3']),
-            'vector' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1', 'cms.contents:3']),
-            'hybrid' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:3', 'cms.contents:1']),
+            'keyword' => retrievalStrategyRanking(['1', '2', '3']),
+            'vector' => retrievalStrategyRanking(['2', '1', '3']),
+            'hybrid' => retrievalStrategyRanking(['2', '3', '1']),
         ],
     );
-    $on = retrievalStrategyResult(finalIds: ['cms.contents:2', 'cms.contents:1', 'cms.contents:3']);
+    $on = retrievalStrategyResult(finalIds: ['2', '1', '3']);
 
     $ticks = [0.000, 0.010];
     $service = new ApplicationContentRetrievalStrategyEvaluationService(
@@ -170,14 +173,14 @@ it('skips retrieval and scoring for cases without expected hit ids', function ()
     );
 
     $off = retrievalStrategyResult(
-        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        finalIds: ['2', '1'],
         perStrategy: [
-            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
-            'vector' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
-            'hybrid' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+            'keyword' => retrievalStrategyRanking(['2', '1']),
+            'vector' => retrievalStrategyRanking(['2', '1']),
+            'hybrid' => retrievalStrategyRanking(['2', '1']),
         ],
     );
-    $on = retrievalStrategyResult(finalIds: ['cms.contents:2', 'cms.contents:1']);
+    $on = retrievalStrategyResult(finalIds: ['2', '1']);
     $calls = [];
     $service = new ApplicationContentRetrievalStrategyEvaluationService;
 
@@ -209,12 +212,12 @@ it('omits a keyword/vector/hybrid strategy from the report when it never appears
 
     // Vector never runs for this dataset (e.g. no embedding available); hybrid likewise.
     $off = retrievalStrategyResult(
-        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        finalIds: ['2', '1'],
         perStrategy: [
-            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+            'keyword' => retrievalStrategyRanking(['2', '1']),
         ],
     );
-    $on = retrievalStrategyResult(finalIds: ['cms.contents:2', 'cms.contents:1']);
+    $on = retrievalStrategyResult(finalIds: ['2', '1']);
     $service = new ApplicationContentRetrievalStrategyEvaluationService;
 
     $report = $service->evaluate(
@@ -243,19 +246,19 @@ it('averages a partially-present strategy over only the cases where it actually 
     // Vector runs (and is correct) for the first case only, e.g. because the second case's
     // content has no embedding. Keyword runs for both cases so it stays the control group.
     $withVector = retrievalStrategyResult(
-        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        finalIds: ['2', '1'],
         perStrategy: [
-            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
-            'vector' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+            'keyword' => retrievalStrategyRanking(['2', '1']),
+            'vector' => retrievalStrategyRanking(['2', '1']),
         ],
     );
     $withoutVector = retrievalStrategyResult(
-        finalIds: ['cms.contents:2', 'cms.contents:1'],
+        finalIds: ['2', '1'],
         perStrategy: [
-            'keyword' => retrievalStrategyRanking(['cms.contents:2', 'cms.contents:1']),
+            'keyword' => retrievalStrategyRanking(['2', '1']),
         ],
     );
-    $on = retrievalStrategyResult(finalIds: ['cms.contents:2', 'cms.contents:1']);
+    $on = retrievalStrategyResult(finalIds: ['2', '1']);
     $service = new ApplicationContentRetrievalStrategyEvaluationService;
 
     $report = $service->evaluate(

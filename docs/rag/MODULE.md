@@ -331,7 +331,11 @@ raw engine ranking) **twice**: reranker off, reading the `keyword`/`vector`/
 ordering. This skips `provider->retrieve()` and its ACL/projection — the
 report carries `pre_authorization: true`; it is a ranking diagnostic, not an
 access-control check (the eval corpus is fully authorized). Real vector/
-hybrid numbers need Elasticsearch.
+hybrid numbers need Elasticsearch. Phase-2 `expected_hit_ids` use the engine
+key (`getKey()`) prefixed by source — for `cms.contents` this equals the
+canonical id, but for `sao.tickets` it is the numeric ticket id, NOT the
+`SAO-N` business key (because this benchmarks the pre-projection engine
+ranking).
 
 `ApplicationContentRetrievalStrategyEvaluationService::metrics()` nests the
 same IR metrics (`precision_at_{1,3,5}`, `recall_at_{1,3,5}`,

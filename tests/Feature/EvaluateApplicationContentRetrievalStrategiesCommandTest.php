@@ -78,15 +78,18 @@ it('writes a per-strategy report using a fake engine retriever, with no Elastics
     $registry->register(new RetrievalStrategyCommandContentProvider(User::class));
     app()->instance(ApplicationContentRetrievalProviderRegistryInterface::class, $registry);
 
+    // Engine ids are bare (`EnsembleSearchService` emits `(string) $model->getKey()`), not
+    // pre-namespaced with the source: the evaluation service must prefix them with
+    // "cms.strategy_records:" before comparing against the dataset's `expected_hit_ids`.
     $off = strategyCommandResult(
-        finalIds: ['cms.strategy_records:1', 'cms.strategy_records:2'],
+        finalIds: ['1', '2'],
         perStrategy: [
-            'keyword' => strategyCommandRanking(['cms.strategy_records:1', 'cms.strategy_records:2']),
-            'vector' => strategyCommandRanking(['cms.strategy_records:1', 'cms.strategy_records:2']),
-            'hybrid' => strategyCommandRanking(['cms.strategy_records:1', 'cms.strategy_records:2']),
+            'keyword' => strategyCommandRanking(['1', '2']),
+            'vector' => strategyCommandRanking(['1', '2']),
+            'hybrid' => strategyCommandRanking(['1', '2']),
         ],
     );
-    $on = strategyCommandResult(finalIds: ['cms.strategy_records:1', 'cms.strategy_records:2']);
+    $on = strategyCommandResult(finalIds: ['1', '2']);
     $retriever = new FakePerStrategyEngineRetriever($off, $on);
     app()->instance(PerStrategyEngineRetrieverInterface::class, $retriever);
 
@@ -142,6 +145,16 @@ it('writes a per-strategy report using a fake engine retriever, with no Elastics
                 'ndcg_at_1', 'ndcg_at_3', 'ndcg_at_5',
             ]);
         }
+
+        // Every strategy ranks the sole expected hit ("cms.strategy_records:1") first.
+        // Asserting non-zero here (rather than just key presence) catches a regression where
+        // the service compares bare engine ids against source-prefixed `expected_hit_ids`
+        // and every metric silently collapses to 0.0.
+        expect($report['metrics']['keyword']['precision_at_1'])->toBeGreaterThan(0.0)
+            ->and($report['metrics']['vector']['precision_at_1'])->toBeGreaterThan(0.0)
+            ->and($report['metrics']['hybrid']['precision_at_1'])->toBeGreaterThan(0.0)
+            ->and($report['metrics']['fused']['precision_at_1'])->toBeGreaterThan(0.0)
+            ->and($report['metrics']['reranked']['precision_at_1'])->toBeGreaterThan(0.0);
 
         // Both calls (useReranker false and true) reused the single embedding computed for the case.
         expect($retriever->calls)->toHaveCount(2)

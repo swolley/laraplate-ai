@@ -84,13 +84,16 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
 
             $records[] = [
                 'case' => $case,
-                'orderings' => [
-                    'keyword' => $this->rankedStrategyIds($off, 'keyword'),
-                    'vector' => $this->rankedStrategyIds($off, 'vector'),
-                    'hybrid' => $this->rankedStrategyIds($off, 'hybrid'),
-                    'fused' => $off->ids(),
-                    'reranked' => $on->ids(),
-                ],
+                'orderings' => array_map(
+                    fn (array $ids): array => $this->namespaceIds($ids, $source),
+                    [
+                        'keyword' => $this->rankedStrategyIds($off, 'keyword'),
+                        'vector' => $this->rankedStrategyIds($off, 'vector'),
+                        'hybrid' => $this->rankedStrategyIds($off, 'hybrid'),
+                        'fused' => $off->ids(),
+                        'reranked' => $on->ids(),
+                    ],
+                ),
                 'executed' => [
                     'keyword' => $this->strategyPresent($off, 'keyword'),
                     'vector' => $this->strategyPresent($off, 'vector'),
@@ -125,6 +128,20 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
                 }
             }
         }
+    }
+
+    /**
+     * Namespaces bare engine ids (`EnsembleSearchService` emits `(string) $model->getKey()`,
+     * e.g. `"2"`) into the same `"{source}:{key}"` format as `expectedHitIds`, so the two
+     * are comparable. Applied exactly once, centrally, right where the five orderings are
+     * extracted, so the strategy-id lists downstream are always already namespaced.
+     *
+     * @param  list<string>  $ids
+     * @return list<string>
+     */
+    private function namespaceIds(array $ids, string $source): array
+    {
+        return array_map(static fn (string $id): string => "{$source}:{$id}", $ids);
     }
 
     /**
