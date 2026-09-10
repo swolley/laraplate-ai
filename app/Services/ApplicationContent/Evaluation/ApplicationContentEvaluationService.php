@@ -161,28 +161,12 @@ final readonly class ApplicationContentEvaluationService
                     $reciprocal_rank += 1 / $first_rank;
                 }
 
+                $contributions = IrMetrics::atK($hit_ids, $expected, self::CUTOFFS);
+
                 foreach (self::CUTOFFS as $k) {
-                    $top = array_slice($hit_ids, 0, $k);
-                    $relevant_in_top = 0;
-                    $dcg = 0.0;
-
-                    foreach ($top as $rank => $id) {
-                        if (in_array($id, $expected, true)) {
-                            $relevant_in_top++;
-                            $dcg += 1.0 / log($rank + 2, 2);
-                        }
-                    }
-
-                    $ideal = min(count($expected), $k);
-                    $idcg = 0.0;
-
-                    for ($i = 0; $i < $ideal; $i++) {
-                        $idcg += 1.0 / log($i + 2, 2);
-                    }
-
-                    $precision_sum[$k] += $relevant_in_top / $k;
-                    $recall_sum[$k] += $relevant_in_top / count($expected);
-                    $ndcg_sum[$k] += $idcg > 0.0 ? $dcg / $idcg : 0.0;
+                    $precision_sum[$k] += $contributions['precision'][$k];
+                    $recall_sum[$k] += $contributions['recall'][$k];
+                    $ndcg_sum[$k] += $contributions['ndcg'][$k];
                 }
             }
 
