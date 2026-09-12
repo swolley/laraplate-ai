@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\Core\Search\Contracts\ITextEmbedder;
 
 /**
@@ -23,6 +24,8 @@ final readonly class SearchEmbedder implements ITextEmbedder
      */
     public function embed(string $text): array
     {
-        return $this->embeddingService->embedText($text);
+        $profile = app(EmbeddingModelRegistry::class)->active();
+
+        return $this->embeddingService->embedText($profile->queryPrefix . $text);
     }
 }

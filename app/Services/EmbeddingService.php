@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services;
 
 use Closure;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
@@ -41,6 +42,17 @@ final readonly class EmbeddingService implements IEmbeddingService
 
         $splitter = $this->splitter ?? SplitterFactory::make();
         $chunks = $splitter->splitDocument($document);
+
+        // Splitting happens before the prefix is applied, so prefixing the
+        // whole body up front would only survive on the first chunk (the
+        // rest are brand-new Document instances built from a slice of the
+        // original text). Prefix each chunk's own content instead, so every
+        // chunk sent to the provider carries the passage prefix.
+        $passage_prefix = app(EmbeddingModelRegistry::class)->active()->passagePrefix;
+
+        foreach ($chunks as $chunk) {
+            $chunk->content = $passage_prefix . $chunk->content;
+        }
 
         $generator = $this->getProvider();
 
