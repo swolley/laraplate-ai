@@ -30,6 +30,27 @@ return [
             // When non-empty, only models whose owning module is listed are embedded,
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
             'modules' => [],
+
+            // Active embedding-model profile key (see `models` below). Resolved by
+            // EmbeddingModelRegistry; dimensions/similarity are derived from Core's
+            // `search.vector.*` config, never hardcoded here, to avoid drift.
+            'active' => env('AI_EMBEDDINGS_MODEL', 'multilingual-e5-small'),
+            'models' => [
+                'multilingual-e5-small' => [
+                    'provider' => 'sentence_transformers',
+                    'service_model' => 'intfloat/multilingual-e5-small',
+                    'query_prefix' => 'query: ',
+                    'passage_prefix' => 'passage: ',
+                    'normalize' => true,
+                ],
+                'all-MiniLM-L6-v2' => [
+                    'provider' => 'sentence_transformers',
+                    'service_model' => 'all-MiniLM-L6-v2',
+                    'query_prefix' => '',
+                    'passage_prefix' => '',
+                    'normalize' => true,
+                ],
+            ],
         ],
         'translation' => [
             //     'enabled' => env('AI_TRANSLATION_ENABLED', true),

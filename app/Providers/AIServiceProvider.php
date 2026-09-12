@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Providers;
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
@@ -56,6 +57,7 @@ class AIServiceProvider extends ModuleServiceProvider
 
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
+        $this->app->singleton(EmbeddingModelRegistry::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(GraphToolProvider::class);
         $this->app->bind(CrudToolProvider::class);
