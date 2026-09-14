@@ -4,18 +4,36 @@ declare(strict_types=1);
 
 namespace Modules\AI\Console;
 
+use function ai_config_string;
+
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Http;
 use Laravel\Scout\Searchable;
+use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\Core\Models\ModelEmbedding;
 use Override;
+use Throwable;
 
 /**
- * Repair sweep for documents whose embedding is missing: a permanent embed
- * failure degrades the document to keyword-only indexing (see
- * GenerateEmbeddingsJob::failed()), leaving no embedding row. This command
- * re-generates the embedding for those records; the regenerated embedding then
- * patches the search document through the normal finalize flow.
+ * Repair sweep for documents whose embedding is missing or stale.
+ *
+ * By default, targets records with no ModelEmbedding row at all: a permanent
+ * embed failure degrades the document to keyword-only indexing (see
+ * GenerateEmbeddingsJob::failed()), leaving no embedding row. With --stale,
+ * targets records whose embeddings were produced by a different model_key
+ * than the active profile (e.g. after switching AI_EMBEDDINGS_MODEL).
+ *
+ * Either way, regeneration dispatches GenerateEmbeddingsJob with locale=null,
+ * which performs a full per-locale regenerate (all locales, stamping the
+ * active model_key) — this command does not stamp model_key itself.
+ *
+ * A preflight GET {sentence_transformers.url}/health cross-checks the
+ * service's loaded model against the active profile's service_model and
+ * warns on mismatch, but never aborts the repair run.
  */
 final class RepairMissingEmbeddingsCommand extends Command
 {
@@ -23,12 +41,13 @@ final class RepairMissingEmbeddingsCommand extends Command
     protected $signature = 'ai:embeddings:repair
                             {model : Fully qualified class name of the searchable model to repair}
                             {--chunk=100 : Number of records to scan per batch}
-                            {--sync : Generate embeddings synchronously instead of queuing}';
+                            {--sync : Generate embeddings synchronously instead of queuing}
+                            {--stale : Also target records whose embeddings were produced by a different model_key than the active profile (full per-locale regenerate)}';
 
     #[Override]
-    protected $description = 'Regenerate embeddings for searchable records that are missing them <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Regenerate embeddings for searchable records that are missing them or stale (produced by a non-active model_key); cross-checks the embedding service /health against the active model <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
-    public function handle(): int
+    public function handle(EmbeddingModelRegistry $registry): int
     {
         $model_class = $this->resolveModelClass((string) $this->argument('model'));
 
@@ -46,15 +65,32 @@ final class RepairMissingEmbeddingsCommand extends Command
             return self::FAILURE;
         }
 
+        $active = $registry->active();
+
+        $this->checkServiceHealth($active);
+
         $chunk = max(1, (int) $this->option('chunk'));
         $sync = (bool) $this->option('sync');
+        $stale = (bool) $this->option('stale');
 
-        $this->info('Scanning for records with missing embeddings...');
+        $query = $model_class::query();
+
+        if ($stale) {
+            $this->info("Scanning for records with embeddings stale against model_key \"{$active->key}\"...");
+
+            $query->whereHas('embeddings', function (Builder $embeddings) use ($active): void {
+                /** @var Builder<ModelEmbedding> $embeddings */
+                $embeddings->whereNot(fn (Builder $q): Builder => $q->producedBy($active->key));
+            });
+        } else {
+            $this->info('Scanning for records with missing embeddings...');
+
+            $query->whereDoesntHave('embeddings');
+        }
 
         $dispatched = 0;
 
-        $model_class::query()
-            ->whereDoesntHave('embeddings')
+        $query
             ->lazyById($chunk, $instance->getKeyName())
             ->each(function (Model $model) use (&$dispatched, $sync): void {
                 // Skip records that carry no embeddable text.
@@ -64,6 +100,8 @@ final class RepairMissingEmbeddingsCommand extends Command
                     return;
                 }
 
+                // locale=null triggers a full per-locale regenerate stamping
+                // the active model_key (GenerateEmbeddingsJob::handle()).
                 if ($sync) {
                     dispatch_sync(new GenerateEmbeddingsJob($model));
                 } else {
@@ -76,6 +114,29 @@ final class RepairMissingEmbeddingsCommand extends Command
         $this->info("Embedding regeneration dispatched for {$dispatched} record(s) of {$model_class}");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Preflight cross-check: warn (never abort) when the embedding service's
+     * loaded model differs from the active profile, or when it can't be
+     * reached at all.
+     */
+    private function checkServiceHealth(EmbeddingModelProfile $active): void
+    {
+        $url = mb_rtrim(ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'), '/');
+
+        try {
+            $response = Http::timeout(5)->get($url . '/health');
+            $response->throw();
+
+            $reported_model = $response->json('model');
+
+            if (is_string($reported_model) && $reported_model !== '' && $reported_model !== $active->serviceModel) {
+                $this->warn("Embedding service /health reports model \"{$reported_model}\" but the active profile \"{$active->key}\" expects \"{$active->serviceModel}\".");
+            }
+        } catch (Throwable $exception) {
+            $this->warn("Could not verify embedding service health at {$url}/health: " . $exception->getMessage());
+        }
     }
 
     private function resolveModelClass(string $model): ?string

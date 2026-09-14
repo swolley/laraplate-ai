@@ -169,16 +169,18 @@ stateDiagram-v2
 
 ---
 
-## 5. Repairing missing embeddings
+## 5. Repairing missing or stale embeddings
 
-A document degraded to keyword-only (permanent embed failure) has no embedding row. Regenerate the missing embeddings for a model with:
+A document degraded to keyword-only (permanent embed failure) has no embedding row. A document embedded under a since-retired model (`ai.features.embeddings.active` switched, e.g. after a model upgrade) carries a stale `model_key`. Repair both with:
 
 ```bash
-php artisan ai:embeddings:repair "Modules\CMS\Models\Content" [--chunk=100] [--sync]
+php artisan ai:embeddings:repair "Modules\CMS\Models\Content" [--chunk=100] [--sync] [--stale]
 ```
 
-- Scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty).
-- Dispatches `GenerateEmbeddingsJob` per record (or runs it inline with `--sync`); the regenerated embedding patches the search document through the finalize flow.
+- Default: scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty).
+- `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after switching `AI_EMBEDDINGS_MODEL` to re-embed the backlog.
+- Either way, regeneration dispatches `GenerateEmbeddingsJob` per record with `locale = null` (or runs it inline with `--sync`), which performs a full per-locale regenerate — all locales, stamped with the active `model_key` — through the finalize flow. The command itself does not stamp `model_key`.
+- Preflight `/health` cross-check: before scanning, the command `GET`s `{SENTENCE_TRANSFORMERS_URL}/health` and compares the reported `model` against the active profile's `service_model`. A mismatch (or an unreachable service) only emits a warning — it never aborts the repair run.
 - Requires `VECTOR_SEARCH_ENABLED=true` and a searchable, embeddable model (non-empty `$embed`).
 
 ---

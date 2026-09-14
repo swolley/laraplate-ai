@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Console\RepairMissingEmbeddingsCommand;
@@ -49,6 +50,8 @@ it('returns failure when vector search is disabled', function (): void {
 
 it('dispatches jobs only for records missing an embedding and carrying embeddable text', function (): void {
     Queue::fake();
+    // Command now preflights /health; fake it to avoid a real network call.
+    Http::fake(['*/health' => Http::response(['model' => 'intfloat/multilingual-e5-small'])]);
 
     $alpha = new EmbeddableTestModel(['title' => 'Alpha']);
     $alpha->saveQuietly();
