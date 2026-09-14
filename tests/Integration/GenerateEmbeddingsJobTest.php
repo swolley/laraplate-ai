@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\Core\Events\ModelPreProcessingCompleted;
@@ -51,11 +52,11 @@ it('middleware returns ThrottlesExceptions and RateLimited', function (): void {
         ->and($middleware[1])->toBeInstanceOf(Illuminate\Queue\Middleware\RateLimited::class);
 });
 
-it('returns early when prepareDataToEmbed returns empty', function (): void {
+it('returns early when prepareDataToEmbedByLocale returns an empty array', function (): void {
     $model = Mockery::mock(Model::class)->makePartial();
     $model->id = 1;
     $model->shouldReceive('getTable')->andReturn('test');
-    $model->shouldReceive('prepareDataToEmbed')->andReturn(null);
+    $model->shouldReceive('prepareDataToEmbedByLocale')->with(null)->andReturn([]);
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldNotReceive('embedDocument');
@@ -64,35 +65,26 @@ it('returns early when prepareDataToEmbed returns empty', function (): void {
     $job->handle($embedding_service);
 });
 
-it('returns early when prepareDataToEmbed returns empty string', function (): void {
-    $model = Mockery::mock(Model::class)->makePartial();
-    $model->id = 1;
-    $model->shouldReceive('getTable')->andReturn('test');
-    $model->shouldReceive('prepareDataToEmbed')->andReturn('');
-
-    $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldNotReceive('embedDocument');
-
-    $job = new GenerateEmbeddingsJob($model);
-    $job->handle($embedding_service);
-});
-
-it('replaces existing embeddings then creates records (idempotent regeneration)', function (): void {
+it('replaces existing embeddings then creates records stamped with locale and model_key (idempotent regeneration)', function (): void {
     Event::fake([ModelPreProcessingCompleted::class]);
+
+    $default_locale = (string) (config('app.locale') ?: 'en');
+    $expected_model_key = app(EmbeddingModelRegistry::class)->active()->key;
 
     // A regeneration must delete the model's previous embeddings before creating
     // the fresh set, otherwise retries append duplicate ModelEmbedding rows.
+    // Non-translated model: the default-locale key maps to a null `locale` column.
     $embeddingRelation = Mockery::mock();
     $embeddingRelation->shouldReceive('delete')->once();
     $embeddingRelation->shouldReceive('create')
         ->once()
-        ->with(['embedding' => [0.1, 0.2]])
+        ->with(['embedding' => [0.1, 0.2], 'locale' => null, 'model_key' => $expected_model_key])
         ->andReturn(null);
 
     $model = Mockery::mock(Model::class)->makePartial();
     $model->id = 1;
     $model->shouldReceive('getTable')->andReturn('test');
-    $model->shouldReceive('prepareDataToEmbed')->andReturn('Some text to embed');
+    $model->shouldReceive('prepareDataToEmbedByLocale')->with(null)->andReturn([$default_locale => 'Some text to embed']);
     $model->shouldReceive('embeddings')->andReturn($embeddingRelation);
     $model->shouldReceive('fresh')->andReturn($model);
 

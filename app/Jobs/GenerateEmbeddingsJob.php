@@ -16,9 +16,11 @@ use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Contracts\IEmbeddableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
+use Modules\Core\Models\Concerns\HasTranslations;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
 
@@ -53,6 +55,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
 
     public function __construct(
         private readonly Model $model,
+        private readonly ?string $locale = null,
     ) {
         $this->onQueue('embeddings');
     }
@@ -94,23 +97,32 @@ final class GenerateEmbeddingsJob implements ShouldQueue
             return;
         }
 
-        $data = $model->prepareDataToEmbed();
+        $byLocale = $model->prepareDataToEmbedByLocale($this->locale);
 
-        if ($data === null || $data === '') {
+        if ($byLocale === []) {
             return;
         }
 
         try {
-            $embedded_documents = $embedding_service->embedDocument($data);
+            $modelKey = app(EmbeddingModelRegistry::class)->active()->key;
 
-            if ($embedded_documents !== []) {
-                // Replace any previous embeddings so a retry or manual
-                // regeneration does not append duplicate ModelEmbedding rows.
+            // Replace any previous embeddings so a retry or manual regeneration
+            // does not append duplicate ModelEmbedding rows: all locales when
+            // no locale was requested, otherwise only the requested locale's.
+            if ($this->locale === null) {
                 $model->embeddings()->delete();
+            } else {
+                $model->embeddings()->forLocale($this->locale)->delete();
+            }
 
-                foreach ($embedded_documents as $embedded_document) {
+            foreach ($byLocale as $loc => $text) {
+                $documents = $embedding_service->embedDocument($text);
+
+                foreach ($documents as $document) {
                     $model->embeddings()->create([
-                        'embedding' => $embedded_document->embedding,
+                        'embedding' => $document->embedding,
+                        'locale' => $loc === (config('app.locale') ?: 'en') && ! class_uses_trait($model, HasTranslations::class) ? null : $loc,
+                        'model_key' => $modelKey,
                     ]);
                 }
             }
