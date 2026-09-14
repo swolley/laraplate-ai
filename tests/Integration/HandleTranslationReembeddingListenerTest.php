@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Listeners\HandleTranslationReembeddingListener;
@@ -9,6 +10,7 @@ use Modules\AI\Tests\Unit\SearchableModelStub;
 use Modules\Core\Events\TranslationRequiresReembedding;
 
 beforeEach(function (): void {
+    Config::set('ai.features.embeddings.enabled', true);
     Queue::fake();
 });
 
@@ -59,4 +61,31 @@ it('dispatches a separate GenerateEmbeddingsJob per event, each scoped to its ow
     Queue::assertPushed(GenerateEmbeddingsJob::class, 2);
     Queue::assertPushed(GenerateEmbeddingsJob::class, fn (GenerateEmbeddingsJob $job): bool => translationReembedJobArgs($job)[1] === 'it');
     Queue::assertPushed(GenerateEmbeddingsJob::class, fn (GenerateEmbeddingsJob $job): bool => translationReembedJobArgs($job)[1] === 'en');
+});
+
+it('does not dispatch GenerateEmbeddingsJob when the embeddings feature is disabled', function (): void {
+    Config::set('ai.features.embeddings.enabled', false);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new TranslationRequiresReembedding($model, 'it');
+    $listener = new HandleTranslationReembeddingListener();
+    $listener->handle($event);
+
+    Queue::assertNothingPushed();
+});
+
+it('does not dispatch GenerateEmbeddingsJob when the embeddings module allowlist excludes the model module', function (): void {
+    // SearchableModelStub is Modules\AI\..., so a CMS-only allowlist excludes it.
+    Config::set('ai.features.embeddings.modules', ['cms']);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    $event = new TranslationRequiresReembedding($model, 'it');
+    $listener = new HandleTranslationReembeddingListener();
+    $listener->handle($event);
+
+    Queue::assertNothingPushed();
 });
