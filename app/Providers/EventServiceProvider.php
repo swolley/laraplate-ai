@@ -10,11 +10,13 @@ use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\AI\Listeners\HandleModificationApprovedTranslationListener;
 use Modules\AI\Listeners\HandleModificationModerationListener;
+use Modules\AI\Listeners\HandleTranslationReembeddingListener;
 use Modules\Core\Events\AiTextGenerationRequested;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\ModificationApproved;
 use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Events\TranslatedModelSaved;
+use Modules\Core\Events\TranslationRequiresReembedding;
 use Override;
 
 final class EventServiceProvider extends ServiceProvider
@@ -32,6 +34,9 @@ final class EventServiceProvider extends ServiceProvider
         ],
         TranslatedModelSaved::class => [
             HandleModelTranslationListener::class,
+        ],
+        TranslationRequiresReembedding::class => [
+            HandleTranslationReembeddingListener::class,
         ],
         ModificationRequiresModeration::class => [
             HandleModificationModerationListener::class,

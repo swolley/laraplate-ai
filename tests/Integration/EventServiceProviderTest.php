@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
+use Modules\AI\Listeners\HandleTranslationReembeddingListener;
 use Modules\AI\Providers\EventServiceProvider;
 use Modules\Core\Events\AiTextGenerationRequested;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
+use Modules\Core\Events\TranslationRequiresReembedding;
 
 it('has correct listen property mapping', function (): void {
     $provider = new EventServiceProvider(app());
@@ -37,15 +39,25 @@ it('uses TranslatedModelSaved with HandleModelTranslationListener', function ():
     expect($listen[TranslatedModelSaved::class])->toContain(HandleModelTranslationListener::class);
 });
 
+it('uses TranslationRequiresReembedding with HandleTranslationReembeddingListener', function (): void {
+    $provider = new EventServiceProvider(app());
+    $reflection = new ReflectionClass($provider);
+    $property = $reflection->getProperty('listen');
+    $listen = $property->getValue($provider);
+
+    expect($listen[TranslationRequiresReembedding::class])->toContain(HandleTranslationReembeddingListener::class);
+});
+
 it('registers a listener mapping for every handled event', function (): void {
     $provider = new EventServiceProvider(app());
     $reflection = new ReflectionClass($provider);
     $property = $reflection->getProperty('listen');
     $listen = $property->getValue($provider);
 
-    expect($listen)->toHaveCount(5)
+    expect($listen)->toHaveCount(6)
         ->and(array_keys($listen))->toContain(ModelRequiresIndexing::class)
         ->and(array_keys($listen))->toContain(TranslatedModelSaved::class)
+        ->and(array_keys($listen))->toContain(TranslationRequiresReembedding::class)
         ->and(array_keys($listen))->toContain(AiTextGenerationRequested::class);
 });
 
