@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_string;
+
 use Illuminate\Support\Facades\Http;
 use Modules\Core\Search\Contracts\IReranker;
-
-use function ai_config_string;
 
 /**
  * HTTP client for a Python cross-encoder microservice.
@@ -43,9 +43,7 @@ final readonly class CrossEncoderService implements IReranker
             return array_fill(0, count($pairs), 0.0);
         }
 
-        $scores = $this->parseScores($response->json(), count($pairs));
-
-        return $scores;
+        return $this->parseScores($response->json(), count($pairs));
     }
 
     /**
@@ -69,7 +67,7 @@ final readonly class CrossEncoderService implements IReranker
             $scores[] = max(0.0, min(1.0, (float) $score));
         }
 
-        if (count($scores) < $expected_count) {
+        if ($expected_count > count($scores)) {
             return array_pad($scores, $expected_count, 0.0);
         }
 

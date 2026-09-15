@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_bool;
+use function ai_config_string;
+
 use Closure;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Data\ModerationResult;
@@ -11,9 +14,6 @@ use Modules\AI\Enums\ModerationVerdict;
 use Modules\Core\Data\ModerationRequest;
 use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
-
-use function ai_config_bool;
-use function ai_config_string;
 
 final readonly class ModerationService
 {
@@ -58,14 +58,31 @@ final readonly class ModerationService
         }
     }
 
+    public function mapResponse(string $content): ModerationResult
+    {
+        $parsed = $this->parseJson($content);
+
+        $verdict = ModerationVerdict::tryFromString($this->stringValue($parsed, 'verdict'));
+        $confidence = $this->floatValue($parsed, 'confidence');
+        $categories = $this->stringListValue($parsed, 'categories');
+        $reason = $this->stringValue($parsed, 'reason', 'No reason provided.');
+        $safe = $this->boolValue($parsed, 'safe_to_auto_approve');
+
+        return new ModerationResult(
+            verdict: $verdict,
+            confidence: max(0.0, min(1.0, $confidence)),
+            categories: $categories,
+            reason: $reason,
+            safeToAutoApprove: $safe,
+        );
+    }
+
     private function createAgent(ModerationRequest $request): ChatAgent
     {
         $factory = $this->chatAgentFactory;
 
         if ($factory !== null) {
-            $agent = $factory();
-
-            return $agent;
+            return $factory();
         }
 
         $provider = ai_config_string(
@@ -93,25 +110,6 @@ final readonly class ModerationService
         } catch (Throwable) {
             return null;
         }
-    }
-
-    public function mapResponse(string $content): ModerationResult
-    {
-        $parsed = $this->parseJson($content);
-
-        $verdict = ModerationVerdict::tryFromString($this->stringValue($parsed, 'verdict'));
-        $confidence = $this->floatValue($parsed, 'confidence');
-        $categories = $this->stringListValue($parsed, 'categories');
-        $reason = $this->stringValue($parsed, 'reason', 'No reason provided.');
-        $safe = $this->boolValue($parsed, 'safe_to_auto_approve');
-
-        return new ModerationResult(
-            verdict: $verdict,
-            confidence: max(0.0, min(1.0, $confidence)),
-            categories: $categories,
-            reason: $reason,
-            safeToAutoApprove: $safe,
-        );
     }
 
     /**

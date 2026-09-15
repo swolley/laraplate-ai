@@ -143,7 +143,7 @@ final readonly class FileDocumentReader
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function createDocument(string $content, string $source_name, array $metadata = []): Document
     {

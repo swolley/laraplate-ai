@@ -214,7 +214,7 @@ final readonly class DocumentationService
         return $roots;
     }
 
-    protected function ragPathsFunctionExists(): bool
+    private function ragPathsFunctionExists(): bool
     {
         return function_exists('rag_paths');
     }

@@ -9,7 +9,7 @@ use Modules\Core\Enums\Concerns\HasModuleTablesUtils;
 enum AITables: string
 {
     use HasModuleTablesUtils;
-    
+
     case Conversations = 'ai_conversations';
     case Messages = 'ai_messages';
     case ConversationSummaries = 'ai_conversation_summaries';

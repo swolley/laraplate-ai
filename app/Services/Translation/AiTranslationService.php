@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
+use function ai_config_nullable_string;
+
 use Closure;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use NeuronAI\Chat\Messages\UserMessage;
-
-use function ai_config_nullable_string;
 
 final readonly class AiTranslationService implements TranslationServiceInterface
 {

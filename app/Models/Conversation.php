@@ -23,6 +23,7 @@ use Override;
  * @property string|null $summary
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ *
  * @mixin \Eloquent
  * @mixin IdeHelperConversation
  */

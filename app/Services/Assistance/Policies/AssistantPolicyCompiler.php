@@ -14,8 +14,8 @@ final readonly class AssistantPolicyCompiler
     ) {}
 
     /**
-     * @param list<string> $capabilityIds
-     * @param list<string> $moduleIds
+     * @param  list<string>  $capabilityIds
+     * @param  list<string>  $moduleIds
      */
     public function compile(
         AssistantProfile $profile,

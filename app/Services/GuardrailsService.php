@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_bool;
+use function ai_config_nullable_string;
+use function ai_config_string;
+
 use Closure;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use JsonException;
-use Modules\AI\Exceptions\GuardrailViolationException;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Exceptions\GuardrailViolationException;
 use NeuronAI\Chat\Messages\UserMessage;
-
-use function ai_config_bool;
-use function ai_config_nullable_string;
-use function ai_config_string;
 
 /**
  * Service for applying guardrails to AI chat interactions.

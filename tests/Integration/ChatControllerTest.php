@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Modules\AI\Contracts\IChatService;
 use Modules\AI\Http\Controllers\ChatController;
 use Modules\AI\Http\Requests\InsertConversationRequest;
 use Modules\AI\Http\Requests\ListConversationsRequest;
@@ -13,7 +14,6 @@ use Modules\AI\Http\Requests\SendMessageRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
-use Modules\AI\Contracts\IChatService;
 use Modules\Core\Models\User;
 
 uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
@@ -25,8 +25,7 @@ beforeEach(function (): void {
 function aiChatController(
     IChatService $chat_service,
     ?InAppAssistanceServiceInterface $in_app_assistance = null,
-): ChatController
-{
+): ChatController {
     $in_app_assistance ??= Mockery::mock(InAppAssistanceServiceInterface::class)->shouldIgnoreMissing();
 
     return new ChatController(

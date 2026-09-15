@@ -17,7 +17,7 @@ beforeEach(function (): void {
     LocaleContext::set('en');
     app(PerModelSettingResolver::class)->flush();
     $this->content = createMinimalTestContentForComments();
-    $this->user = \Modules\Core\Models\User::factory()->create();
+    $this->user = Modules\Core\Models\User::factory()->create();
     config(['ai.features.translation.enabled' => true]);
 });
 
@@ -69,7 +69,7 @@ it('does not dispatch when auto translate is disabled', function (): void {
 it('does not dispatch for non-translatable models', function (): void {
     Bus::fake();
 
-    $user = \Modules\Core\Models\User::factory()->create();
+    $user = Modules\Core\Models\User::factory()->create();
 
     (new HandleModificationApprovedTranslationListener())->handle(
         new ModificationApproved(new Modification(), $user),

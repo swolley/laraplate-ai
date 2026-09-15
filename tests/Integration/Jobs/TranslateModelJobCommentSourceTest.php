@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\CMS\Models\Comment;
-use Modules\CMS\Models\Translations\CommentTranslation;
 use Modules\Core\Helpers\LocaleContext;
 use Modules\Core\Models\User;
 

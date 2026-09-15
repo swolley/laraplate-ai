@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Listeners;
 
+use function ai_config_bool;
+
 use Illuminate\Database\Eloquent\Model;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\Core\Contracts\ITranslatableModel;
 use Modules\Core\Events\ModificationApproved;
 use Modules\Core\Models\Concerns\HasTranslations;
-
-use function ai_config_bool;
 
 final class HandleModificationApprovedTranslationListener
 {

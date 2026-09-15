@@ -6,8 +6,8 @@ namespace Modules\AI\Ai\Agents;
 
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
 use Modules\AI\Ai\Providers\ProviderFactory;
-use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
+use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\RAG;
@@ -20,7 +20,9 @@ use NeuronAI\RAG\VectorStore\VectorStoreInterface;
  */
 class DocumentationAgent extends RAG
 {
-    /** @var array<string, MemoryVectorStore> */
+    /**
+     * @var array<string, MemoryVectorStore>
+     */
     private static array $shared_memory_stores = [];
 
     public function __construct(
@@ -31,9 +33,6 @@ class DocumentationAgent extends RAG
         protected DocumentationIndexProfile $indexProfile = DocumentationIndexProfile::Developer,
     ) {}
 
-    /**
-     * @param  mixed  ...$arguments
-     */
     public static function make(mixed ...$arguments): static
     {
         /** @phpstan-ignore new.static */

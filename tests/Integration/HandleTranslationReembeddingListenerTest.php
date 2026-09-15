@@ -19,7 +19,7 @@ beforeEach(function (): void {
  * GenerateEmbeddingsJob (it has no public accessors) so the test can assert
  * what it was scoped to.
  *
- * @return array{0: \Illuminate\Database\Eloquent\Model, 1: ?string}
+ * @return array{0: Illuminate\Database\Eloquent\Model, 1: ?string}
  */
 function translationReembedJobArgs(GenerateEmbeddingsJob $job): array
 {

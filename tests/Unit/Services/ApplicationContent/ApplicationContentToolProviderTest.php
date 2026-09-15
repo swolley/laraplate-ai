@@ -18,17 +18,16 @@ use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
+use Modules\AI\Tests\Stubs\ApplicationContent\ApplicationContentToolFakeProvider;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalProviderRegistry;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface;
 use Modules\Core\ApplicationContent\Data\ApplicationContentHit;
-use Modules\Core\ApplicationContent\Data\ApplicationContentQuery;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\User;
 use Modules\Core\Services\Authorization\AuthorizationService;
-use Modules\AI\Tests\Stubs\ApplicationContent\ApplicationContentToolFakeProvider;
 
 uses(RefreshDatabase::class);
 

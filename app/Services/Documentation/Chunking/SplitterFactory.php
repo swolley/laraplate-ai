@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Documentation\Chunking;
 
-use NeuronAI\RAG\Splitter\DelimiterTextSplitter;
-use NeuronAI\RAG\Splitter\SentenceTextSplitter;
-use NeuronAI\RAG\Splitter\SplitterInterface;
-
 use function ai_config_bool;
 use function ai_config_int;
 use function ai_config_string;
+
+use NeuronAI\RAG\Splitter\DelimiterTextSplitter;
+use NeuronAI\RAG\Splitter\SentenceTextSplitter;
+use NeuronAI\RAG\Splitter\SplitterInterface;
 
 /**
  * Resolves the configured splitter implementation for documentation indexing.

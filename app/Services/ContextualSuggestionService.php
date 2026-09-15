@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_bool;
+use function ai_config_int;
+
 use Closure;
 use DateTimeInterface;
 use Exception;
@@ -13,9 +16,6 @@ use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\UserMessage;
-
-use function ai_config_bool;
-use function ai_config_int;
 
 /**
  * Service for generating contextual AI suggestions based on UI context.

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_bool;
+use function ai_config_int;
+
 use Closure;
 use Exception;
 use Illuminate\Database\Eloquent\Collection;
@@ -12,9 +15,6 @@ use Modules\AI\Models\Conversation;
 use Modules\AI\Models\ConversationSummary;
 use Modules\AI\Models\Message;
 use NeuronAI\Chat\Messages\UserMessage;
-
-use function ai_config_bool;
-use function ai_config_int;
 
 final readonly class MemoryService
 {

@@ -32,6 +32,7 @@ final class RiskClassifier
     public function classifyRisk(string $tool_name, array $args, ?string $config_risk = null): string
     {
         $resolved = $this->resolveConfiguredRisk($config_risk);
+
         if ($resolved !== null) {
             return $resolved;
         }
@@ -39,6 +40,7 @@ final class RiskClassifier
         $configured = $this->tool_definitions[$tool_name]['risk_level'] ?? null;
         $configured_string = is_string($configured) ? $configured : null;
         $resolved = $this->resolveConfiguredRisk($configured_string);
+
         if ($resolved !== null) {
             return $resolved;
         }

@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\AI\Jobs;
 
+use function ai_config_bool;
+use function ai_config_float;
+use function ai_config_int;
+
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -21,10 +25,6 @@ use Modules\Core\Models\Modification;
 use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 use Throwable;
-
-use function ai_config_bool;
-use function ai_config_float;
-use function ai_config_int;
 
 final class ApproveModificationJob implements ShouldQueue
 {
@@ -249,7 +249,6 @@ final class ApproveModificationJob implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $extra
-     *
      * @return array<string, mixed>
      */
     private function buildVoteMeta(?ModerationResult $result, string $status, array $extra = []): array

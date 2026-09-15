@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
+use function ai_config_string;
+
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Exceptions\TranslationException;
 use Modules\Core\Exceptions\ConfigurationException;
 use Throwable;
-
-use function ai_config_string;
 
 final class DeepLTranslationService implements TranslationServiceInterface
 {

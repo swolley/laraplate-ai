@@ -6,6 +6,4 @@ namespace Modules\AI\Exceptions;
 
 use InvalidArgumentException;
 
-final class UnknownToolException extends InvalidArgumentException
-{
-}
+final class UnknownToolException extends InvalidArgumentException {}

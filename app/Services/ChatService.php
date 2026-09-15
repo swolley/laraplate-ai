@@ -11,9 +11,9 @@ use Modules\AI\Contracts\IChatService;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
-use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\AI\Services\Assistance\AssistantPromptContext;
 use Modules\AI\Services\Assistance\Policies\CompiledAssistantPolicy;
+use Modules\AI\Services\Tools\ToolRegistry;
 use NeuronAI\Chat\Messages\Stream\Chunks\TextChunk;
 use NeuronAI\Chat\Messages\UserMessage;
 use Override;
@@ -90,7 +90,6 @@ class ChatService implements IChatService
      * Send a message with tools support.
      *
      * @param  array<string, mixed>|null  $context
-     *
      * @return array{message: Message, action_requests: ActionRequest[]}
      */
     public function sendMessageWithTools(

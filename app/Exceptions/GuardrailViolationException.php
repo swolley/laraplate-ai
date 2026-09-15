@@ -6,6 +6,4 @@ namespace Modules\AI\Exceptions;
 
 use RuntimeException;
 
-final class GuardrailViolationException extends RuntimeException
-{
-}
+final class GuardrailViolationException extends RuntimeException {}

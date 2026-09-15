@@ -12,9 +12,9 @@ use Modules\AI\Enums\AssistantProfile;
 final readonly class AssistantPolicyCatalog
 {
     /**
-     * @param array<string, AssistantPolicyRuleSet> $profiles
-     * @param array<string, AssistantPolicyRuleSet> $capabilities
-     * @param array<string, AssistantPolicyRuleSet> $modules
+     * @param  array<string, AssistantPolicyRuleSet>  $profiles
+     * @param  array<string, AssistantPolicyRuleSet>  $capabilities
+     * @param  array<string, AssistantPolicyRuleSet>  $modules
      */
     public function __construct(
         public string $version,

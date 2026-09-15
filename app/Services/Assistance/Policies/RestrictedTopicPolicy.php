@@ -6,7 +6,9 @@ namespace Modules\AI\Services\Assistance\Policies;
 
 final class RestrictedTopicPolicy
 {
-    /** @var list<string> */
+    /**
+     * @var list<string>
+     */
     private const array PATTERNS = [
         '/\b(license key|licence key|chiave di licenza|dettagli (?:della )?licenza)\b/iu',
         '/(?=.*\b(licen[cs](?:e|ing)|licenza|chiave di licenza)\b)(?=.*\b(intern\w*|verific\w*|enforc\w*)\b)/iu',

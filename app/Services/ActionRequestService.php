@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use function ai_config_nullable_string;
+
 use JsonException;
 use Modules\AI\Exceptions\InvalidActionRequestStateException;
 use Modules\AI\Exceptions\UnknownToolException;
@@ -13,8 +15,6 @@ use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Tools\RiskClassifier;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Models\User;
-
-use function ai_config_nullable_string;
 
 final readonly class ActionRequestService
 {

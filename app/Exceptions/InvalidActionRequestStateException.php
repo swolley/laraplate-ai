@@ -6,6 +6,4 @@ namespace Modules\AI\Exceptions;
 
 use InvalidArgumentException;
 
-final class InvalidActionRequestStateException extends InvalidArgumentException
-{
-}
+final class InvalidActionRequestStateException extends InvalidArgumentException {}

@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace Modules\AI\Listeners;
 
+use function ai_config_bool;
+use function ai_config_string;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Jobs\ApproveModificationJob;
-use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Contracts\IModeratableModel;
+use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\Modification;
 use Modules\Core\Services\ModerationAdapterRegistry;
-
-use function ai_config_bool;
-use function ai_config_string;
 
 final class HandleModificationModerationListener
 {

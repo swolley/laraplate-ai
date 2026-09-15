@@ -24,9 +24,11 @@ function createActionWithMocks(
     if ($plannerSetup) {
         $plannerSetup($planner);
     }
+
     if ($parserSetup) {
         $parserSetup($parser);
     }
+
     if ($ensembleSetup) {
         $ensembleSetup($ensemble);
     }

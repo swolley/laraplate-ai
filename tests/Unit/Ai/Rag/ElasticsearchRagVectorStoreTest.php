@@ -11,8 +11,7 @@ use NeuronAI\RAG\Document;
 function make_rag_vector_store(
     Client $client,
     DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
-): ElasticsearchRagVectorStore
-{
+): ElasticsearchRagVectorStore {
     config()->set('ai.features.faq.elasticsearch.developer_index', 'laraplate_rag_docs_test');
     config()->set('ai.features.faq.elasticsearch.user_index', 'laraplate_rag_user_docs_test');
 

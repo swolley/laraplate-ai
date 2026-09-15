@@ -46,7 +46,6 @@ interface IChatService
 
     /**
      * @param  array<string, mixed>|null  $context
-     *
      * @return array{message: Message, action_requests: array<int, ActionRequest>}
      */
     public function sendMessageWithTools(
