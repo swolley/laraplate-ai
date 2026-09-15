@@ -34,7 +34,7 @@ it('keeps a mermaid block atomic even when it exceeds maxWords', function (): vo
         ->toContain('Node200')
         ->toContain('flowchart TB');
 
-    expect(substr_count($mermaid_chunk_content, '```'))->toBe(2);
+    expect(mb_substr_count($mermaid_chunk_content, '```'))->toBe(2);
 });
 
 it('keeps a fenced code block atomic for any language tag', function (): void {
@@ -62,7 +62,7 @@ it('keeps a fenced code block atomic for any language tag', function (): void {
     $code_chunk_content = array_values($code_chunks)[0];
 
     expect($code_chunk_content)->toContain('variable80');
-    expect(substr_count($code_chunk_content, '```'))->toBe(2);
+    expect(mb_substr_count($code_chunk_content, '```'))->toBe(2);
 });
 
 it('keeps a markdown pipe table atomic', function (): void {
@@ -118,7 +118,7 @@ it('preserves atomic blocks while still splitting long prose around them', funct
     expect($mermaid_chunks)->toHaveCount(1);
 
     $mermaid_content = array_values($mermaid_chunks)[0];
-    expect(substr_count($mermaid_content, '```'))->toBe(2);
+    expect(mb_substr_count($mermaid_content, '```'))->toBe(2);
 
     expect(count($chunks))->toBeGreaterThan(2);
 });

@@ -18,9 +18,9 @@ final readonly class AssistanceInputPolicy
 
     public function validate(string $input): string
     {
-        $input = trim($input);
+        $input = mb_trim($input);
 
-        if ($input === '' || mb_strlen($input) > $this->max_length) {
+        if ($input === '' || $this->max_length < mb_strlen($input)) {
             throw new AssistancePolicyViolationException('input_bounds');
         }
 

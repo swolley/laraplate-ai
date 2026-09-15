@@ -50,7 +50,7 @@ final readonly class DocumentAudiencePolicy
 
     private function isNonEmptyString(mixed $value): bool
     {
-        return is_string($value) && trim($value) !== '';
+        return is_string($value) && mb_trim($value) !== '';
     }
 
     private function isStringList(mixed $value): bool
@@ -69,7 +69,7 @@ final readonly class DocumentAudiencePolicy
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function hasValidTenantScope(array $metadata): bool
     {

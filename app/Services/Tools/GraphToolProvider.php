@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Tools;
 
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\Core\Graph\Contracts\GraphToolGatewayInterface;
@@ -93,7 +94,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
         try {
             $userKey = $this->request->user()?->getAuthIdentifier();
 
-            if ($userKey === null || trim((string) $userKey) !== $context->userId) {
+            if ($userKey === null || $context->userId !== mb_trim((string) $userKey)) {
                 return $this->unavailable();
             }
 
@@ -187,8 +188,8 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
 
     private function string(mixed $value, int $maximumLength): string
     {
-        if (! is_string($value) || mb_strlen($value) > $maximumLength) {
-            throw new \InvalidArgumentException('Graph tool string argument is invalid.');
+        if (! is_string($value) || $maximumLength < mb_strlen($value)) {
+            throw new InvalidArgumentException('Graph tool string argument is invalid.');
         }
 
         return $value;
@@ -200,12 +201,12 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
     private function stringList(mixed $value): array
     {
         if (! is_array($value) || ! array_is_list($value) || count($value) > 10) {
-            throw new \InvalidArgumentException('Graph tool relations argument is invalid.');
+            throw new InvalidArgumentException('Graph tool relations argument is invalid.');
         }
 
         foreach ($value as $item) {
             if (! is_string($item) || mb_strlen($item) > 128) {
-                throw new \InvalidArgumentException('Graph tool relation is invalid.');
+                throw new InvalidArgumentException('Graph tool relation is invalid.');
             }
         }
 
@@ -215,7 +216,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
     private function integer(mixed $value): int
     {
         if (! is_int($value)) {
-            throw new \InvalidArgumentException('Graph tool integer argument is invalid.');
+            throw new InvalidArgumentException('Graph tool integer argument is invalid.');
         }
 
         return $value;
@@ -225,7 +226,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
     {
         if ((! is_int($value) && ! is_string($value))
             || (is_string($value) && mb_strlen($value) > 255)) {
-            throw new \InvalidArgumentException('Graph tool record key is invalid.');
+            throw new InvalidArgumentException('Graph tool record key is invalid.');
         }
 
         return $value;

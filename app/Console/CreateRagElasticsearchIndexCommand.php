@@ -6,6 +6,7 @@ namespace Modules\AI\Console;
 
 use function ai_config_bool;
 use function ai_config_int;
+
 use Illuminate\Console\Command;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
@@ -32,7 +33,7 @@ final class CreateRagElasticsearchIndexCommand extends Command
 
         $embedding_dims = ai_config_int('ai.features.faq.elasticsearch.embedding_dims', 384);
         $profile_option = $this->option('profile');
-        $profile_name = is_string($profile_option) ? mb_strtolower(trim($profile_option)) : '';
+        $profile_name = is_string($profile_option) ? mb_strtolower(mb_trim($profile_option)) : '';
 
         if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
             $this->error('Invalid profile. Expected developer, user, or all.');

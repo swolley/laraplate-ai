@@ -9,7 +9,7 @@ it('AI RAG MODULE.md includes mermaid diagrams for core flows', function (): voi
 
     $content = (string) file_get_contents($path);
 
-    expect(substr_count($content, '```mermaid'))->toBeGreaterThanOrEqual(6)
+    expect(mb_substr_count($content, '```mermaid'))->toBeGreaterThanOrEqual(6)
         ->and($content)->toContain('DocumentationAgent')
         ->and($content)->toContain('SplitterFactory')
         ->and($content)->toContain('ToolRegistry')

@@ -17,7 +17,7 @@ final readonly class ResolvedAssistantTenant
             throw new InvalidArgumentException('Global assistant scope cannot have a tenant ID.');
         }
 
-        if ($scope === AssistantTenantScope::Tenant && ($tenantId === null || trim($tenantId) === '')) {
+        if ($scope === AssistantTenantScope::Tenant && ($tenantId === null || mb_trim($tenantId) === '')) {
             throw new InvalidArgumentException('Tenant assistant scope requires a tenant ID.');
         }
     }
@@ -29,6 +29,6 @@ final readonly class ResolvedAssistantTenant
 
     public static function tenant(string $tenant_id): self
     {
-        return new self(AssistantTenantScope::Tenant, trim($tenant_id));
+        return new self(AssistantTenantScope::Tenant, mb_trim($tenant_id));
     }
 }

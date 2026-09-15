@@ -33,7 +33,7 @@ final class AssistantControlPlaneData
     ];
 
     /**
-     * @param array<array-key, mixed> $values
+     * @param  array<array-key, mixed>  $values
      */
     public static function containsForbiddenKey(array $values): bool
     {
@@ -51,7 +51,7 @@ final class AssistantControlPlaneData
     }
 
     /**
-     * @param array<array-key, mixed> $values
+     * @param  array<array-key, mixed>  $values
      */
     public static function assertPromptSafe(array $values): void
     {
@@ -72,7 +72,7 @@ final class AssistantControlPlaneData
 
     private static function isForbiddenKey(string $key): bool
     {
-        $normalized_key = Str::snake(str_replace(['.', '-'], '_', trim($key)));
+        $normalized_key = Str::snake(str_replace(['.', '-'], '_', mb_trim($key)));
 
         return in_array($normalized_key, self::FORBIDDEN_KEYS, true);
     }

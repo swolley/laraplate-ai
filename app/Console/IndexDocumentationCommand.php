@@ -40,7 +40,7 @@ final class IndexDocumentationCommand extends Command
         $path = is_string($path_option) && $path_option !== '' ? $path_option : null;
         $full = (bool) $this->option('full');
         $profile_option = $this->option('profile');
-        $profile_name = is_string($profile_option) ? mb_strtolower(trim($profile_option)) : '';
+        $profile_name = is_string($profile_option) ? mb_strtolower(mb_trim($profile_option)) : '';
 
         if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
             $this->error('Invalid profile. Expected developer, user, or all.');

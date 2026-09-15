@@ -26,9 +26,9 @@ final readonly class AssistantPromptContext
     private const array ALLOWED_VERBOSITY = ['concise', 'detailed', 'short', 'standard'];
 
     /**
-     * @param array<string, mixed> $presentationPreferences
-     * @param list<array<string, mixed>> $safeCitations
-     * @param list<array<string, mixed>> $authorizedResults
+     * @param  array<string, mixed>  $presentationPreferences
+     * @param  list<array<string, mixed>>  $safeCitations
+     * @param  list<array<string, mixed>>  $authorizedResults
      */
     public function __construct(
         public string $policyVersion,
@@ -36,7 +36,7 @@ final readonly class AssistantPromptContext
         public array $safeCitations,
         public array $authorizedResults,
     ) {
-        if (trim($policyVersion) === '') {
+        if (mb_trim($policyVersion) === '') {
             throw new InvalidArgumentException('Assistant policy version cannot be blank.');
         }
 
@@ -54,7 +54,7 @@ final readonly class AssistantPromptContext
     }
 
     /**
-     * @param array<string, mixed> $preferences
+     * @param  array<string, mixed>  $preferences
      */
     private function assertPresentationPreferences(array $preferences): void
     {

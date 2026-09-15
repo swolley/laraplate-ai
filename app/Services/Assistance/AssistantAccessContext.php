@@ -11,7 +11,7 @@ use Modules\AI\Enums\AssistantTenantScope;
 final readonly class AssistantAccessContext
 {
     /**
-     * @param list<string> $effectivePermissions
+     * @param  list<string>  $effectivePermissions
      */
     public function __construct(
         public AssistantProfile $profile,
@@ -22,7 +22,7 @@ final readonly class AssistantAccessContext
         public array $effectivePermissions,
         public ?string $conversationId,
     ) {
-        if (trim($locale) === '') {
+        if (mb_trim($locale) === '') {
             throw new InvalidArgumentException('Assistant locale cannot be blank.');
         }
 
@@ -52,9 +52,9 @@ final readonly class AssistantAccessContext
     {
         if (
             $this->userId === null
-            || trim($this->userId) === ''
+            || mb_trim($this->userId) === ''
             || $this->conversationId === null
-            || trim($this->conversationId) === ''
+            || mb_trim($this->conversationId) === ''
             || $this->tenantScope === null
         ) {
             throw new InvalidArgumentException('In-app assistance requires resolved server context.');
@@ -66,13 +66,13 @@ final readonly class AssistantAccessContext
 
         if (
             $this->tenantScope === AssistantTenantScope::Tenant
-            && ($this->tenantId === null || trim($this->tenantId) === '')
+            && ($this->tenantId === null || mb_trim($this->tenantId) === '')
         ) {
             throw new InvalidArgumentException('Tenant assistant scope requires a tenant ID.');
         }
 
         foreach ($this->effectivePermissions as $permission) {
-            if (! is_string($permission) || trim($permission) === '') {
+            if (! is_string($permission) || mb_trim($permission) === '') {
                 throw new InvalidArgumentException('Effective permissions must be non-empty strings.');
             }
         }

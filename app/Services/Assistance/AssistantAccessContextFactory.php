@@ -70,7 +70,7 @@ final readonly class AssistantAccessContextFactory
         $console_application = $command->getApplication();
         $is_registered_help_command = $console_application !== null
             && $console_application->has('ai:help')
-            && $console_application->find('ai:help') === $command;
+            && $command === $console_application->find('ai:help');
 
         if (! $is_registered_help_command) {
             throw new AuthorizationException('Developer help is available only from the console.');
@@ -97,11 +97,11 @@ final readonly class AssistantAccessContextFactory
         foreach ($user->getAllPermissions() as $permission) {
             $name = $permission->name ?? null;
 
-            if (! is_string($name) || trim($name) === '') {
+            if (! is_string($name) || mb_trim($name) === '') {
                 throw new UnexpectedValueException('Effective permission name is unavailable.');
             }
 
-            $names[] = trim($name);
+            $names[] = mb_trim($name);
         }
 
         $names = array_values(array_unique($names));
@@ -115,7 +115,7 @@ final readonly class AssistantAccessContextFactory
         $fallback = (string) config('app.locale', 'en');
         $locale = $user->getAttribute('lang');
 
-        if (! is_string($locale) || trim($locale) === '') {
+        if (! is_string($locale) || mb_trim($locale) === '') {
             return $fallback;
         }
 
@@ -134,7 +134,7 @@ final readonly class AssistantAccessContextFactory
             return null;
         }
 
-        $normalized = trim((string) $key);
+        $normalized = mb_trim((string) $key);
 
         return $normalized === '' ? null : $normalized;
     }

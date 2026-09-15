@@ -9,12 +9,12 @@ use InvalidArgumentException;
 final readonly class AssistantPolicyRuleSet
 {
     /**
-     * @param list<string> $allowedCorpora
-     * @param list<string> $allowedTools
-     * @param list<string> $allowedFields
-     * @param list<string> $deniedCorpora
-     * @param list<string> $deniedTools
-     * @param list<string> $deniedFields
+     * @param  list<string>  $allowedCorpora
+     * @param  list<string>  $allowedTools
+     * @param  list<string>  $allowedFields
+     * @param  list<string>  $deniedCorpora
+     * @param  list<string>  $deniedTools
+     * @param  list<string>  $deniedFields
      */
     public function __construct(
         public string $instruction,
@@ -25,7 +25,7 @@ final readonly class AssistantPolicyRuleSet
         public array $deniedTools = [],
         public array $deniedFields = [],
     ) {
-        if (trim($instruction) === '') {
+        if (mb_trim($instruction) === '') {
             throw new InvalidArgumentException('Assistant policy instruction cannot be blank.');
         }
 
@@ -38,14 +38,16 @@ final readonly class AssistantPolicyRuleSet
             $deniedFields,
         ] as $values) {
             foreach ($values as $value) {
-                if (! is_string($value) || trim($value) === '') {
+                if (! is_string($value) || mb_trim($value) === '') {
                     throw new InvalidArgumentException('Assistant policy sets require non-empty string identifiers.');
                 }
             }
         }
     }
 
-    /** @param list<self> $sets */
+    /**
+     * @param  list<self>  $sets
+     */
     public static function union(array $sets): self
     {
         if ($sets === []) {
@@ -81,7 +83,7 @@ final readonly class AssistantPolicyRuleSet
     }
 
     /**
-     * @param list<string> ...$sets
+     * @param  list<string>  ...$sets
      * @return list<string>
      */
     private static function merge(array ...$sets): array
@@ -93,8 +95,8 @@ final readonly class AssistantPolicyRuleSet
     }
 
     /**
-     * @param list<string> $allowed
-     * @param list<string> $denied
+     * @param  list<string>  $allowed
+     * @param  list<string>  $denied
      * @return list<string>
      */
     private static function without(array $allowed, array $denied): array
