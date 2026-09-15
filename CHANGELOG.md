@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [2.19.0] - 2026-09-15
 
 ### 🚀 Features
 
@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file.
 
 - *(eval)* Document application-content @k ranking metrics and baselines
 - *(ai)* Document per-strategy retrieval quality breakdown (R3 Phase 2)
+- *(changelog)* Regenerate with the corrected git-cliff configuration
+- Releases are run from the application
 
 ### 🎨 Styling
 
