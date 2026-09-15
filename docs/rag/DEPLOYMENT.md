@@ -1,6 +1,6 @@
 # RAG vector store — deployment guide
 
-Documentation RAG (`ai:index-docs`) persists chunk embeddings in a **vector store** selected by `AI_FAQ_VECTOR_STORE` (`ai.features.faq.vector_store`).
+Documentation RAG (`ai:index-rag-docs`) persists chunk embeddings in a **vector store** selected by `AI_FAQ_VECTOR_STORE` (`ai.features.faq.vector_store`).
 
 ## Drivers
 
@@ -51,11 +51,11 @@ AI_FAQ_ES_EMBEDDING_DIMS=384
 4. Index documentation (from any single instance or CI job):
 
 ```bash
-php artisan ai:index-docs
+php artisan ai:index-rag-docs
 ```
 
 All replicas then share the same corpus via Elasticsearch.
 
 ### Embedding dimension changes
 
-If you change the embeddings model and vector size, create a **new** index (or drop and recreate) with updated `AI_FAQ_ES_EMBEDDING_DIMS`, then run `ai:index-docs --full`.
+If you change the embeddings model and vector size, create a **new** index (or drop and recreate) with updated `AI_FAQ_ES_EMBEDDING_DIMS`, then run `ai:index-rag-docs --full`.

@@ -33,7 +33,7 @@ final class LaraplateHelpCommand extends Command
         }
 
         if (! $documentationService->isAvailable()) {
-            $this->warn('RAG index is not available. Run `php artisan ai:index-docs` first.');
+            $this->warn('RAG index is not available. Run `php artisan ai:index-rag-docs` first.');
 
             return self::FAILURE;
         }

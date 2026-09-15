@@ -355,7 +355,7 @@ sequenceDiagram
 ### RAG (Documentation Search) Flow
 
 ```
-php artisan ai:index-docs
+php artisan ai:index-rag-docs
         │
         ▼
 DocumentationService::indexDocuments()

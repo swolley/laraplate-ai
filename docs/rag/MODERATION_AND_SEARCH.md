@@ -67,9 +67,9 @@ Per-model flags live in settings (`ai_moderation_{table}`, `auto_translate_{tabl
 Index FAQ corpus (not Elasticsearch model index):
 
 ```bash
-php artisan ai:index-docs
-php artisan ai:index-docs --full
-php artisan ai:laraplate-help --question="How does comment AI moderation work?"
+php artisan ai:index-rag-docs
+php artisan ai:index-rag-docs --full
+php artisan ai:help --question="How does comment AI moderation work?"
 ```
 
 Corpus roots: `docs/rag/`, active `Modules/*/docs/rag/` (see `docs/rag/README.md`). Technical docs under `Modules/*/docs/` without `rag/` are **not** scanned unless passed via `--path` or `AI_FAQ_DOCS_PATH`.
@@ -81,12 +81,12 @@ Corpus roots: `docs/rag/`, active `Modules/*/docs/rag/` (see `docs/rag/README.md
 | Job never queued | Feature flags, queue worker, `system_user_id` |
 | BindingResolutionException on moderation | Builder registered in domain `ServiceProvider` |
 | AI votes but comment still hidden | Human `approvers_required` not satisfied |
-| RAG answers wrong on moderation | Re-run `ai:index-docs` after updating `docs/rag` files |
+| RAG answers wrong on moderation | Re-run `ai:index-rag-docs` after updating `docs/rag` files |
 
 ## FAQPrompts
 
 - What config enables AI comment moderation?
 - What does ApproveModificationJob do?
 - How does AI relate to ModificationRequiresModeration?
-- Difference between ai:index-docs and Elasticsearch indexing?
+- Difference between ai:index-rag-docs and Elasticsearch indexing?
 - Which env vars control AI_MODERATION?

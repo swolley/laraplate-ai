@@ -40,7 +40,7 @@ it('returns failure when rag index is not available', function (): void {
     $tester->execute(['--question' => 'How do I use CRUD APIs?']);
 
     expect($tester->getStatusCode())->toBe(LaraplateHelpCommand::FAILURE)
-        ->and($tester->getDisplay())->toContain('ai:index-docs');
+        ->and($tester->getDisplay())->toContain('ai:index-rag-docs');
 });
 
 it('answers one-shot question and prints sources', function (): void {

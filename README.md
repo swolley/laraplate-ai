@@ -295,6 +295,21 @@ When the AI module is disabled:
 - Core's `IndexModelFallbackListener` handles indexing without pre-processing
 - Application continues to function normally
 
+#### Search orchestration bindings
+
+When `ai.features.search_orchestration.enabled` is true (default), `AIServiceProvider` overrides
+four Core search contracts. Three of them have a Core fallback; one does not:
+
+| Contract | AI implementation | Core fallback | Effect without AI |
+|----------|-------------------|---------------|-------------------|
+| `ITextEmbedder` | `SearchEmbedder` | **none** | vector and hybrid retrieval unavailable |
+| `IReranker` | `CrossEncoderService` | `HeuristicReranker` | reranking still runs, lexical heuristics only |
+| `ISearchPlanner` | `SearchOrchestratorAgent` | `FallbackSearchPlanner` | plan from rules, not from an LLM |
+| `IQueryIntentParser` | `LlmQueryIntentParser` | `SimpleQueryIntentParser` | no LLM query expansion |
+
+Vector retrieval therefore needs **both** `VECTOR_SEARCH_ENABLED=true` in Core and the AI module
+providing `ITextEmbedder`. Pipeline details: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
+
 ## Scripts
 
 The AI Module provides several useful scripts for development and maintenance:
