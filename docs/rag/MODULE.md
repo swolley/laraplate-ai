@@ -379,3 +379,15 @@ regression gate lives in
 `ai:evaluate-assistant` command (Level-2 live interface) is deferred. Design:
 `docs/superpowers/specs/2026-08-29-assistant-end-to-end-evaluation-design.md`.
 Guide: `ASSISTANT_EVALUATION.md` (internals + how to add a module report card).
+
+## Releases
+
+This module is released from the application, not from its own repository: it carries no release scripts and no `cliff.toml`. From the `laraplate` root, `scripts/version.sh` bumps the `version` field of `Modules/AI/composer.json`, regenerates `Modules/AI/CHANGELOG.md` with the application's `cliff.toml`, commits `chore(release): vX.Y.Z` in the module repository, tags it and pushes both.
+
+```bash
+composer run version:dry AI      # print the plan, write nothing
+composer run version:minor AI    # release with a forced level (also version:major, version:patch)
+composer run version:all             # every module with pending commits, then the application
+```
+
+Without a forced level, git-cliff infers it from the conventional commits since the module's last tag. `CHANGELOG.md` lists released versions only. Releasing the module alone does not touch the application; `version:all` records the module in the application with a commit typed after the module's release level. Full reference: `docs/releasing.md` in the application.
