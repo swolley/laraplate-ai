@@ -11,18 +11,6 @@ use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
-/**
- * @property int|null $id
- * @property int $user_id
- * @property array<string, mixed>|null $context
- * @property string $suggestion
- * @property \Illuminate\Support\Carbon|null $dismissed_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- *
- * @mixin \Eloquent
- * @mixin IdeHelperContextualSuggestion
- */
 final class ContextualSuggestion extends Model
 {
     /**

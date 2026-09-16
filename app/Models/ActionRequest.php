@@ -13,24 +13,6 @@ use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
-/**
- * @property int|null $id
- * @property int|null $conversation_id
- * @property int $user_id
- * @property string $tool_name
- * @property array<string, mixed>|null $tool_args
- * @property string $risk_level
- * @property string $status
- * @property int|null $modification_id
- * @property array<string, mixed>|null $result
- * @property string|null $error
- * @property \Illuminate\Support\Carbon|null $executed_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- *
- * @mixin \Eloquent
- * @mixin IdeHelperActionRequest
- */
 final class ActionRequest extends Model
 {
     /**

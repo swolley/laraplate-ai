@@ -11,19 +11,6 @@ use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
 use Override;
 
-/**
- * @property int|null $id
- * @property int $conversation_id
- * @property string $role
- * @property string $content
- * @property array<string, mixed>|null $metadata
- * @property int|null $token_count
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- *
- * @mixin \Eloquent
- * @mixin IdeHelperMessage
- */
 final class Message extends Model
 {
     /**

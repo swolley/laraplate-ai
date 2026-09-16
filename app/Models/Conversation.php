@@ -13,20 +13,6 @@ use NeuronAI\Chat\Enums\MessageRole;
 use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
-/**
- * @property int|null $id
- * @property int $user_id
- * @property string|null $title
- * @property string|null $system_message
- * @property array<string, mixed>|null $metadata
- * @property bool $memory_enabled
- * @property string|null $summary
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- *
- * @mixin \Eloquent
- * @mixin IdeHelperConversation
- */
 final class Conversation extends Model
 {
     /**
