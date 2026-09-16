@@ -1,5 +1,12 @@
 # AI Module - Architecture Documentation
 
+> **Status note.** The chat sections below describe the superseded `ChatService` message path
+> (`sendMessage()`, `sendMessageStream()`, `sendMessageWithTools()`, `buildAgent()`), which has been
+> removed. Every HTTP message now goes through `InAppAssistanceService::respond()`, which is
+> policy-compiled, guardrailed, scope-resolved, non-streaming and stateless per message.
+> For the current picture, read `docs/rag/MODULE.md`, sections *Perimeters* and *Message orchestration*.
+> The material here is kept because the tool, embedding, translation and suggestion sections remain accurate.
+
 ## Table of Contents
 
 - [Overview](#overview)

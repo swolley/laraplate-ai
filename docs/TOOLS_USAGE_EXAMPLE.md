@@ -1,5 +1,12 @@
 # sendMessageWithTools – Example Usage
 
+> **Status note.** `sendMessageWithTools()` has been removed along with the rest of the superseded
+> `ChatService` message path. The approval-gated tool flow described here is therefore **not reachable**:
+> `ToolRegistry::getAllNeuronToolsWithApproval()` has no caller, and nothing creates `ActionRequest`
+> rows, while `ActionRequestController` and `ExecuteActionRequestJob` still manage and execute them.
+> Whether to reconnect this flow to the in-app assistant or retire it is an open decision. This document
+> is kept as the record of how the flow was meant to work.
+
 This document shows how `sendMessageWithTools` is used end-to-end and why it is **non-streaming**.
 
 ---

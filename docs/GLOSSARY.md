@@ -23,7 +23,7 @@ Canonical English names for AI entities in this module. Use these terms in code,
 | **ActionRequestService** | Creates, confirms, rejects, and tracks `ActionRequest` lifecycle. |
 | **RiskClassifier** | Maps `tool_name` to risk level (`low`, `medium`, `high`). |
 | **ExecuteActionRequestJob** | Queue job that runs an approved tool handler. |
-| **sendMessageWithTools** | `ChatService` entry point that may create `ActionRequest` rows from LLM tool calls. |
+| **sendMessageWithTools** | Removed. It was the `ChatService` entry point that created `ActionRequest` rows from LLM tool calls; the HTTP boundary moved to `InAppAssistanceService`, whose tools are read-only, so no code path creates `ActionRequest` rows today. See `docs/rag/MODULE.md`, section *Perimeters*. |
 
 ### Risk levels
 

@@ -4,18 +4,49 @@
 
 `AI` provides documentation intelligence for Laraplate: ingest docs, index them for semantic retrieval, answer user questions with RAG, and orchestrate tool-assisted conversations with approval controls.
 
-### Module boundaries
+### Perimeters
 
-HTTP controllers and Artisan commands call **facade-level services** (`ChatService`, `DocumentationService`, `EmbeddingService`). RAG uses **NeuronAI** `DocumentationAgent` (extends `RAG`) with a pluggable vector store (`FileVectorStore`, `MemoryVectorStore`, or `ElasticsearchRagVectorStore`) and the embeddings provider from `EmbeddingsProviderFactory`. When **search orchestration** is enabled, the provider registers AI implementations for Core search contracts (`IReranker`, `ISearchPlanner`, `IQueryIntentParser`, `ITextEmbedder`). Document chunking goes through `SplitterInterface`, bound by default to `MarkdownAwareSplitter` via `SplitterFactory` so fenced blocks (including Mermaid in indexed docs) stay intact.
+The boundaries of this module are **contracts, not folders**. `AI` is not one system: it is a set of subsystems that touch each other rarely, and reading it as a single pipeline is what makes it feel larger than it is. The reliable way to tell them apart is by entry point, because an entry point cannot be wishful.
+
+| Perimeter | Entry point | Boundary | Status |
+|---|---|---|---|
+| **In-app assistant** | `POST /crud/insert/ai/conversations/{conversation}/messages` → `InAppAssistanceService::respond()` | policy, guardrails, scope resolution | live; the only path a user message travels |
+| **Search** | `CrudService` → `AdvancedSearchService` → `EnsembleSearchService` | Core contracts `ISearchPlanner` / `IReranker` | live |
+| **Documentation RAG** | `DocumentationService`, from `respond()` and from `ai:help` | corpora plus the configured vector store | live |
+| **Application content** | CMS and SAO retrieval providers, consumed by `respond()` | citations and authorized evidence | live |
+| **Tools and ActionRequest** | `ActionRequestController`, read-only tools through the assistant | risk level and approval | management and execution live; see the note below on creation |
+| **Contextual suggestions** | `SuggestionController` | per-context generation | live |
+| **Moderation and translation** | queued jobs | asynchronous, no HTTP surface | live |
+| **Conversation memory** | none | none | dormant |
+
+**Search is not a chat feature, and it does not live here.** The perimeter belongs to `Modules/Core/Search`, which defines `ISearchPlanner` and `IReranker` and registers two non-AI implementations by default with `singletonIf` (`FallbackSearchPlanner`, `HeuristicReranker`). When the AI module is installed it overlays its own implementations on the same contracts, `SearchOrchestratorAgent` and `CrossEncoderService` (`AIServiceProvider`). Query planning and reranking are therefore an **optional upgrade to Core search**, which keeps working without AI in a degraded form. They meet the assistant only when it runs a search, through the same contract the CRUD layer uses.
+
+**The compass for reading any of this:** when two subsystems speak through a contract in Core, they are separate by construction and can be understood one at a time. When they speak by importing each other directly, they are coupled and have to be thought about together. In this module almost everything goes through contracts; the only genuine direct dependencies are `respond()` towards documentation retrieval, tools and policy.
+
+#### Two perimeters worth a caveat
+
+- **ActionRequest has no producer today.** Records are managed by `ActionRequestController` and executed by `ExecuteActionRequestJob`, but nothing creates them: the approval-gated tool path (`ToolRegistry::getAllNeuronToolsWithApproval()`) was reached only from the superseded chat, and the in-app assistant deliberately exposes read-only tools, which never create an `ActionRequest`. Reconnecting that path or retiring it is an open decision, not an accident to fix silently.
+- **Conversation memory is dormant, not broken.** `MemoryService` summarizes conversations and extracts facts, but its hook lived in the superseded chat, so it never runs. `respond()` is also stateless per message: it builds a fresh agent and sends only the current input, with no history and no summary.
+
+#### What was removed, and why it still appears in history
+
+`ChatService` once carried the unprotected message path: `sendMessage()`, `sendMessageStream()`, `sendMessageWithTools()` and their `buildAgent()` helper, including a RAG shortcut driven by question detection and a `use_rag` context flag. Those were superseded when the HTTP boundary moved to `InAppAssistanceService`, which applies policy, guardrails and scope, and which is non-streaming by design because output cannot be validated once it has been streamed. They were removed after a period of being unreachable. `ChatService` now holds only `createConversation()` and `buildProtectedAgent()`; older commits, tests and documentation that describe it as the chat orchestrator are describing a design that no longer exists.
 
 ```mermaid
 flowchart TB
   subgraph entry [Entry points]
-    Http[Http Controllers]
+    Http[HTTP controllers]
     Artisan[Artisan commands]
+    Queue[Queued jobs]
+  end
+  subgraph governed [Governed assistant]
+    Respond[InAppAssistanceService respond]
+    Policy[AssistantPolicyCompiler]
+    Guard[AssistanceGuardrailPipeline]
+    Ctx[AssistantPromptContext]
   end
   subgraph services [Application services]
-    ChatSvc[ChatService]
+    ChatSvc[ChatService conversation lifecycle]
     DocSvc[DocumentationService]
     EmbSvc[EmbeddingService]
   end
@@ -27,7 +58,7 @@ flowchart TB
   subgraph ragPersist [RAG persistence]
     VecStore[FileVectorStore, MemoryVectorStore, or ElasticsearchRagVectorStore]
   end
-  subgraph coreSearch [Optional Core search bindings]
+  subgraph coreSearch [Core search contracts, optionally AI-backed]
     Rerank[CrossEncoderService IReranker]
     Planner[SearchOrchestratorAgent ISearchPlanner]
     Intent[LlmQueryIntentParser IQueryIntentParser]
@@ -35,14 +66,20 @@ flowchart TB
   end
   Prov[AIServiceProvider]
 
-  Http --> ChatSvc
+  Http -->|messages| Respond
+  Http -->|conversation lifecycle| ChatSvc
   Artisan --> DocSvc
+  Queue --> EmbSvc
+  Respond --> Policy
+  Respond --> Guard
+  Respond --> Ctx
+  Respond --> DocSvc
+  Respond -->|buildProtectedAgent| ChatSvc
+  ChatSvc --> ChatAgent
   DocSvc --> DocAgent
   DocAgent --> EmbProv
   DocAgent --> VecStore
   EmbSvc --> EmbProv
-  ChatSvc --> ChatAgent
-  ChatSvc --> DocSvc
   Prov -.->|search orchestration enabled| coreSearch
 ```
 
@@ -123,86 +160,60 @@ flowchart TB
   Cit --> Out
 ```
 
-### Chat orchestration
+### Message orchestration
 
-- `ChatService` handles normal conversation, RAG-triggered responses, and stream mode.
-- Question-detection rules can auto-route suitable prompts through FAQ/RAG path.
-- Memory and guardrails services participate when enabled by configuration.
+Every message sent over HTTP goes through `InAppAssistanceService::respond()`. It compiles the policy for the profile and the enabled capabilities (`application_content`, `in_app_rag`, `read_only_graph`), validates the input, resolves the assistant scope, retrieves documentation for that scope, builds an `AssistantPromptContext` from the authorized evidence, validates that context, and only then completes the answer through `ChatService::buildProtectedAgent()`, which wraps the evidence in an explicitly untrusted block. Output is validated before it is stored, which is also why this path is non-streaming: an answer that has already been streamed cannot be refused.
 
-#### Chat path: RAG vs direct agent
+`ChatService` no longer orchestrates messages. Its remaining responsibilities are creating conversations and building the protected agent on behalf of the assistant.
 
-Incoming text passes through input guardrails when enabled. For `sendMessage()`, the service checks explicit `use_rag` in context or heuristics via `looksLikeQuestion()`. If RAG should run and `DocumentationService::isAvailable()` is true, the flow uses `answerQuestion()` and stores citations on the assistant `Message` metadata. Otherwise `ChatAgent` handles the turn with the normal LLM stack. Optional conversation summarization runs after responses when configured.
+Two properties of this path are easy to assume wrongly:
+
+- **There is no question detection and no `use_rag` flag.** Whether documentation is retrieved is decided by the compiled policy and the resolved scope, not by heuristics on the message text.
+- **The path is stateless per message.** A fresh agent receives the current input only, with no prior turns and no conversation summary, so the assistant does not recall earlier messages in the same conversation.
+
+#### Why this path does not stream, and what to do about it
+
+Validation on the way in does not constrain what the model composes on the way out, so
+`AssistanceOutputPolicy` checks the generated text for restricted topics, PHP and SQL shapes,
+env-var assignments, API keys, bearer tokens and JWTs, plus a length bound. What blocks
+token-by-token streaming is not validation as such: it is three decisions that apply to the
+**whole** answer. Insufficient evidence replaces the entire response, and is only knowable
+once the model has finished deciding which tools to call; the length bound is measured on the
+total; and a violation does not censor a fragment, it turns the whole answer into a refusal.
+
+Streaming exists for perceived latency, and nearly all of it can be recovered without giving
+any of that up: generate fully, validate, then deliver the validated text to the client
+progressively. The reader sees an answer appear, no unchecked byte ever reaches the wire, and
+a refusal stays a clean refusal instead of a retraction after a secret has already been shown.
+
+Where it is worth doing: a chat surface, where the wait is the whole experience. Where it is
+not: an API response consumed by code, which gains nothing from arriving in pieces, unless
+that API backs a public-facing chat.
 
 ```mermaid
 flowchart TB
   UserMsg[User message]
-  Guard[GuardrailsService optional]
-  Branch{useRag or looksLikeQuestion}
-  Avail{DocumentationService.isAvailable}
-  RAG[DocumentationService.answerQuestion]
-  Agent[ChatAgent chat]
-  Save[Conversation.addMessage assistant]
+  Policy[Compile policy and capabilities]
+  InGuard[Validate input]
+  Scope[Resolve assistant scope]
+  Retrieve[DocumentationService retrieveForInApp]
+  Ctx[AssistantPromptContext with assertPromptSafe]
+  CtxGuard[Validate context]
+  Tools[Contextual read-only tools]
+  Agent[buildProtectedAgent and complete]
+  OutGuard[Validate output or refuse]
+  Store[Store user and assistant messages with citations]
 
-  UserMsg --> Guard
-  Guard --> Branch
-  Branch -->|yes| Avail
-  Branch -->|no| Agent
-  Avail -->|yes| RAG
-  Avail -->|no| Agent
-  RAG --> Save
-  Agent --> Save
-```
-
-### Tools ecosystem
-
-The assistant has three independent retrieval surfaces:
-
-| Surface | Purpose | Data and authorization |
-| --- | --- | --- |
-| Documentation RAG | Product and developer documentation | Separate `developer` and `user` corpora selected by a server-owned profile |
-| Core Graph tools | Authorized relation search, expansion, and statistics | Current request identity, entity permission, record ACL, read-only Graph gateway |
-| Application content tool | Bounded textual evidence from module-owned records | Current request identity, provider entity permission, row ACL, safe provider projection |
-
-`CompositeContextualToolProvider` combines independent request-local definitions. It does not discover module providers: Core owns the explicit `ApplicationContentRetrievalProviderRegistry`, and each optional module registers its provider without depending on AI. `ApplicationContentSourceRouter` first builds an authorized source allowlist, then uses verified server page context when present. Without page context it selects the sole authorized source, routes an explicit source intent, or exposes no application tool when the request is ambiguous. Client presentation context cannot forge module routing.
-
-`application_content_search` is available only to authenticated `InAppAssistance`. Its schema contains only the one server-selected source, query, locale, and bounded limit. It cannot accept user/tenant identity, roles, permissions, ACLs, filters, model/table/index/class names, prompts, or write operations. `graph_search`, `graph_expand`, and `graph_stats` remain separate read-only tools and may be used in the same turn.
-
-The current tenant resolver supports only the global scope. Application content tools fail closed for `Tenant` scope until a server-owned per-tenant source policy is implemented; tenant identity or source policy can never be supplied through a tool argument or client context.
-
-Retrieved application text is classified as untrusted data before it can influence generation. Safe hits are mapped to canonical application citations; unsafe evidence is discarded. If the model calls the application tool and retrieval is empty, denied, unavailable, timed out, or rejected by policy, `InAppAssistanceService` replaces any assumed answer with a localized insufficient-evidence response. The complete output is validated before persistence; streaming does not bypass full-response validation.
-
-### Approvals flow for tools
-
-- Medium/high-risk tool calls can be converted to `ActionRequest` items instead of immediate execution.
-- Pending requests are returned to caller as structured metadata.
-- Approval outcome controls whether tool execution proceeds or remains blocked.
-
-#### Tools and approval wiring
-
-`ToolRegistry::register()` stores `ToolDefinition` entries (name, parameters, handler, risk level). `getAllNeuronToolsWithApproval()` builds Neuron `Tool` instances: **low** risk keeps the original handler; **medium** or **high** wraps the callable so it calls `ActionRequestService::createRequest()` and returns a pending message to the model instead of executing. `RiskClassifier` merges config overrides from `ai.features.tools.definitions.{name}.risk_level`. The caller receives `action_requests` alongside the assistant message for UI or jobs to approve and replay execution.
-
-`CrudToolProvider` (contextual, `InAppAssistance` only) exposes opt-in Core CRUD operations as tools from `ai.features.tools.crud.entities` (`"module.entity" => [operations]`; empty = none). It resolves the entity with `DynamicEntity` and delegates to `CrudService`, which enforces the acting user's permission and row ACL — the provider adds no data access. A tool is exposed **only for an operation the user is actually permitted to perform** (`AuthorizationService::checkPermission` at build time using the CRUD ability: `select` for reads, `insert`/`update`/`forceDelete` for writes); an operation the user cannot do is simply not offered — there is no escalate-to-approval path. All exposed tools are **low** risk (inline). Moderation belongs to the model: `HasApprovals` entities capture writes as pending modifications on save unless the writer holds the `approve` credit — Core applies this inside the write. `HasApprovals::requiresApprovalWhen()` short-circuits under `App::runningInConsole()`, so moderation engages in the request context the assistant runs in (writes are inline, not deferred to a queue). The synthetic request inherits the real request's user so both `request->user()` and `Auth::user()` resolve the same principal (required by the ACL layer). `list`/`search` accept structured `filters` (`[{property, operator, value}]`, operators `= != > >= < <= like in between`, nested `and`/`or` groups) and `sort` (`[{property, direction}]`) in the CRUD request format; handlers use named arguments (NeuronAI's convention). Every result echoes the executed `request` (`{verb, module, entity, filters, sort, page, limit}`) so a client can reapply the same filters to its tables. The `view` operation is "configure mode": it returns only the request spec (`apply: true`) without fetching data, so the UI applies the filters to its own table and loads them itself. Approval verbs (`pending_approvals` — with an optional author filter and the modifier's resolved name — `approve`, `disapprove`) map to `CrudService::pendingApprovals/approve/disapprove` and are gated by the `approve` permission. The `summarize` operation (gated by `select`) delegates to `CrudService::list` for an ACL-scoped, filtered set (materialized up to a hard row cap), then computes per-group `count` plus optional `sum`/`avg`/`min`/`max` metrics in memory; the response reports the true `total_records` and flags `truncated` when the set exceeds the cap. The `export` operation (gated by `select`) delegates row access to the same `CrudService::list` and reuses Core's `TabularCsvExporter`/`TabularPdfExporter`, returning the chosen columns as an inline base64 `file` (`{filename, mime, encoding, contents}`) alongside the echoed request and the same `total_records`/`truncated` metadata. The `bulk_update`/`bulk_delete` operations change many filter-matched records at once and are gated by `select` **plus** the write ability (`update`/`forceDelete`), since they resolve the affected set by reading it first. They enforce a mandatory preview: with `confirm=false` (default) they return the match count and a sample of ids (`preview: true`) without touching anything; with `confirm=true` they resolve the ids through `CrudService::list` and update/delete each one individually (so every write is authorized, ACL-scoped and moderated per record) up to a hard cap of 200 — a larger match is refused with an error asking for a narrower filter. A bulk call without filters is rejected. The end-user view of these capabilities lives in `ASSISTANT_DATA_TOOLS_USER.md`.
-
-```mermaid
-flowchart TB
-  Reg[ToolRegistry]
-  Def[ToolDefinition DTOs]
-  Wrap[getAllNeuronToolsWithApproval]
-  Risk[RiskClassifier]
-  Low{risk low}
-  MedHigh{medium or high}
-  Exec[Direct handler callable]
-  AR[ActionRequestService.createRequest]
-  Pending[Pending message to LLM]
-
-  Reg --> Def
-  Def --> Wrap
-  Wrap --> Risk
-  Risk --> Low
-  Low -->|yes| Exec
-  Low -->|no| MedHigh
-  MedHigh --> AR
-  AR --> Pending
+  UserMsg --> Policy
+  Policy --> InGuard
+  InGuard --> Scope
+  Scope --> Retrieve
+  Retrieve --> Ctx
+  Ctx --> CtxGuard
+  CtxGuard --> Tools
+  Tools --> Agent
+  Agent --> OutGuard
+  OutGuard --> Store
 ```
 
 ## Developer-facing CLI
@@ -291,6 +302,11 @@ flowchart LR
 - How do I add extra docs roots with `AI_FAQ_DOCS_PATH` safely?
 - Why is the assistant saying RAG is unavailable?
 - How do I use `ai:help` in interactive versus one-shot mode?
+- Which subsystems does the AI module contain, and where does each one start?
+- Why does search live in Core rather than in the AI module?
+- Does the assistant remember earlier messages in the same conversation?
+- Why does nothing create `ActionRequest` records any more?
+- What replaced `ChatService::sendMessage()`, and why?
 
 ## Application content evaluation
 
