@@ -237,6 +237,11 @@ return [
         'sentence_transformers' => [
             'url' => env('SENTENCE_TRANSFORMERS_URL'),
             'api_key' => env('SENTENCE_TRANSFORMERS_API_KEY'),
+            // Per-request HTTP timeout (seconds) and documents per /embed batch.
+            // A CPU-bound embedding service is slow (~0.4s per long chunk), so keep
+            // the batch small enough that one batch completes within the timeout.
+            'timeout' => (int) env('SENTENCE_TRANSFORMERS_TIMEOUT', 30),
+            'batch_size' => (int) env('SENTENCE_TRANSFORMERS_BATCH_SIZE', 32),
         ],
 
         'cross_encoder' => [

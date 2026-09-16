@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Embeddings;
 
+use function ai_config_int;
 use function ai_config_nullable_string;
 use function ai_config_string;
 
@@ -72,6 +73,8 @@ final class EmbeddingsProviderFactory
         return new SentenceTransformersEmbeddingsProvider(
             url: ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'),
             api_key: ai_config_nullable_string('ai.providers.sentence_transformers.api_key'),
+            timeout: ai_config_int('ai.providers.sentence_transformers.timeout', 30),
+            batch_size: ai_config_int('ai.providers.sentence_transformers.batch_size', 32),
         );
     }
 }

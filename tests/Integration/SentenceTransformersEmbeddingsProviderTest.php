@@ -171,3 +171,25 @@ it('sets authorization header when api_key is provided', function (): void {
     );
     expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
+
+it('splits documents into requests according to the configured batch size', function (): void {
+    $emb = array_fill(0, 512, 0.1);
+
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => count($arg['json']['texts']) === 2))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$emb, $emb]])));
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => count($arg['json']['texts']) === 1))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$emb]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000', batch_size: 2);
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $result = $provider->embedDocuments([new Document('a'), new Document('b'), new Document('c')]);
+
+    expect($result)->toHaveCount(3);
+});

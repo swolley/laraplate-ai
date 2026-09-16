@@ -59,3 +59,14 @@ All replicas then share the same corpus via Elasticsearch.
 ### Embedding dimension changes
 
 If you change the embeddings model and vector size, create a **new** index (or drop and recreate) with updated `AI_FAQ_ES_EMBEDDING_DIMS`, then run `ai:index-rag-docs --full`.
+
+### Embedding service timeout and batch size
+
+`ai:index-rag-docs` calls the Sentence Transformers service in batches. A CPU-bound service is slow (~0.4s per long chunk), so a large batch can exceed the HTTP timeout and abort indexing (`cURL error 28 ... /embed`). Both are configurable:
+
+```env
+SENTENCE_TRANSFORMERS_TIMEOUT=120   # seconds per /embed request (default 30)
+SENTENCE_TRANSFORMERS_BATCH_SIZE=16 # documents per batch (default 32)
+```
+
+Keep `batch_size` small enough that one batch completes within `timeout`; on a GPU service the defaults are fine.

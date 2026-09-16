@@ -17,15 +17,18 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
 {
     private readonly Client $client;
 
-    private int $batch_size_limit = 128;
+    private readonly int $batch_size_limit;
 
     public function __construct(
         string $url = 'http://localhost:8000',
         ?string $api_key = null,
         int $timeout = 10,
+        int $batch_size = 128,
         private readonly bool $truncate = true,
         private readonly bool $normalize = true,
     ) {
+        $this->batch_size_limit = max(1, $batch_size);
+
         if (preg_match('/^https?:\/\//', $url) === 0) {
             $url = 'http://' . $url;
         }
