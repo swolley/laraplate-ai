@@ -73,8 +73,8 @@ The AI module configuration is automatically mapped as `ai.*` when the module is
 AI_EMBEDDINGS_ENABLED=true          # Enable embeddings generation
 AI_TRANSLATION_ENABLED=true          # Enable automatic translation
 
-# AI Provider (default: ollama)
-AI_PROVIDER=ollama                   # Options: ollama, openai, voyageai, mistral, sentence-transformers
+# Embeddings provider (default: sentence_transformers)
+AI_EMBEDDINGS_PROVIDER=sentence_transformers  # openai, ollama, voyageai, mistral, sentence_transformers
 
 # OpenAI Configuration
 OPENAI_API_KEY=                      # OpenAI API key
@@ -174,7 +174,7 @@ The AI Module utilizes several packages to enhance its functionality:
 - **Ollama**: `nomic-embed-text`, `nomic-embed-large` (and custom models)
 - **VoyageAI**: `voyage-3`, `voyage-3-large`, `voyage-3-lite`, `voyage-code-2`, `voyage-code-3`, `voyage-finance-2`, `voyage-law-2`
 - **Mistral**: Mistral embedding models
-- **Sentence Transformers**: Self-hosted Sentence Transformers API
+- **Sentence Transformers**: Self-hosted Sentence Transformers API — [installation guide](docs/SENTENCE_TRANSFORMERS_INSTALLATION.md)
 
 #### Automatic Translation
 - **OpenAI**: GPT models for translation
@@ -263,6 +263,7 @@ Core is the **event bus**; this module registers AI listeners and jobs. Full dia
 |-------|----------|
 | **Overview** (indexing + moderation, comparison, extension) | [Modules/Core/docs/EVENT_ORCHESTRATION.md](../Core/docs/EVENT_ORCHESTRATION.md) |
 | **Embeddings, Elasticsearch, translations** | [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md) |
+| **Self-hosted Sentence Transformers** | [docs/SENTENCE_TRANSFORMERS_INSTALLATION.md](docs/SENTENCE_TRANSFORMERS_INSTALLATION.md) |
 | **Modification moderation (AI vote)** | [docs/MODERATION.md](docs/MODERATION.md) |
 | **Optional text generation** (answers `AiTextGenerationRequested`, e.g. SAO ownership phrasing) | `HandleAiTextGenerationListener`, gated by `AI_TEXT_GENERATION_ENABLED` |
 | Chat, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |

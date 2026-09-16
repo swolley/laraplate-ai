@@ -66,12 +66,21 @@ sequenceDiagram
 
 ### Configuration
 
+Embeddings use `AI_EMBEDDINGS_PROVIDER` (not `AI_PROVIDER`). Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
+
 ```env
 AI_EMBEDDINGS_ENABLED=true
-AI_PROVIDER=ollama
-OPENAI_API_KEY=
+AI_EMBEDDINGS_PROVIDER=sentence_transformers
+SENTENCE_TRANSFORMERS_URL=http://embedding-host:8003
+SENTENCE_TRANSFORMERS_API_KEY=
+```
+
+Other providers (example: Ollama embeddings):
+
+```env
+AI_EMBEDDINGS_PROVIDER=ollama
 OLLAMA_API_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2:3b
+OLLAMA_MODEL=nomic-embed-text
 ```
 
 Core / Scout (see Core README):
@@ -79,7 +88,6 @@ Core / Scout (see Core README):
 ```env
 SCOUT_DRIVER=elasticsearch
 VECTOR_SEARCH_ENABLED=true
-EMBEDDING_PROVIDER=openai
 ```
 
 ---
