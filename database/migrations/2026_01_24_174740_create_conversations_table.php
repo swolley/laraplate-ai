@@ -29,6 +29,8 @@ return new class extends Migration
                 hasCreateUpdate: true,
                 hasSoftDelete: true,
             );
+
+            MigrateUtils::prefixIndex($table, 'user_id');
         });
     }
 

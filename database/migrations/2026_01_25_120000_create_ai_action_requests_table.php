@@ -38,6 +38,8 @@ return new class extends Migration
 
             $table->index(['user_id', 'status']);
             $table->index('status');
+            MigrateUtils::prefixIndex($table, 'conversation_id');
+            MigrateUtils::prefixIndex($table, 'modification_id');
 
             if (Schema::hasTable(CoreTables::Modifications->value)) {
                 $table->foreign('modification_id', "{$table_name}_modification_id_FK")->references('id')->on(CoreTables::Modifications->value)->nullOnDelete();
