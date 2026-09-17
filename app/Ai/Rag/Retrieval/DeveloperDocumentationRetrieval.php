@@ -8,6 +8,7 @@ use function ai_config_int;
 
 use Closure;
 use InvalidArgumentException;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Contracts\IEmbeddingService;
@@ -45,7 +46,8 @@ final readonly class DeveloperDocumentationRetrieval
         }
 
         try {
-            $embedding = $this->embedding_service->embedText($question);
+            $query_prefix = app(EmbeddingModelRegistry::class)->active()->queryPrefix;
+            $embedding = $this->embedding_service->embedText($query_prefix . $question);
 
             if ($embedding === []) {
                 throw new RuntimeException;

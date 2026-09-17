@@ -7,10 +7,13 @@ use Modules\AI\Contracts\IEmbeddingService;
 use NeuronAI\RAG\Document;
 
 it('returns developer index hits without an ACL or permission gate', function (): void {
+    config()->set('ai.features.embeddings.active', 'multilingual-e5-small');
+    config()->set('ai.features.embeddings.models.multilingual-e5-small.query_prefix', 'query: ');
+
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldReceive('embedText')
         ->once()
-        ->with('How do I register a module?')
+        ->with('query: How do I register a module?')
         ->andReturn([0.1, 0.2, 0.3]);
 
     $hit = new Document('Register the module in module.json.');

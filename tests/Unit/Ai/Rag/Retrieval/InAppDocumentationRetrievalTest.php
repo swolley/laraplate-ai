@@ -135,8 +135,11 @@ it('uses a global-only tenant filter for globally scoped assistance', function (
 });
 
 it('returns only safe citations from authorized scoped hits', function (): void {
+    config()->set('ai.features.embeddings.active', 'multilingual-e5-small');
+    config()->set('ai.features.embeddings.models.multilingual-e5-small.query_prefix', 'query: ');
+
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedText')->once()->with('Come modifico un contenuto?')->andReturn([0.1, 0.2, 0.3]);
+    $embedding_service->shouldReceive('embedText')->once()->with('query: Come modifico un contenuto?')->andReturn([0.1, 0.2, 0.3]);
 
     $hit = new Document('Apri il contenuto e seleziona Modifica.');
     $hit->sourceName = '/internal/path/content.md';
