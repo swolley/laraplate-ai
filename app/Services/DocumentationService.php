@@ -29,11 +29,15 @@ final readonly class DocumentationService
 {
     /**
      * @param  Closure(): DocumentationAgent|null  $agentFactory  Optional factory for testing
+     * @param  Closure(): bool|null  $ragPathsResolver  Whether the `rag_paths()` helper is
+     *                                                  available. Null asks PHP, which is what production does. Injecting it lets a test
+     *                                                  describe an application without the helper without reaching into this class.
      */
     public function __construct(
         private ?Closure $agentFactory = null,
         private ?SplitterInterface $splitter = null,
         private ?InAppDocumentationRetrieval $in_app_retrieval = null,
+        private ?Closure $ragPathsResolver = null,
     ) {}
 
     /**
@@ -138,8 +142,12 @@ final readonly class DocumentationService
         return true;
     }
 
-    protected function ragPathsFunctionExists(): bool
+    private function ragPathsFunctionExists(): bool
     {
+        if ($this->ragPathsResolver instanceof Closure) {
+            return ($this->ragPathsResolver)();
+        }
+
         return function_exists('rag_paths');
     }
 

@@ -73,9 +73,9 @@ final readonly class AssistantPolicyRuleSet
 
         return new self(
             instruction: $this->instruction . "\n" . $specific->instruction,
-            allowedCorpora: self::without(array_values(array_intersect($this->allowedCorpora, $specific->allowedCorpora)), $denied_corpora),
-            allowedTools: self::without(array_values(array_intersect($this->allowedTools, $specific->allowedTools)), $denied_tools),
-            allowedFields: self::without(array_values(array_intersect($this->allowedFields, $specific->allowedFields)), $denied_fields),
+            allowedCorpora: $this->without(array_values(array_intersect($this->allowedCorpora, $specific->allowedCorpora)), $denied_corpora),
+            allowedTools: $this->without(array_values(array_intersect($this->allowedTools, $specific->allowedTools)), $denied_tools),
+            allowedFields: $this->without(array_values(array_intersect($this->allowedFields, $specific->allowedFields)), $denied_fields),
             deniedCorpora: $denied_corpora,
             deniedTools: $denied_tools,
             deniedFields: $denied_fields,
@@ -99,7 +99,7 @@ final readonly class AssistantPolicyRuleSet
      * @param  list<string>  $denied
      * @return list<string>
      */
-    private static function without(array $allowed, array $denied): array
+    private function without(array $allowed, array $denied): array
     {
         $values = array_values(array_diff($allowed, $denied));
         sort($values, SORT_STRING);

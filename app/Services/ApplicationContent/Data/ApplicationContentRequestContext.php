@@ -20,8 +20,8 @@ final readonly class ApplicationContentRequestContext
         ?string $entity = null,
         public int|string|null $recordKey = null,
     ) {
-        $this->module = self::identifier($module);
-        $this->entity = $entity === null ? null : self::identifier($entity);
+        $this->module = $this->identifier($module);
+        $this->entity = $entity === null ? null : $this->identifier($entity);
 
         if (is_string($this->recordKey)
             && (mb_trim($this->recordKey) === '' || mb_strlen($this->recordKey) > 255)) {
@@ -29,7 +29,7 @@ final readonly class ApplicationContentRequestContext
         }
     }
 
-    private static function identifier(string $value): string
+    private function identifier(string $value): string
     {
         $value = mb_strtolower(mb_trim($value));
 

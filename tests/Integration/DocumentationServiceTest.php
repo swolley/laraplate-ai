@@ -549,13 +549,7 @@ it('checks elasticsearch store population for incremental reindex', function ():
 });
 
 it('returns no helper roots when rag_paths is unavailable', function (): void {
-    $service = new class extends DocumentationService
-    {
-        protected function ragPathsFunctionExists(): bool
-        {
-            return false;
-        }
-    };
+    $service = new DocumentationService(ragPathsResolver: static fn (): bool => false);
 
     $method = new ReflectionMethod(DocumentationService::class, 'helperRoots');
 
