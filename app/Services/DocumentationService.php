@@ -138,6 +138,11 @@ final readonly class DocumentationService
         return true;
     }
 
+    protected function ragPathsFunctionExists(): bool
+    {
+        return function_exists('rag_paths');
+    }
+
     /**
      * @param  list<array{source: string, excerpt: string, score: float|null}>  $citations
      */
@@ -212,11 +217,6 @@ final readonly class DocumentationService
         }
 
         return $roots;
-    }
-
-    private function ragPathsFunctionExists(): bool
-    {
-        return function_exists('rag_paths');
     }
 
     private function prefixFromHelperPath(string $path): string

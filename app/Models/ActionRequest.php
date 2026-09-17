@@ -13,9 +13,6 @@ use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
-/**
- * @mixin IdeHelperActionRequest
- */
 final class ActionRequest extends Model
 {
     /**
