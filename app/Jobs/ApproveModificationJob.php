@@ -62,7 +62,7 @@ final class ApproveModificationJob implements ShouldQueue
             $result = $service->analyze($request);
 
             /** @var User $system_user */
-            $system_user = User::query()->findOrFail($system_user_id);
+            $system_user = User::findOrFail($system_user_id);
 
             if (! ai_config_bool('ai.features.moderation.ai_participates_in_approvals', true)) {
                 return;
