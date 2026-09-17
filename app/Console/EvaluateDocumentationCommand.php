@@ -7,6 +7,7 @@ namespace Modules\AI\Console;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
+use Modules\AI\Ai\Rag\Retrieval\DeveloperDocumentationRetrieval;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationDataset;
@@ -30,6 +31,7 @@ final class EvaluateDocumentationCommand extends Command
     public function handle(
         DocumentationEvaluationService $evaluation,
         InAppDocumentationRetrieval $retrieval,
+        DeveloperDocumentationRetrieval $developerRetrieval,
         Filesystem $files,
     ): int {
         $module = $this->optionString('module');
@@ -66,17 +68,19 @@ final class EvaluateDocumentationCommand extends Command
                 return self::FAILURE;
             }
 
-            if (DocumentationIndexProfile::tryFrom($index) !== DocumentationIndexProfile::User) {
-                $this->error('Only the user documentation index is supported.');
+            $profile = DocumentationIndexProfile::tryFrom($index);
+
+            if ($profile === null) {
+                $this->error('The documentation index must be user or developer.');
 
                 return self::FAILURE;
             }
 
-            $report = $evaluation->evaluate(
-                $dataset,
-                'in-app-documentation',
-                static fn (string $question, AssistantAccessContext $access): array => $retrieval->retrieve($question, $access),
-            );
+            [$driver, $retrieve] = $profile === DocumentationIndexProfile::Developer
+                ? ['developer-documentation', static fn (string $question, AssistantAccessContext $access): array => $developerRetrieval->retrieve($question)]
+                : ['in-app-documentation', static fn (string $question, AssistantAccessContext $access): array => $retrieval->retrieve($question, $access)];
+
+            $report = $evaluation->evaluate($dataset, $driver, $retrieve);
 
             $encoded = json_encode(
                 $report,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Tests\Stubs\Documentation;
 
 use Closure;
+use Modules\AI\Ai\Rag\Retrieval\DeveloperDocumentationRetrieval;
 use Modules\AI\Ai\Rag\Retrieval\DocumentationRetrievalContext;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
 use NeuronAI\RAG\Document;
@@ -67,6 +68,19 @@ final class FakeDocumentationSearch
     }
 
     /**
+     * @param  array<string, list<Document>>  $rankedByQuery
+     */
+    public static function forDeveloperRetrieval(array $rankedByQuery): DeveloperDocumentationRetrieval
+    {
+        $search = new self($rankedByQuery);
+
+        return new DeveloperDocumentationRetrieval(
+            new StubDocumentationEmbeddingService,
+            static fn (array $embedding): array => $search->developerRanked($embedding),
+        );
+    }
+
+    /**
      * @param  list<string>  $breadcrumb
      * @param  list<string>  $requiredPermissions
      */
@@ -109,6 +123,15 @@ final class FakeDocumentationSearch
         $document->setScore(1.0);
 
         return $document;
+    }
+
+    /**
+     * @param  list<float>  $embedding
+     * @return list<Document>
+     */
+    public function developerRanked(array $embedding): array
+    {
+        return $this->rankedByHash[(int) ($embedding[0] ?? 0)] ?? [];
     }
 
     private function isVisible(Document $document, DocumentationRetrievalContext $context): bool

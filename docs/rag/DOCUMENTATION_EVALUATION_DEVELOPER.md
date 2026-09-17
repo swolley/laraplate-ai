@@ -25,6 +25,15 @@ dataset (JSON) ──► DocumentationEvaluationDataset ──► DocumentationE
 
 Grading identity is `Document::$sourceName` (the safe source label), the only stable per-document identity that survives the safe projection.
 
+## Index profiles (`--index=user|developer`)
+
+`ai:evaluate-documentation` evaluates one index profile per run; `--index` defaults to `user`.
+
+- **`user`** (default) routes through `InAppDocumentationRetrieval` exactly as described above: the user-facing corpus with the full audience/permission/tenant filtering and safe projection. Grading identity is `safe_source_label`.
+- **`developer`** routes through `DeveloperDocumentationRetrieval`: a plain vector search over the developer index (`DocumentationIndexProfile::Developer`) with **no** ACL, audience, or permission gate, because the developer corpus is not per-user access-controlled. Grading identity is the stored `Document::$sourceName` (e.g. `faq-module-Core/EVENT_ORCHESTRATION.md`); developer chunks carry no `safe_source_label`.
+
+The two retrievals are physically separate classes: the developer path exists so the developer corpus is measurable without adding a bypass branch to the security-gated in-app path. A developer dataset declares `"index_profile": "developer"` and is run with `--index=developer`; its `expected_source_labels` are the stored source names, not middle-dot safe labels. Developer fixtures use `FakeDocumentationSearch::forDeveloperRetrieval([...])` (an injectable search closure taking only the embedding, no access context), mirroring `::forInAppRetrieval`.
+
 ## Domain objects
 
 Owned by AI, mirroring `Modules/AI/app/Services/ApplicationContent/Evaluation/`:
