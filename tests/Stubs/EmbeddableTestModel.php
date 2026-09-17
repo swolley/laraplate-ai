@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Tests\Stubs;
 
 use Illuminate\Database\Eloquent\Model;
+use Modules\Core\Contracts\ISearchableModel;
 use Modules\Core\Search\Traits\Searchable;
 use Override;
 
@@ -12,7 +13,7 @@ use Override;
  * Minimal searchable + embeddable model for exercising the embeddings repair
  * command against a real table without depending on a production model.
  */
-class EmbeddableTestModel extends Model
+class EmbeddableTestModel extends Model implements ISearchableModel
 {
     use Searchable;
 

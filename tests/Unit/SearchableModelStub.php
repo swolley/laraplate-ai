@@ -7,9 +7,10 @@ namespace Modules\AI\Tests\Unit;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Core\Contracts\ISearchableModel;
 use Modules\Core\Search\Traits\Searchable;
 
-class SearchableModelStub extends Model
+class SearchableModelStub extends Model implements ISearchableModel
 {
     use HasFactory;
     use Searchable;
