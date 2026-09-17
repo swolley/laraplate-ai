@@ -1,0 +1,274 @@
+{
+  "version": "1",
+  "corpus_revision": "developer-2026-09-17",
+  "module": "core",
+  "index_profile": "developer",
+  "data_classification": "synthetic",
+  "cases": [
+    {
+      "id": "nd-cannotunlock",
+      "query": "What is CannotUnlockException and when is it thrown?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/RECORD_LOCKING_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/RECORD_LOCKING_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "near-dup"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "nd-lock-nat",
+      "query": "As a developer, how do I programmatically acquire and release a record lock?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/RECORD_LOCKING_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/RECORD_LOCKING_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "near-dup"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "nd-textcompiler",
+      "query": "What does the DatabaseTextMatchCompiler do?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_MATCHING_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_MATCHING_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "near-dup"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "nd-search-nat",
+      "query": "How is developer-facing search matching implemented across database drivers?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_MATCHING_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_MATCHING_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "near-dup"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "nd-importcmd",
+      "query": "How do I extend AbstractImportCommand to add a new interactive import?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "near-dup"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "k-perf-crud",
+      "query": "perf:crud",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/PERFORMANCE_TOOLKIT.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/PERFORMANCE_TOOLKIT.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "k-ireranker",
+      "query": "IReranker",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "k-ensemble",
+      "query": "EnsembleSearchService",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "s-event-orch",
+      "query": "How does event orchestration work in the Core module?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/EVENT_ORCHESTRATION.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/EVENT_ORCHESTRATION.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "s-notifications",
+      "query": "How are in-app notifications delivered to users?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/NOTIFICATIONS.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/NOTIFICATIONS.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "s-retrieval",
+      "query": "How does the search retrieval pipeline rank and rerank results?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "u-stripe",
+      "query": "How do I configure Stripe billing webhooks?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [],
+      "expected_citation_labels": [],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": false,
+      "expect_refusal": true,
+      "slices": [
+        "unsupported"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "u-graphql",
+      "query": "How do I enable GraphQL schema stitching for the public API?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [],
+      "expected_citation_labels": [],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": false,
+      "expect_refusal": true,
+      "slices": [
+        "unsupported"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    }
+  ]
+}
