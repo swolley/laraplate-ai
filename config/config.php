@@ -114,7 +114,12 @@ return [
             ],
             'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
             // 'max_documents' => (int) env('AI_FAQ_MAX_DOCS', 5),
-            // 'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.7),
+            // Minimum cosine-similarity score a documentation hit must reach to be
+            // returned; below it the retriever abstains (empty result) rather than
+            // surfacing noise. 0.0 disables the filter. NOTE: with the compact score
+            // range of small models (e.g. e5-small tops out ~0.94 and scores unrelated
+            // docs ~0.92) a global threshold is fragile — tune per corpus/model.
+            'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.0),
             // 'question_detection' => [
             //     'enabled' => env('AI_FAQ_QUESTION_DETECTION_ENABLED', true),
             //     // Custom question words per locale (optional override)

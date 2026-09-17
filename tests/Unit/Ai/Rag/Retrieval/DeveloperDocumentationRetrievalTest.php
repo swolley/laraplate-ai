@@ -37,6 +37,30 @@ it('returns developer index hits without an ACL or permission gate', function ()
         ->and($documents[0]->getScore())->toBe(0.87);
 });
 
+it('drops documents scoring below the configured minimum similarity', function (): void {
+    config()->set('ai.features.faq.min_similarity', 0.9);
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedText')->once()->andReturn([0.1, 0.2, 0.3]);
+
+    $high = new Document('Relevant.');
+    $high->sourceName = 'faq-module-Core/EVENT_ORCHESTRATION.md';
+    $high->setScore(0.95);
+    $low = new Document('Barely related.');
+    $low->sourceName = 'faq-module-Core/GLOSSARY.md';
+    $low->setScore(0.80);
+
+    $retrieval = new DeveloperDocumentationRetrieval(
+        embedding_service: $embedding_service,
+        search: static fn (): array => [$high, $low],
+    );
+
+    $documents = $retrieval->retrieve('anything');
+
+    expect($documents)->toHaveCount(1)
+        ->and($documents[0]->sourceName)->toBe('faq-module-Core/EVENT_ORCHESTRATION.md');
+});
+
 it('rejects a blank developer question', function (): void {
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldReceive('embedText')->never();

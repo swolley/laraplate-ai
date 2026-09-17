@@ -56,7 +56,7 @@ final readonly class InAppDocumentationRetrieval
                 ? ($this->search)($embedding, $context)
                 : $this->searchUserIndex($embedding, $context);
 
-            return $this->safeDocuments($documents);
+            return $this->aboveMinimumSimilarity($this->safeDocuments($documents));
         } catch (Throwable) {
             throw new RuntimeException('In-app documentation retrieval is unavailable.');
         }
@@ -78,6 +78,24 @@ final readonly class InAppDocumentationRetrieval
         }
 
         return $store->similaritySearchForContext($embedding, $context);
+    }
+
+    /**
+     * @param  list<Document>  $documents
+     * @return list<Document>
+     */
+    private function aboveMinimumSimilarity(array $documents): array
+    {
+        $threshold = (float) config('ai.features.faq.min_similarity', 0.0);
+
+        if ($threshold <= 0.0) {
+            return $documents;
+        }
+
+        return array_values(array_filter(
+            $documents,
+            fn (Document $document): bool => $threshold <= $document->getScore(),
+        ));
     }
 
     /**

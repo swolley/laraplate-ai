@@ -57,7 +57,7 @@ final readonly class DeveloperDocumentationRetrieval
                 ? ($this->search)($embedding)
                 : $this->searchDeveloperIndex($embedding);
 
-            return $this->onlyValidDocuments($documents);
+            return $this->aboveMinimumSimilarity($this->onlyValidDocuments($documents));
         } catch (Throwable) {
             throw new RuntimeException('Developer documentation retrieval is unavailable.');
         }
@@ -77,6 +77,24 @@ final readonly class DeveloperDocumentationRetrieval
         }
 
         return $store->similaritySearch($embedding);
+    }
+
+    /**
+     * @param  list<Document>  $documents
+     * @return list<Document>
+     */
+    private function aboveMinimumSimilarity(array $documents): array
+    {
+        $threshold = (float) config('ai.features.faq.min_similarity', 0.0);
+
+        if ($threshold <= 0.0) {
+            return $documents;
+        }
+
+        return array_values(array_filter(
+            $documents,
+            fn (Document $document): bool => $threshold <= $document->getScore(),
+        ));
     }
 
     /**

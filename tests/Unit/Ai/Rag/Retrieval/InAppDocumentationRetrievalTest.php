@@ -164,6 +164,27 @@ it('returns only safe citations from authorized scoped hits', function (): void 
         ->and($documents[0]->getScore())->toBe(0.91);
 });
 
+it('drops documents scoring below the configured minimum similarity', function (): void {
+    config()->set('ai.features.faq.min_similarity', 0.95);
+    config()->set('ai.features.embeddings.active', 'multilingual-e5-small');
+    config()->set('ai.features.embeddings.models.multilingual-e5-small.query_prefix', 'query: ');
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedText')->once()->andReturn([0.1, 0.2, 0.3]);
+
+    $hit = new Document('Weakly related passage.');
+    $hit->sourceName = '/internal/path/content.md';
+    $hit->metadata = safe_retrieval_hit_metadata();
+    $hit->setScore(0.90);
+
+    $retrieval = new InAppDocumentationRetrieval(
+        embedding_service: $embedding_service,
+        search: static fn (): array => [$hit],
+    );
+
+    expect($retrieval->retrieve('Come modifico un contenuto?', in_app_access_context()))->toBe([]);
+});
+
 it('fails closed without retrying another corpus when scoped retrieval fails', function (): void {
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldReceive('embedText')->once()->andReturn([0.1, 0.2, 0.3]);

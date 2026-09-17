@@ -126,7 +126,7 @@ AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/a
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
 AI_FAQ_ES_EMBEDDING_DIMS=384         # Must match your embeddings model dimensionality
 AI_FAQ_MAX_DOCS=5                    # Max chunks retrieved per question
-AI_FAQ_MIN_SIMILARITY=0.7            # Minimum similarity score (where applicable)
+AI_FAQ_MIN_SIMILARITY=0.0            # Min cosine score to return a documentation hit; below it retrieval abstains (empty) instead of returning noise. 0 = off. Small models compress scores (e5-small tops ~0.94, unrelated ~0.92) so a useful threshold sits ~0.93 in a narrow band — tune per corpus/model.
 AI_FAQ_FORMAT_CITATIONS=true         # Append source list to RAG answers
 AI_FAQ_SPLITTER=markdown_aware       # Chunking: markdown_aware, sentence, delimiter
 AI_FAQ_SPLITTER_MAX_WORDS=250
