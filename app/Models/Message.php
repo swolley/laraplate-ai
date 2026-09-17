@@ -11,6 +11,9 @@ use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
 use Override;
 
+/**
+ * @mixin IdeHelperMessage
+ */
 final class Message extends Model
 {
     /**

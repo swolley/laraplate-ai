@@ -13,6 +13,9 @@ use NeuronAI\Chat\Enums\MessageRole;
 use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
+/**
+ * @mixin IdeHelperConversation
+ */
 final class Conversation extends Model
 {
     /**

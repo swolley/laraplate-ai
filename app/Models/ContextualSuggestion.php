@@ -11,6 +11,9 @@ use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
 
+/**
+ * @mixin IdeHelperContextualSuggestion
+ */
 final class ContextualSuggestion extends Model
 {
     /**

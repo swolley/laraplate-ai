@@ -9,6 +9,9 @@ use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
 use Override;
 
+/**
+ * @mixin IdeHelperConversationSummary
+ */
 final class ConversationSummary extends Model
 {
     /**
