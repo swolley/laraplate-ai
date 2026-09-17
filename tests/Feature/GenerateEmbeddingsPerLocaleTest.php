@@ -27,6 +27,38 @@ function perLocaleEmbeddingDocument(array $vector): Document
     return $document;
 }
 
+/**
+ * Create a bilingual (it/en) translated model and embed both locales once with
+ * the given vectors, returning the model.
+ *
+ * @param  list<float>  $it
+ * @param  list<float>  $en
+ */
+function makeBilingualEmbeddedModel(array $it = [0.1, 0.1], array $en = [0.2, 0.2]): TranslatedEmbeddableTestModel
+{
+    $model = new TranslatedEmbeddableTestModel();
+    $model->saveQuietly();
+
+    TranslatedEmbeddableTestModelTranslation::query()->create([
+        'translated_embeddable_test_model_id' => $model->id,
+        'locale' => 'it',
+        'title' => 'Titolo italiano',
+    ]);
+    TranslatedEmbeddableTestModelTranslation::query()->create([
+        'translated_embeddable_test_model_id' => $model->id,
+        'locale' => 'en',
+        'title' => 'English title',
+    ]);
+
+    $service = Mockery::mock(IEmbeddingService::class);
+    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano')->andReturn([perLocaleEmbeddingDocument($it)]);
+    $service->shouldReceive('embedDocument')->once()->with('English title')->andReturn([perLocaleEmbeddingDocument($en)]);
+
+    (new GenerateEmbeddingsJob($model))->handle($service);
+
+    return $model;
+}
+
 beforeEach(function (): void {
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();
@@ -155,4 +187,69 @@ it('regenerates only the requested locale, leaving the other locale untouched', 
         ->and($en_row_after->id)->toBe($en_row_before->id)
         ->and($en_row_after->updated_at->equalTo($en_row_before->updated_at))->toBeTrue()
         ->and($en_row_after->embedding)->toBe([0.2, 0.2]);
+});
+
+it('skips re-embedding on a full re-run when content and model are unchanged', function (): void {
+    $model = makeBilingualEmbeddedModel();
+    $before = $model->embeddings()->get()->keyBy('locale');
+
+    // Full re-run (no locale) with nothing changed: the service must not be called.
+    $service = Mockery::mock(IEmbeddingService::class);
+    $service->shouldNotReceive('embedDocument');
+
+    (new GenerateEmbeddingsJob($model))->handle($service);
+
+    $after = $model->embeddings()->get()->keyBy('locale');
+
+    expect($after)->toHaveCount(2)
+        ->and($after['it']->id)->toBe($before['it']->id)
+        ->and($after['en']->id)->toBe($before['en']->id)
+        ->and($after['it']->embedding)->toBe([0.1, 0.1])
+        ->and($after['en']->embedding)->toBe([0.2, 0.2]);
+});
+
+it('recomputes only the changed locale on a full re-run', function (): void {
+    $model = makeBilingualEmbeddedModel();
+    $en_before = $model->embeddings()->get()->firstWhere('locale', 'en');
+
+    // Change only the italian translation.
+    TranslatedEmbeddableTestModelTranslation::query()
+        ->where('translated_embeddable_test_model_id', $model->id)
+        ->where('locale', 'it')
+        ->update(['title' => 'Titolo italiano aggiornato']);
+
+    // Full re-run (no locale): only the italian embedding is regenerated.
+    $service = Mockery::mock(IEmbeddingService::class);
+    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano aggiornato')->andReturn([perLocaleEmbeddingDocument([0.9, 0.9])]);
+    $service->shouldNotReceive('embedDocument')->with('English title');
+
+    (new GenerateEmbeddingsJob($model))->handle($service);
+
+    $after = $model->embeddings()->get()->keyBy('locale');
+
+    expect($after)->toHaveCount(2)
+        ->and($after['it']->embedding)->toBe([0.9, 0.9])
+        ->and($after['en']->id)->toBe($en_before->id)
+        ->and($after['en']->embedding)->toBe([0.2, 0.2]);
+});
+
+it('recomputes every locale when the active embedding model changed', function (): void {
+    $model = makeBilingualEmbeddedModel();
+
+    // Switch the active embedding-model profile: model_key no longer matches.
+    config()->set('ai.features.embeddings.active', 'all-MiniLM-L6-v2');
+    $new_key = app(EmbeddingModelRegistry::class)->active()->key;
+
+    $service = Mockery::mock(IEmbeddingService::class);
+    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano')->andReturn([perLocaleEmbeddingDocument([0.3, 0.3])]);
+    $service->shouldReceive('embedDocument')->once()->with('English title')->andReturn([perLocaleEmbeddingDocument([0.4, 0.4])]);
+
+    (new GenerateEmbeddingsJob($model))->handle($service);
+
+    $rows = $model->embeddings()->get();
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows->pluck('model_key')->unique()->all())->toBe([$new_key])
+        ->and($rows->firstWhere('locale', 'it')->embedding)->toBe([0.3, 0.3])
+        ->and($rows->firstWhere('locale', 'en')->embedding)->toBe([0.4, 0.4]);
 });

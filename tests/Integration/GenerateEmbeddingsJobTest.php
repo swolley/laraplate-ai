@@ -71,14 +71,19 @@ it('replaces existing embeddings then creates records stamped with locale and mo
     $default_locale = (string) (config('app.locale') ?: 'en');
     $expected_model_key = app(EmbeddingModelRegistry::class)->active()->key;
 
-    // A regeneration must delete the model's previous embeddings before creating
-    // the fresh set, otherwise retries append duplicate ModelEmbedding rows.
-    // Non-translated model: the default-locale key maps to a null `locale` column.
+    // A regeneration with no fresh existing row must delete the model's previous
+    // embeddings for the locale before creating the fresh set, otherwise retries
+    // append duplicate ModelEmbedding rows. Non-translated model: the default-locale
+    // key maps to a null `locale` column, and the embedded text is hash-stamped.
+    $expected_hash = hash('sha256', 'Some text to embed');
+
     $embeddingRelation = Mockery::mock();
+    $embeddingRelation->shouldReceive('get')->andReturn(collect());
+    $embeddingRelation->shouldReceive('forLocale')->andReturnSelf();
     $embeddingRelation->shouldReceive('delete')->once();
     $embeddingRelation->shouldReceive('create')
         ->once()
-        ->with(['embedding' => [0.1, 0.2], 'locale' => null, 'model_key' => $expected_model_key])
+        ->with(['embedding' => [0.1, 0.2], 'locale' => null, 'model_key' => $expected_model_key, 'content_hash' => $expected_hash])
         ->andReturn(null);
 
     $model = Mockery::mock(Model::class)->makePartial();

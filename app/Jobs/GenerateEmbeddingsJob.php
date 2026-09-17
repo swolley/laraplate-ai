@@ -21,6 +21,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Contracts\IEmbeddableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Concerns\HasTranslations;
+use Modules\Core\Models\ModelEmbedding;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
 
@@ -86,8 +87,6 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     /**
      * @throws ClientExceptionInterface
      * @throws JsonException
-     *
-     * @codeCoverageIgnore
      */
     public function handle(IEmbeddingService $embedding_service): void
     {
@@ -105,26 +104,53 @@ final class GenerateEmbeddingsJob implements ShouldQueue
 
         try {
             $modelKey = app(EmbeddingModelRegistry::class)->active()->key;
+            $isTranslated = class_uses_trait($model, HasTranslations::class);
+            $defaultLocale = config('app.locale') ?: 'en';
 
-            // Replace any previous embeddings so a retry or manual regeneration
-            // does not append duplicate ModelEmbedding rows: all locales when
-            // no locale was requested, otherwise only the requested locale's.
-            if ($this->locale === null) {
-                $model->embeddings()->delete();
-            } else {
-                $model->embeddings()->forLocale($this->locale)->delete();
-            }
+            // Snapshot of the existing embeddings in scope, so a locale whose text
+            // and embedding model are both unchanged can be kept instead of being
+            // deleted and recomputed. This avoids re-embedding every locale on each
+            // reindex; only changed or model-stale locales hit the embedding service.
+            $existing = ($this->locale === null
+                ? $model->embeddings()
+                : $model->embeddings()->forLocale($this->locale)
+            )->get();
+
+            $processedLocales = [];
 
             foreach ($byLocale as $loc => $text) {
-                $documents = $embedding_service->embedDocument($text);
+                $rowLocale = ($loc === $defaultLocale && ! $isTranslated) ? null : $loc;
+                $processedLocales[] = $rowLocale;
+                $contentHash = hash('sha256', $text);
 
-                foreach ($documents as $document) {
+                $isFresh = $existing->first(static fn (ModelEmbedding $row): bool => $row->locale === $rowLocale
+                    && $row->model_key === $modelKey
+                    && $row->content_hash === $contentHash) !== null;
+
+                if ($isFresh) {
+                    continue;
+                }
+
+                // Replace only this locale's rows so a retry or partial change does
+                // not append duplicates or touch fresh locales.
+                $model->embeddings()->forLocale($rowLocale)->delete();
+
+                foreach ($embedding_service->embedDocument($text) as $document) {
                     $model->embeddings()->create([
                         'embedding' => $document->embedding,
-                        'locale' => $loc === (config('app.locale') ?: 'en') && ! class_uses_trait($model, HasTranslations::class) ? null : $loc,
+                        'locale' => $rowLocale,
                         'model_key' => $modelKey,
+                        'content_hash' => $contentHash,
                     ]);
                 }
+            }
+
+            // On a full run, drop rows for locales that no longer exist (e.g. a
+            // removed translation) so the search document keeps no stale vector.
+            if ($this->locale === null) {
+                $model->embeddings()->get()
+                    ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $processedLocales, true))
+                    ->each(static fn (ModelEmbedding $row) => $row->delete());
             }
 
             event(new ModelPreProcessingCompleted($model, 'embeddings'));
