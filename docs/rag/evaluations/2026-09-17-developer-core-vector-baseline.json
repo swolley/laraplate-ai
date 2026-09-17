@@ -8,8 +8,8 @@
     "data_classification": "synthetic",
     "case_count": 13,
     "metrics": {
-        "source_hit_at_k": 0.9091,
-        "mean_reciprocal_rank": 0.8182,
+        "source_hit_at_k": 1.0,
+        "mean_reciprocal_rank": 0.7803,
         "citation_precision": 0.4923,
         "authorized_empty_accuracy": 0.0,
         "supported_answer_rate": 1.0,
@@ -17,16 +17,16 @@
         "unavailable_rate": 0.0
     },
     "latency_ms": {
-        "average": 132.3575,
-        "p50": 131.2274,
-        "p95": 167.814,
-        "max": 167.814
+        "average": 277.6116,
+        "p50": 214.7058,
+        "p95": 637.6218,
+        "max": 637.6218
     },
     "slices": {
         "locale": {
             "en": {
-                "source_hit_at_k": 0.9091,
-                "mean_reciprocal_rank": 0.8182,
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.7803,
                 "citation_precision": 0.4923,
                 "authorized_empty_accuracy": 0.0,
                 "supported_answer_rate": 1.0,
@@ -36,8 +36,8 @@
         },
         "category": {
             "keyword": {
-                "source_hit_at_k": 0.6667,
-                "mean_reciprocal_rank": 0.6667,
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.75,
                 "citation_precision": 0.3333,
                 "authorized_empty_accuracy": 0.0,
                 "supported_answer_rate": 1.0,
@@ -46,8 +46,8 @@
             },
             "near-dup": {
                 "source_hit_at_k": 1.0,
-                "mean_reciprocal_rank": 0.8,
-                "citation_precision": 0.6,
+                "mean_reciprocal_rank": 0.7667,
+                "citation_precision": 0.56,
                 "authorized_empty_accuracy": 0.0,
                 "supported_answer_rate": 1.0,
                 "refusal_accuracy": 1.0,
@@ -55,8 +55,8 @@
             },
             "semantic": {
                 "source_hit_at_k": 1.0,
-                "mean_reciprocal_rank": 1.0,
-                "citation_precision": 0.8,
+                "mean_reciprocal_rank": 0.8333,
+                "citation_precision": 0.8667,
                 "authorized_empty_accuracy": 0.0,
                 "supported_answer_rate": 1.0,
                 "refusal_accuracy": 1.0,

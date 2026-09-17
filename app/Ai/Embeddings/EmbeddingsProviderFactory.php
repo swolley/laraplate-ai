@@ -75,6 +75,19 @@ final class EmbeddingsProviderFactory
             api_key: ai_config_nullable_string('ai.providers.sentence_transformers.api_key'),
             timeout: ai_config_int('ai.providers.sentence_transformers.timeout', 30),
             batch_size: ai_config_int('ai.providers.sentence_transformers.batch_size', 32),
+            model: self::activeServiceModel(),
         );
+    }
+
+    /**
+     * The active embedding profile's `service_model`, sent per request so the
+     * embedding service (which is multi-model) uses the model Laraplate expects.
+     * Null when unresolved, letting the service fall back to its own default.
+     */
+    private static function activeServiceModel(): ?string
+    {
+        $active = ai_config_string('ai.features.embeddings.active', 'multilingual-e5-small');
+
+        return ai_config_nullable_string("ai.features.embeddings.models.{$active}.service_model");
     }
 }

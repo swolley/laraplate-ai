@@ -54,7 +54,8 @@ Content-Type: application/json
   "texts": ["first", "second"],
   "truncation": true,
   "normalize_embeddings": true,
-  "max_length": 512
+  "max_length": 512,
+  "model": "intfloat/multilingual-e5-small"
 }
 ```
 
@@ -62,9 +63,16 @@ Content-Type: application/json
 
 ```json
 {
+  "model": "intfloat/multilingual-e5-small",
   "embeddings": [[0.1, 0.2, "..."], [0.3, 0.4, "..."]]
 }
 ```
+
+### Model selection (multi-model, request-driven)
+
+The `model` field is **optional**. Laraplate sends the active embedding profile's `service_model` (`ai.features.embeddings.models.<active>.service_model`) on every request, so the **Laravel config is the single source of truth** and the service never drifts from what the application expects. When `model` is omitted, the service uses its own `EMBEDDING_MODEL` default.
+
+The service loads models **lazily** and keeps up to `EMBEDDING_MODEL_CACHE` of them resident (LRU), so switching the active model — or embedding with two models during a migration window — needs no service restart. `/health` reports the default and the currently loaded models. All models served concurrently must share the configured vector dimension (384); a model with a different output size needs its own index (see *Choose a model*).
 
 Optional authentication: if you configure an API key on the Python service, Laraplate sends `Authorization: Bearer {key}` (env `SENTENCE_TRANSFORMERS_API_KEY`).
 
@@ -108,10 +116,11 @@ Recommended models (384-d output):
 
 | Hugging Face model | Dims | Notes |
 |--------------------|------|-------|
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Good default for multilingual CMS content |
-| `sentence-transformers/all-MiniLM-L6-v2` | 384 | Lighter; English-centric |
+| `intfloat/multilingual-e5-small` | 384 | **Default** (`ai.features.embeddings.active`). Multilingual; requires the `query:` / `passage:` prefixes, which Laraplate adds from the model profile. |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Alternative multilingual model; no prefixes. |
+| `sentence-transformers/all-MiniLM-L6-v2` | 384 | Lighter; English-centric; no prefixes. |
 
-If you switch to a model with a different output size, realign Laraplate and Elasticsearch (new index mapping, update dimension settings, full re-embed).
+The service is **multi-model**: `EMBEDDING_MODEL` is only the default served when a request omits `model`. Keep the default equal to the active profile's `service_model` so `/health` matches what `ai:embeddings:repair` expects. If you switch to a model with a different output size, realign Laraplate and Elasticsearch (new index mapping, update dimension settings, full re-embed).
 
 `max_length: 512` in the API request is the **token truncation limit** for model input, not the embedding vector size.
 
@@ -135,106 +144,117 @@ mkdir -p ~/laraplate-embeddings && cd ~/laraplate-embeddings
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install sentence-transformers fastapi uvicorn[standard] torch
+pip install sentence-transformers flask torch
 ```
 
-Model weights download from Hugging Face on first start (~hundreds of MB for MiniLM-class models).
+Model weights download from Hugging Face on first use (~hundreds of MB per model). The service downloads each requested model the first time it is asked for and caches it.
 
-### Example API server
+### Example API server (multi-model)
 
-Create `server.py`:
+Create `sentence-api.py`. It serves any model on demand: it keeps the `EMBEDDING_MODEL` default warm, lazy-loads any other model named in a request, and keeps up to `EMBEDDING_MODEL_CACHE` models resident (LRU).
 
 ```python
 import os
-from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from flask import Flask, jsonify, request
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = os.getenv(
-    "EMBEDDING_MODEL",
-    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-)
-API_KEY = os.getenv("API_KEY", "")
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", "8003"))
+app = Flask(__name__)
 
-app = FastAPI()
-model = SentenceTransformer(MODEL_NAME)
+# Default model, and how many models to keep resident. Laraplate sends the
+# active profile's service_model in each request, so this default is only used
+# when a request omits "model".
+DEFAULT_MODEL = os.environ.get("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
+MODEL_CACHE = max(1, int(os.environ.get("EMBEDDING_MODEL_CACHE", "2")))
 
-
-class EmbedRequest(BaseModel):
-    text: Optional[str] = None
-    texts: Optional[list[str]] = None
-    truncation: bool = True
-    normalize_embeddings: bool = True
-    max_length: int = 512
+# name -> SentenceTransformer, ordered oldest..newest (simple LRU by re-insert).
+_models = {}
 
 
-def check_auth(authorization: Optional[str]) -> None:
-    if not API_KEY:
-        return
-    if not authorization or authorization != f"Bearer {API_KEY}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def load_model(name):
+    name = name or DEFAULT_MODEL
+    model = _models.pop(name, None)
+    if model is None:
+        model = SentenceTransformer(name)
+    _models[name] = model  # mark as most-recently used
+    while len(_models) > MODEL_CACHE:
+        _models.pop(next(iter(_models)))
+    return name, model
 
 
-@app.post("/embed")
-def embed(req: EmbedRequest, authorization: Optional[str] = Header(default=None)):
-    check_auth(authorization)
-
-    if req.texts is not None:
-        inputs = req.texts
-    elif req.text is not None:
-        inputs = [req.text]
-    else:
-        raise HTTPException(status_code=422, detail="Provide text or texts")
-
-    embeddings = model.encode(
-        inputs,
-        normalize_embeddings=req.normalize_embeddings,
-        truncate=req.truncation,
-        batch_size=min(len(inputs), 128),
-    )
-
-    return {"embeddings": embeddings.tolist()}
+# Warm the default so the first embed request is not a cold load.
+load_model(DEFAULT_MODEL)
 
 
-@app.get("/health")
+@app.route("/health", methods=["GET"])
 def health():
-    return {
-        "status": "ok",
-        "model": MODEL_NAME,
-        "dims": model.get_sentence_embedding_dimension(),
-    }
+    return jsonify({
+        "status": "healthy",
+        "model": DEFAULT_MODEL,
+        "default_model": DEFAULT_MODEL,
+        "loaded_models": list(_models.keys()),
+        "model_cache": MODEL_CACHE,
+    })
+
+
+@app.route("/embed", methods=["POST"])
+def embed():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        if "texts" in data:
+            texts = data["texts"]
+        elif "text" in data:
+            texts = [data["text"]]
+        else:
+            return jsonify({"error": "No text or texts provided"}), 400
+
+        name, model = load_model(data.get("model"))
+        normalize = bool(data.get("normalize_embeddings", True))
+        embeddings = model.encode(texts, normalize_embeddings=normalize)
+
+        return jsonify({
+            "model": name,
+            "embeddings": [embedding.tolist() for embedding in embeddings],
+        })
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
 ```
 
 ### Run manually
 
 ```bash
 source .venv/bin/activate
-export EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-export PORT=8003
-# export API_KEY=your-secret   # optional
-uvicorn server:app --host 0.0.0.0 --port "$PORT"
+export EMBEDDING_MODEL=intfloat/multilingual-e5-small
+export EMBEDDING_MODEL_CACHE=2
+python sentence-api.py
 ```
 
 ### systemd unit (production)
 
 ```ini
-# /etc/systemd/system/laraplate-embeddings.service
+# /etc/systemd/system/sentence-transformers.service
 [Unit]
-Description=Laraplate Sentence Transformers API
+Description=Sentence Transformers API Service
 After=network.target
+Wants=network.target
 
 [Service]
-User=embeddings
-WorkingDirectory=/home/embeddings/laraplate-embeddings
-Environment=EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-Environment=PORT=8003
-Environment=API_KEY=
-ExecStart=/home/embeddings/laraplate-embeddings/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 8003
+Type=simple
+User=root
+WorkingDirectory=/opt
+Environment=PATH=/opt/ai-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=EMBEDDING_MODEL=intfloat/multilingual-e5-small
+Environment=EMBEDDING_MODEL_CACHE=2
+ExecStart=/opt/ai-env/bin/python /opt/sentence-api.py
 Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -242,21 +262,32 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now laraplate-embeddings
+sudo systemctl restart sentence-transformers
 ```
+
+Keep `EMBEDDING_MODEL` equal to the active Laraplate profile's `service_model`. On a first request for a new model the service downloads and loads it (a few seconds to a minute); subsequent requests are fast while it stays in the LRU cache.
 
 ---
 
 ## Verify the embedding host
 
 ```bash
-curl -s "http://127.0.0.1:8003/health"
-# Expect dims: 384 for the recommended multilingual MiniLM model
+curl -s "http://127.0.0.1:8000/health"
+# {"status":"healthy","model":"intfloat/multilingual-e5-small",
+#  "default_model":"intfloat/multilingual-e5-small",
+#  "loaded_models":["intfloat/multilingual-e5-small"],"model_cache":2}
 
-curl -s -X POST "http://127.0.0.1:8003/embed" \
+# Default model (dimension check — expect 384):
+curl -s -X POST "http://127.0.0.1:8000/embed" \
   -H "Content-Type: application/json" \
-  -d '{"text":"hello","truncation":true,"normalize_embeddings":true,"max_length":512}' \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['embeddings'][0]))"
+  -d '{"text":"hello","normalize_embeddings":true}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'], len(d['embeddings'][0]))"
+
+# Explicit model (lazy-loads it, then reports it in the response and /health):
+curl -s -X POST "http://127.0.0.1:8000/embed" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"hello","model":"sentence-transformers/all-MiniLM-L6-v2"}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['model'], len(d['embeddings'][0]))"
 ```
 
 From the Laraplate application server, repeat the same checks against the remote IP/hostname and port.
@@ -271,11 +302,13 @@ Add or update `.env` on the Laravel host:
 AI_EMBEDDINGS_ENABLED=true
 AI_EMBEDDINGS_PROVIDER=sentence_transformers
 
-SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8003
+SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
 
 AI_FAQ_ES_EMBEDDING_DIMS=384
 ```
+
+The active embedding model is chosen in `config/` (`ai.features.embeddings.active`, default `multilingual-e5-small`), not in `.env`; Laraplate sends that profile's `service_model` to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
 
 Notes:
 

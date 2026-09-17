@@ -26,6 +26,7 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
         int $batch_size = 128,
         private readonly bool $truncate = true,
         private readonly bool $normalize = true,
+        private readonly ?string $model = null,
     ) {
         $this->batch_size_limit = max(1, $batch_size);
 
@@ -59,6 +60,7 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
                 'truncation' => $this->truncate,
                 'normalize_embeddings' => $this->normalize,
                 'max_length' => $this->getEmbeddingLength(),
+                ...$this->modelPayload(),
             ],
         ]);
 
@@ -94,6 +96,7 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
                     'truncation' => $this->truncate,
                     'normalize_embeddings' => $this->normalize,
                     'max_length' => $this->getEmbeddingLength(),
+                    ...$this->modelPayload(),
                 ],
             ]);
 
@@ -173,5 +176,17 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
     private function getEmbeddingLength(): int
     {
         return 512;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function modelPayload(): array
+    {
+        if ($this->model === null || $this->model === '') {
+            return [];
+        }
+
+        return ['model' => $this->model];
     }
 }

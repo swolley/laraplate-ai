@@ -172,6 +172,51 @@ it('sets authorization header when api_key is provided', function (): void {
     expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
 
+it('sends the configured model in a single-text embed request', function (): void {
+    $embeddings = array_fill(0, 384, 0.1);
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => ($arg['json']['model'] ?? null) === 'intfloat/multilingual-e5-small'))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$embeddings]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000', model: 'intfloat/multilingual-e5-small');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('hello world');
+});
+
+it('sends the configured model in a batch embed request', function (): void {
+    $emb = array_fill(0, 384, 0.1);
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => ($arg['json']['model'] ?? null) === 'intfloat/multilingual-e5-small' && isset($arg['json']['texts'])))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$emb]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000', model: 'intfloat/multilingual-e5-small');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedDocuments([new Document('First')]);
+});
+
+it('omits the model key when no model is configured', function (): void {
+    $embeddings = array_fill(0, 384, 0.1);
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => ! array_key_exists('model', $arg['json'])))
+        ->andReturn(new Response(200, [], json_encode(['embeddings' => [$embeddings]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000');
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $provider->embedText('hello world');
+});
+
 it('splits documents into requests according to the configured batch size', function (): void {
     $emb = array_fill(0, 512, 0.1);
 
