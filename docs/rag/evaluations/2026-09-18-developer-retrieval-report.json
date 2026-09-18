@@ -1,0 +1,130 @@
+{
+    "schema_version": "1",
+    "module": "developer",
+    "index_profile": "developer",
+    "driver": "developer-documentation",
+    "dataset_version": "1",
+    "corpus_revision": "developer-2026-09-18",
+    "data_classification": "synthetic",
+    "case_count": 20,
+    "metrics": {
+        "source_hit_at_k": 0.9,
+        "mean_reciprocal_rank": 0.7083,
+        "citation_precision": 0.4,
+        "authorized_empty_accuracy": 0.0,
+        "supported_answer_rate": 1.0,
+        "refusal_accuracy": 1.0,
+        "unavailable_rate": 0.0
+    },
+    "latency_ms": {
+        "average": 247.7018,
+        "p50": 221.9827,
+        "p95": 318.7391,
+        "max": 374.9936
+    },
+    "slices": {
+        "locale": {
+            "en": {
+                "source_hit_at_k": 0.9,
+                "mean_reciprocal_rank": 0.7083,
+                "citation_precision": 0.4,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            }
+        },
+        "category": {
+            "cms": {
+                "source_hit_at_k": 0.75,
+                "mean_reciprocal_rank": 0.75,
+                "citation_precision": 0.3,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "command": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 1.0,
+                "citation_precision": 0.8,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "config": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.8125,
+                "citation_precision": 0.3,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "eval": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.3333,
+                "citation_precision": 0.2,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "keyword": {
+                "source_hit_at_k": 0.9167,
+                "mean_reciprocal_rank": 0.8125,
+                "citation_precision": 0.45,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "mes": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 1.0,
+                "citation_precision": 0.6,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "provenance": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.4167,
+                "citation_precision": 0.4,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "search": {
+                "source_hit_at_k": 0.5,
+                "mean_reciprocal_rank": 0.125,
+                "citation_precision": 0.1,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "security": {
+                "source_hit_at_k": 1.0,
+                "mean_reciprocal_rank": 0.8333,
+                "citation_precision": 0.5333,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            },
+            "semantic": {
+                "source_hit_at_k": 0.875,
+                "mean_reciprocal_rank": 0.5521,
+                "citation_precision": 0.325,
+                "authorized_empty_accuracy": 0.0,
+                "supported_answer_rate": 1.0,
+                "refusal_accuracy": 1.0,
+                "unavailable_rate": 0.0
+            }
+        }
+    }
+}

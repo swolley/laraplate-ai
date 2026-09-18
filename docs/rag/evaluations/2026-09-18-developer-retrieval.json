@@ -1,0 +1,481 @@
+{
+  "version": "1",
+  "corpus_revision": "developer-2026-09-18",
+  "data_classification": "synthetic",
+  "index_profile": "developer",
+  "module": "developer",
+  "cases": [
+    {
+      "id": "kw-st-timeout",
+      "query": "SENTENCE_TRANSFORMERS_TIMEOUT",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "config"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-st-batch",
+      "query": "SENTENCE_TRANSFORMERS_BATCH_SIZE default value",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "config"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-faq-vector-store",
+      "query": "AI_FAQ_VECTOR_STORE elasticsearch filesystem memory",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "config"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-model-key",
+      "query": "model_key stale embedding regeneration",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "search"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-audience-policy",
+      "query": "DocumentAudiencePolicy",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "security"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-assistant-scope",
+      "query": "AssistantScope docScope moduleKey dataAccess",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/ASSISTANT_SCOPE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/ASSISTANT_SCOPE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "security"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-ai-assistance",
+      "query": "ai_assistance enum translation disclosure",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "cms"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-content-reference",
+      "query": "ContentReference references bibliography",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "cms"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-record-origin",
+      "query": "RecordOrigin provenance source_label",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md",
+        "faq-module-ERP/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md",
+        "faq-module-ERP/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "provenance"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-backflush",
+      "query": "backflush",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-MES/GLOSSARY.md",
+        "faq-module-MES/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-MES/GLOSSARY.md",
+        "faq-module-MES/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "mes"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-eval-cmd",
+      "query": "ai:evaluate-documentation command options",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md",
+        "faq-module-AI/DOCUMENTATION_EVALUATION_USER.md",
+        "faq-module-AI/MODULE.md",
+        "faq-app-rag/README.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md",
+        "faq-module-AI/DOCUMENTATION_EVALUATION_USER.md",
+        "faq-module-AI/MODULE.md",
+        "faq-app-rag/README.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "command"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "kw-index-cmd",
+      "query": "ai:index-rag-docs --profile developer",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DEPLOYMENT.md",
+        "faq-module-AI/MODULE.md",
+        "faq-app-rag/README.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DEPLOYMENT.md",
+        "faq-module-AI/MODULE.md",
+        "faq-app-rag/README.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "keyword",
+        "command"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-embed-timeout",
+      "query": "How do I stop documentation indexing from failing when the embedding backend is slow to respond?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DEPLOYMENT.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "config"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-embed-store",
+      "query": "Where are documentation chunk vectors kept, and how does the system detect that a stored vector is out of date?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-Core/SEARCH_RETRIEVAL_PIPELINE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "search"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-audience",
+      "query": "How does the assistant ensure a user only receives documentation they are permitted to read?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/ASSISTANT_SCOPE.md",
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/ASSISTANT_SCOPE.md",
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "security"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-ai-disclosure",
+      "query": "How is it disclosed that a translated piece of content was produced with the help of AI?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "cms"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-origin",
+      "query": "How does the platform remember where an imported record originally came from?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md",
+        "faq-module-ERP/MODULE.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md",
+        "faq-module-Core/INTERACTIVE_IMPORT_DEVELOPER.md",
+        "faq-module-ERP/MODULE.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "provenance"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-backflush",
+      "query": "When a manufacturing order is completed, how are the consumed components deducted from stock automatically?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-MES/MODULE.md",
+        "faq-module-MES/GLOSSARY.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-MES/MODULE.md",
+        "faq-module-MES/GLOSSARY.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "mes"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-eval",
+      "query": "How is documentation retrieval quality measured without calling the chat model?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-AI/DOCUMENTATION_EVALUATION_DEVELOPER.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "eval"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    },
+    {
+      "id": "sm-references",
+      "query": "How can an editor attach a bibliography of external sources to a piece of content?",
+      "locale": "en",
+      "top_k": 5,
+      "expected_source_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md"
+      ],
+      "expected_citation_labels": [
+        "faq-module-CMS/MODULE.md",
+        "faq-module-CMS/GLOSSARY.md"
+      ],
+      "expect_authorized_empty": false,
+      "expect_supported_answer": true,
+      "expect_refusal": false,
+      "slices": [
+        "semantic",
+        "cms"
+      ],
+      "tenant_scope": "global",
+      "tenant_id": null,
+      "effective_permissions": []
+    }
+  ]
+}
