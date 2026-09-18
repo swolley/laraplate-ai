@@ -86,7 +86,10 @@ final readonly class InAppDocumentationRetrieval
      */
     private function aboveMinimumSimilarity(array $documents): array
     {
-        $threshold = (float) config('ai.features.faq.min_similarity', 0.0);
+        // config() returns mixed; a non-numeric threshold means the setting is malformed,
+        // and no filtering is the safe reading.
+        $configured_threshold = config('ai.features.faq.min_similarity', 0.0);
+        $threshold = is_numeric($configured_threshold) ? (float) $configured_threshold : 0.0;
 
         if ($threshold <= 0.0) {
             return $documents;

@@ -76,7 +76,9 @@ final readonly class DeveloperDocumentationRetrieval
             throw new RuntimeException;
         }
 
-        return $store->similaritySearch($embedding);
+        // similaritySearch() is declared iterable: the caller wants a list, and a
+        // generator would satisfy the interface while breaking every array use below.
+        return iterator_to_array($store->similaritySearch($embedding), false);
     }
 
     /**
@@ -85,7 +87,10 @@ final readonly class DeveloperDocumentationRetrieval
      */
     private function aboveMinimumSimilarity(array $documents): array
     {
-        $threshold = (float) config('ai.features.faq.min_similarity', 0.0);
+        // config() returns mixed; a non-numeric threshold means the setting is malformed,
+        // and no filtering is the safe reading.
+        $configured_threshold = config('ai.features.faq.min_similarity', 0.0);
+        $threshold = is_numeric($configured_threshold) ? (float) $configured_threshold : 0.0;
 
         if ($threshold <= 0.0) {
             return $documents;
@@ -98,7 +103,13 @@ final readonly class DeveloperDocumentationRetrieval
     }
 
     /**
-     * @param  array<Document>  $documents
+     * Validates what the search returned, which is why the parameter is not typed as
+     * an array of Documents: one of the two sources is an injected closure, and a
+     * closure honours no PHPDoc at runtime. Declaring the narrow type here made the
+     * guard unreachable — PHPStan reported the instanceof as always true and the whole
+     * condition as always false — while the case it defends against stayed possible.
+     *
+     * @param  array<mixed>  $documents
      * @return list<Document>
      */
     private function onlyValidDocuments(array $documents): array
@@ -106,7 +117,10 @@ final readonly class DeveloperDocumentationRetrieval
         $valid = [];
 
         foreach ($documents as $document) {
-            if (! $document instanceof Document || ! is_string($document->sourceName)) {
+            // Only the instanceof is a real check. Document::$sourceName is declared
+            // `public string`, so PHP itself refuses anything else and testing it here
+            // promised a defence that does not exist.
+            if (! $document instanceof Document) {
                 throw new RuntimeException;
             }
 
