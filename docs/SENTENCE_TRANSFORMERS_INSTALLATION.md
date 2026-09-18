@@ -21,7 +21,7 @@ For Sentence Transformers you only need the **embeddings** provider and its URL.
 ## Architecture
 
 ```text
-[Laravel + Horizon]  --POST /embed-->  [Python host: FastAPI + sentence-transformers]
+[Laravel + Horizon]  --POST /embed-->  [Python host: Flask + sentence-transformers]
      .env: SENTENCE_TRANSFORMERS_URL=http://HOST:PORT
 ```
 
@@ -64,7 +64,43 @@ Content-Type: application/json
 ```json
 {
   "model": "intfloat/multilingual-e5-small",
+  "input_type": "passage",
+  "prefix_applied": false,
   "embeddings": [[0.1, 0.2, "..."], [0.3, 0.4, "..."]]
+}
+```
+
+### Input prefixes (`input_type`) and who applies them
+
+Some models (e5, nomic, …) need a `query:` / `passage:` prefix; others (MiniLM)
+need none. **Today Laraplate applies the prefix client-side** from the active
+model profile (`query_prefix` / `passage_prefix` in `ai.features.embeddings`),
+so the service receives already-prefixed text and this field can be omitted.
+
+The service **also** knows each family's convention and accepts an optional
+`input_type` (`"query"` | `"passage"`). When present, it *ensures* the correct
+prefix **idempotently**: if the text is already prefixed it is left untouched,
+otherwise the prefix is added — so there is never a `query: query: …` double
+prefix, whether the caller pre-prefixed or not. When `input_type` is omitted no
+prefix is touched (current Laraplate behavior). This keeps the service safe for
+other, prefix-unaware clients without changing Laraplate.
+
+### Discovery: `GET /models`
+
+Returns the default model, the currently resident models, and the prefix
+families that support `input_type`, so a client can discover behavior instead of
+hardcoding it:
+
+```json
+{
+  "default_model": "intfloat/multilingual-e5-small",
+  "loaded_models": ["intfloat/multilingual-e5-small"],
+  "model_cache": 2,
+  "input_types": ["query", "passage"],
+  "prefix_families": {
+    "e5": { "query": "query: ", "passage": "passage: " },
+    "nomic": { "query": "search_query: ", "passage": "search_document: " }
+  }
 }
 ```
 
@@ -137,93 +173,32 @@ sudo apt install -y python3 python3-venv python3-pip git
 
 Optional: NVIDIA driver + CUDA-compatible PyTorch for GPU inference under load.
 
-### Python environment
+### API server
+
+The service code is **not duplicated here** — it lives in its own repository,
+which is the single source of truth (code, pinned `requirements.txt`, systemd
+unit, README):
+
+**https://github.com/swolley/sentence-transformers-api**
+
+Clone it on the embedding host and install from its pinned requirements:
 
 ```bash
-mkdir -p ~/laraplate-embeddings && cd ~/laraplate-embeddings
+git clone https://github.com/swolley/sentence-transformers-api.git
+cd sentence-transformers-api
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install sentence-transformers flask torch
+pip install -r requirements.txt
 ```
+
+In short: the service serves any model on demand, keeps the `EMBEDDING_MODEL`
+default warm, lazy-loads any other model named in a request, and keeps up to
+`EMBEDDING_MODEL_CACHE` models resident (LRU). See the
+[HTTP contract](#http-contract-required) below for the request/response shape
+Laraplate relies on.
 
 Model weights download from Hugging Face on first use (~hundreds of MB per model). The service downloads each requested model the first time it is asked for and caches it.
-
-### Example API server (multi-model)
-
-Create `sentence-api.py`. It serves any model on demand: it keeps the `EMBEDDING_MODEL` default warm, lazy-loads any other model named in a request, and keeps up to `EMBEDDING_MODEL_CACHE` models resident (LRU).
-
-```python
-import os
-
-from flask import Flask, jsonify, request
-from sentence_transformers import SentenceTransformer
-
-app = Flask(__name__)
-
-# Default model, and how many models to keep resident. Laraplate sends the
-# active profile's service_model in each request, so this default is only used
-# when a request omits "model".
-DEFAULT_MODEL = os.environ.get("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
-MODEL_CACHE = max(1, int(os.environ.get("EMBEDDING_MODEL_CACHE", "2")))
-
-# name -> SentenceTransformer, ordered oldest..newest (simple LRU by re-insert).
-_models = {}
-
-
-def load_model(name):
-    name = name or DEFAULT_MODEL
-    model = _models.pop(name, None)
-    if model is None:
-        model = SentenceTransformer(name)
-    _models[name] = model  # mark as most-recently used
-    while len(_models) > MODEL_CACHE:
-        _models.pop(next(iter(_models)))
-    return name, model
-
-
-# Warm the default so the first embed request is not a cold load.
-load_model(DEFAULT_MODEL)
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "healthy",
-        "model": DEFAULT_MODEL,
-        "default_model": DEFAULT_MODEL,
-        "loaded_models": list(_models.keys()),
-        "model_cache": MODEL_CACHE,
-    })
-
-
-@app.route("/embed", methods=["POST"])
-def embed():
-    try:
-        data = request.get_json(silent=True) or {}
-
-        if "texts" in data:
-            texts = data["texts"]
-        elif "text" in data:
-            texts = [data["text"]]
-        else:
-            return jsonify({"error": "No text or texts provided"}), 400
-
-        name, model = load_model(data.get("model"))
-        normalize = bool(data.get("normalize_embeddings", True))
-        embeddings = model.encode(texts, normalize_embeddings=normalize)
-
-        return jsonify({
-            "model": name,
-            "embeddings": [embedding.tolist() for embedding in embeddings],
-        })
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": str(exc)}), 500
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-```
 
 ### Run manually
 
@@ -236,29 +211,9 @@ python sentence-api.py
 
 ### systemd unit (production)
 
-```ini
-# /etc/systemd/system/sentence-transformers.service
-[Unit]
-Description=Sentence Transformers API Service
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt
-Environment=PATH=/opt/ai-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-Environment=EMBEDDING_MODEL=intfloat/multilingual-e5-small
-Environment=EMBEDDING_MODEL_CACHE=2
-ExecStart=/opt/ai-env/bin/python /opt/sentence-api.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
+The `sentence-transformers.service` unit ships with the
+[service repository](https://github.com/swolley/sentence-transformers-api);
+install it from there rather than copying it here.
 
 ```bash
 sudo systemctl daemon-reload
@@ -360,6 +315,7 @@ Hybrid search can call a **separate** HTTP service for reranking (default `http:
 
 | Document | Topic |
 |----------|--------|
+| [sentence-transformers-api](https://github.com/swolley/sentence-transformers-api) | The self-hosted embedding service (code, systemd unit, README) |
 | [README.md](../README.md) | AI module env reference |
 | [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md) | Indexing flow and repair |
 | [rag/DEPLOYMENT.md](rag/DEPLOYMENT.md) | RAG vector store |
