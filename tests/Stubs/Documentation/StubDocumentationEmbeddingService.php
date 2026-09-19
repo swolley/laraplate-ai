@@ -20,6 +20,17 @@ final class StubDocumentationEmbeddingService implements IEmbeddingService
     }
 
     /**
+     * @param  list<string>  $texts
+     * @return list<array<int, mixed>>
+     */
+    public function embedDocumentsBatch(array $texts): array
+    {
+        // Documentation retrieval tests key on embedText(); the document path is
+        // unused here, so mirror embedDocument() with one empty result per text.
+        return array_map(static fn (): array => [], $texts);
+    }
+
+    /**
      * @return list<float>
      */
     public function embedText(string $text): array
