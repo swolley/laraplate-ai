@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Embeddings;
 
 use GuzzleHttp\Client;
+use Modules\Core\Search\AdaptiveBatchController;
 use Modules\Core\Search\Exceptions\EmbeddingsException;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Embeddings\AbstractEmbeddingsProvider;
@@ -22,7 +23,7 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
     public function __construct(
         string $url = 'http://localhost:8000',
         ?string $api_key = null,
-        int $timeout = 10,
+        private readonly int $timeout = 10,
         int $batch_size = 128,
         private readonly bool $truncate = true,
         private readonly bool $normalize = true,
@@ -80,39 +81,61 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
      */
     public function embedDocuments(array $documents): array
     {
-        $batch_size = max(1, $this->batch_size_limit);
-        $batches = array_chunk($documents, $batch_size);
+        return $this->batchController()->run(
+            array_values($documents),
+            fn (array $batch): array => $this->embedBatch(array_values($batch)),
+        );
+    }
+
+    /**
+     * Adaptive batcher for the embedding service: start at the configured batch
+     * size and, on a timeout / 5xx / empty reply or a batch slower than half the
+     * HTTP timeout, halve it and retry fewer texts, then ramp back up. This keeps
+     * a weak or temporary service from saturating without per-server tuning.
+     */
+    private function batchController(): AdaptiveBatchController
+    {
+        return new AdaptiveBatchController(
+            minBatch: 1,
+            maxBatch: $this->batch_size_limit,
+            targetLatencySeconds: max(1.0, $this->timeout / 2),
+            startBatch: $this->batch_size_limit,
+        );
+    }
+
+    /**
+     * @param  list<Document>  $batch
+     * @return list<Document>
+     */
+    private function embedBatch(array $batch): array
+    {
+        $texts = array_map(
+            fn (Document $doc): string => $this->documentText($doc),
+            $batch,
+        );
+
+        $response = $this->client->post('embed', [
+            'json' => [
+                'texts' => $texts,
+                'truncation' => $this->truncate,
+                'normalize_embeddings' => $this->normalize,
+                'max_length' => $this->getEmbeddingLength(),
+                ...$this->modelPayload(),
+            ],
+        ]);
+
+        $result = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
+        $embeddings = $this->parseEmbeddingBatch($result);
+        $batch_count = count($batch);
+        $embedding_count = count($embeddings);
+
+        throw_if($embedding_count !== $batch_count, EmbeddingsException::class, "Embeddings count mismatch: expected {$batch_count}, got {$embedding_count}");
+
         $processed = [];
 
-        foreach ($batches as $batch) {
-            $texts = array_map(
-                fn (Document $doc): string => $this->documentText($doc),
-                $batch,
-            );
-
-            $response = $this->client->post('embed', [
-                'json' => [
-                    'texts' => $texts,
-                    'truncation' => $this->truncate,
-                    'normalize_embeddings' => $this->normalize,
-                    'max_length' => $this->getEmbeddingLength(),
-                    ...$this->modelPayload(),
-                ],
-            ]);
-
-            $result = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
-            $embeddings = $this->parseEmbeddingBatch($result);
-            $batch_count = count($batch);
-            $embedding_count = count($embeddings);
-
-            throw_if($embedding_count !== $batch_count, EmbeddingsException::class, "Embeddings count mismatch: expected {$batch_count}, got {$embedding_count}");
-
-            for ($i = 0; $i < $batch_count; $i++) {
-                $batch[$i]->embedding = $embeddings[$i];
-                $processed[] = $batch[$i];
-            }
-
-            unset($batch, $embeddings, $result);
+        for ($i = 0; $i < $batch_count; $i++) {
+            $batch[$i]->embedding = $embeddings[$i];
+            $processed[] = $batch[$i];
         }
 
         return $processed;

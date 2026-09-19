@@ -217,6 +217,30 @@ it('omits the model key when no model is configured', function (): void {
     $provider->embedText('hello world');
 });
 
+it('halves the batch and retries when the embedding service strains', function (): void {
+    $emb = array_fill(0, 512, 0.1);
+
+    // The full-size (4) batch fails as if the service saturated; the adaptive
+    // controller halves it and retries fewer texts, which succeed.
+    $this->mockClient->shouldReceive('post')
+        ->once()
+        ->with('embed', Mockery::on(fn (array $arg): bool => count($arg['json']['texts']) === 4))
+        ->andThrow(new RuntimeException('service saturated'));
+    $this->mockClient->shouldReceive('post')
+        ->with('embed', Mockery::on(fn (array $arg): bool => count($arg['json']['texts']) === 2))
+        ->andReturnUsing(fn (): Response => new Response(200, [], json_encode(['embeddings' => [$emb, $emb]])));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000', batch_size: 4);
+    $reflection = new ReflectionClass($provider);
+    $clientProp = $reflection->getProperty('client');
+    $clientProp->setValue($provider, $this->mockClient);
+
+    $result = $provider->embedDocuments([new Document('a'), new Document('b'), new Document('c'), new Document('d')]);
+
+    expect($result)->toHaveCount(4)
+        ->and($result[0]->embedding)->toBe($emb);
+});
+
 it('splits documents into requests according to the configured batch size', function (): void {
     $emb = array_fill(0, 512, 0.1);
 
