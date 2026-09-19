@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\AI\Jobs;
 
 use DateTimeInterface;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
@@ -18,10 +17,8 @@ use Illuminate\Support\Facades\Log;
 use JsonException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
-use Modules\Core\Contracts\IEmbeddableModel;
+use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\Core\Events\ModelPreProcessingCompleted;
-use Modules\Core\Models\Concerns\HasTranslations;
-use Modules\Core\Models\ModelEmbedding;
 use Psr\Http\Client\ClientExceptionInterface;
 use Throwable;
 
@@ -90,79 +87,12 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     public function handle(IEmbeddingService $embedding_service): void
     {
-        $model = $this->model->fresh() ?? $this->model;
+        $synchronizer = new ModelEmbeddingSynchronizer(
+            $embedding_service,
+            app(EmbeddingModelRegistry::class),
+        );
 
-        if (! $model instanceof Model || ! $this->isEmbeddable($model)) {
-            return;
-        }
-
-        $byLocale = $model->prepareDataToEmbedByLocale($this->locale);
-
-        if ($byLocale === []) {
-            return;
-        }
-
-        try {
-            $modelKey = app(EmbeddingModelRegistry::class)->active()->key;
-            $isTranslated = class_uses_trait($model, HasTranslations::class);
-            $defaultLocale = config('app.locale') ?: 'en';
-
-            // Snapshot of the existing embeddings in scope, so a locale whose text
-            // and embedding model are both unchanged can be kept instead of being
-            // deleted and recomputed. This avoids re-embedding every locale on each
-            // reindex; only changed or model-stale locales hit the embedding service.
-            $existing = ($this->locale === null
-                ? $model->embeddings()
-                : $model->embeddings()->forLocale($this->locale)
-            )->get();
-
-            $processedLocales = [];
-
-            foreach ($byLocale as $loc => $text) {
-                $rowLocale = ($loc === $defaultLocale && ! $isTranslated) ? null : $loc;
-                $processedLocales[] = $rowLocale;
-                $contentHash = hash('sha256', $text);
-
-                $isFresh = $existing->first(static fn (ModelEmbedding $row): bool => $row->locale === $rowLocale
-                    && $row->model_key === $modelKey
-                    && $row->content_hash === $contentHash) !== null;
-
-                if ($isFresh) {
-                    continue;
-                }
-
-                // Replace only this locale's rows so a retry or partial change does
-                // not append duplicates or touch fresh locales.
-                $model->embeddings()->forLocale($rowLocale)->delete();
-
-                foreach ($embedding_service->embedDocument($text) as $document) {
-                    $model->embeddings()->create([
-                        'embedding' => $document->embedding,
-                        'locale' => $rowLocale,
-                        'model_key' => $modelKey,
-                        'content_hash' => $contentHash,
-                    ]);
-                }
-            }
-
-            // On a full run, drop rows for locales that no longer exist (e.g. a
-            // removed translation) so the search document keeps no stale vector.
-            if ($this->locale === null) {
-                $model->embeddings()->get()
-                    ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $processedLocales, true))
-                    ->each(static fn (ModelEmbedding $row) => $row->delete());
-            }
-
-            event(new ModelPreProcessingCompleted($model, 'embeddings'));
-        } catch (Exception $exception) {
-            Log::error('Embedding generation failed for model: ' . $model::class, [
-                'model_id' => $model->getKey(),
-                'error' => $exception->getMessage(),
-                'trace' => $exception->getTraceAsString(),
-            ]);
-
-            throw $exception;
-        }
+        $synchronizer->sync([$this->model], $this->locale);
     }
 
     /**
@@ -181,14 +111,5 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         // vector). Otherwise a failed embedding would keep the document out of the
         // search index entirely.
         event(new ModelPreProcessingCompleted($this->model, 'embeddings'));
-    }
-
-    /**
-     * @phpstan-assert-if-true IEmbeddableModel&Model $model
-     */
-    private function isEmbeddable(Model $model): bool
-    {
-        return is_callable([$model, 'prepareDataToEmbed'])
-            && is_callable([$model, 'embeddings']);
     }
 }

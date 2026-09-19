@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Schema;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\AI\Tests\Stubs\EmbeddableTestModel;
 use Modules\AI\Tests\Stubs\TranslatedEmbeddableTestModel;
 use Modules\AI\Tests\Stubs\TranslatedEmbeddableTestModelTranslation;
@@ -231,6 +232,25 @@ it('recomputes only the changed locale on a full re-run', function (): void {
         ->and($after['it']->embedding)->toBe([0.9, 0.9])
         ->and($after['en']->id)->toBe($en_before->id)
         ->and($after['en']->embedding)->toBe([0.2, 0.2]);
+});
+
+it('synchronizes embeddings for multiple models in one call', function (): void {
+    $alpha = new EmbeddableTestModel(['title' => 'Alpha']);
+    $alpha->saveQuietly();
+    $beta = new EmbeddableTestModel(['title' => 'Beta']);
+    $beta->saveQuietly();
+
+    $service = Mockery::mock(IEmbeddingService::class);
+    $service->shouldReceive('embedDocument')->once()->with('Alpha')->andReturn([perLocaleEmbeddingDocument([0.1, 0.1])]);
+    $service->shouldReceive('embedDocument')->once()->with('Beta')->andReturn([perLocaleEmbeddingDocument([0.2, 0.2])]);
+
+    $synchronizer = new ModelEmbeddingSynchronizer($service, app(EmbeddingModelRegistry::class));
+    $synchronizer->sync([$alpha, $beta]);
+
+    expect($alpha->fresh()->embeddings()->count())->toBe(1)
+        ->and($beta->fresh()->embeddings()->count())->toBe(1)
+        ->and($alpha->fresh()->embeddings()->first()->embedding)->toBe([0.1, 0.1])
+        ->and($beta->fresh()->embeddings()->first()->embedding)->toBe([0.2, 0.2]);
 });
 
 it('recomputes every locale when the active embedding model changed', function (): void {
