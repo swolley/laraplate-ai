@@ -29,6 +29,29 @@ function perLocaleEmbeddingDocument(array $vector): Document
 }
 
 /**
+ * Stub the single batched embedding call the synchronizer makes, returning one
+ * chunk document per input text from a text => vector map. An input text absent
+ * from the map throws, which asserts that a fresh (skipped) locale's text is
+ * never sent to the service.
+ *
+ * @param  array<string, list<float>>  $map
+ */
+function stubEmbedBatch($service, array $map): void
+{
+    $service->shouldReceive('embedDocumentsBatch')
+        ->once()
+        ->andReturnUsing(static function (array $texts) use ($map): array {
+            return array_map(static function (string $text) use ($map): array {
+                if (! array_key_exists($text, $map)) {
+                    throw new RuntimeException("unexpected embed text: {$text}");
+                }
+
+                return [perLocaleEmbeddingDocument($map[$text])];
+            }, $texts);
+        });
+}
+
+/**
  * Create a bilingual (it/en) translated model and embed both locales once with
  * the given vectors, returning the model.
  *
@@ -52,8 +75,7 @@ function makeBilingualEmbeddedModel(array $it = [0.1, 0.1], array $en = [0.2, 0.
     ]);
 
     $service = Mockery::mock(IEmbeddingService::class);
-    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano')->andReturn([perLocaleEmbeddingDocument($it)]);
-    $service->shouldReceive('embedDocument')->once()->with('English title')->andReturn([perLocaleEmbeddingDocument($en)]);
+    stubEmbedBatch($service, ['Titolo italiano' => $it, 'English title' => $en]);
 
     (new GenerateEmbeddingsJob($model))->handle($service);
 
@@ -96,14 +118,7 @@ it('stamps one ModelEmbedding row per locale for a bilingual translated model', 
     ]);
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('Titolo italiano')
-        ->andReturn([perLocaleEmbeddingDocument([0.1, 0.1])]);
-    $embedding_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('English title')
-        ->andReturn([perLocaleEmbeddingDocument([0.2, 0.2])]);
+    stubEmbedBatch($embedding_service, ['Titolo italiano' => [0.1, 0.1], 'English title' => [0.2, 0.2]]);
 
     $job = new GenerateEmbeddingsJob($model);
     $job->handle($embedding_service);
@@ -124,10 +139,7 @@ it('stamps a single locale = null row for a non-translated model', function (): 
     $model->saveQuietly();
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('Plain text')
-        ->andReturn([perLocaleEmbeddingDocument([0.5, 0.5])]);
+    stubEmbedBatch($embedding_service, ['Plain text' => [0.5, 0.5]]);
 
     $job = new GenerateEmbeddingsJob($model);
     $job->handle($embedding_service);
@@ -155,8 +167,7 @@ it('regenerates only the requested locale, leaving the other locale untouched', 
     ]);
 
     $first_service = Mockery::mock(IEmbeddingService::class);
-    $first_service->shouldReceive('embedDocument')->once()->with('Titolo italiano')->andReturn([perLocaleEmbeddingDocument([0.1, 0.1])]);
-    $first_service->shouldReceive('embedDocument')->once()->with('English title')->andReturn([perLocaleEmbeddingDocument([0.2, 0.2])]);
+    stubEmbedBatch($first_service, ['Titolo italiano' => [0.1, 0.1], 'English title' => [0.2, 0.2]]);
 
     $first_job = new GenerateEmbeddingsJob($model);
     $first_job->handle($first_service);
@@ -170,11 +181,7 @@ it('regenerates only the requested locale, leaving the other locale untouched', 
         ->update(['title' => 'Titolo italiano aggiornato']);
 
     $second_service = Mockery::mock(IEmbeddingService::class);
-    $second_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('Titolo italiano aggiornato')
-        ->andReturn([perLocaleEmbeddingDocument([0.9, 0.9])]);
-    $second_service->shouldNotReceive('embedDocument')->with('English title');
+    stubEmbedBatch($second_service, ['Titolo italiano aggiornato' => [0.9, 0.9]]);
 
     $second_job = new GenerateEmbeddingsJob($model, 'it');
     $second_job->handle($second_service);
@@ -196,7 +203,7 @@ it('skips re-embedding on a full re-run when content and model are unchanged', f
 
     // Full re-run (no locale) with nothing changed: the service must not be called.
     $service = Mockery::mock(IEmbeddingService::class);
-    $service->shouldNotReceive('embedDocument');
+    $service->shouldNotReceive('embedDocumentsBatch');
 
     (new GenerateEmbeddingsJob($model))->handle($service);
 
@@ -221,8 +228,7 @@ it('recomputes only the changed locale on a full re-run', function (): void {
 
     // Full re-run (no locale): only the italian embedding is regenerated.
     $service = Mockery::mock(IEmbeddingService::class);
-    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano aggiornato')->andReturn([perLocaleEmbeddingDocument([0.9, 0.9])]);
-    $service->shouldNotReceive('embedDocument')->with('English title');
+    stubEmbedBatch($service, ['Titolo italiano aggiornato' => [0.9, 0.9]]);
 
     (new GenerateEmbeddingsJob($model))->handle($service);
 
@@ -241,8 +247,7 @@ it('synchronizes embeddings for multiple models in one call', function (): void 
     $beta->saveQuietly();
 
     $service = Mockery::mock(IEmbeddingService::class);
-    $service->shouldReceive('embedDocument')->once()->with('Alpha')->andReturn([perLocaleEmbeddingDocument([0.1, 0.1])]);
-    $service->shouldReceive('embedDocument')->once()->with('Beta')->andReturn([perLocaleEmbeddingDocument([0.2, 0.2])]);
+    stubEmbedBatch($service, ['Alpha' => [0.1, 0.1], 'Beta' => [0.2, 0.2]]);
 
     $synchronizer = new ModelEmbeddingSynchronizer($service, app(EmbeddingModelRegistry::class));
     $synchronizer->sync([$alpha, $beta]);
@@ -261,8 +266,7 @@ it('recomputes every locale when the active embedding model changed', function (
     $new_key = app(EmbeddingModelRegistry::class)->active()->key;
 
     $service = Mockery::mock(IEmbeddingService::class);
-    $service->shouldReceive('embedDocument')->once()->with('Titolo italiano')->andReturn([perLocaleEmbeddingDocument([0.3, 0.3])]);
-    $service->shouldReceive('embedDocument')->once()->with('English title')->andReturn([perLocaleEmbeddingDocument([0.4, 0.4])]);
+    stubEmbedBatch($service, ['Titolo italiano' => [0.3, 0.3], 'English title' => [0.4, 0.4]]);
 
     (new GenerateEmbeddingsJob($model))->handle($service);
 

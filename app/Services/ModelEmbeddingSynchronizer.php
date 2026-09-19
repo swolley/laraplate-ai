@@ -36,6 +36,11 @@ final readonly class ModelEmbeddingSynchronizer
         $model_key = $this->registry->active()->key;
         $default_locale = (string) (config('app.locale') ?: 'en');
 
+        // Pass 1: plan the stale (model, locale) work and collect every text
+        // that must be embedded across all models.
+        $plans = [];
+        $texts = [];
+
         foreach ($models as $model) {
             $fresh = $model->fresh() ?? $model;
 
@@ -43,62 +48,95 @@ final readonly class ModelEmbeddingSynchronizer
                 continue;
             }
 
-            $this->syncModel($fresh, $locale, $model_key, $default_locale);
+            $plan = $this->planModel($fresh, $locale, $model_key, $default_locale, $texts);
+
+            if ($plan !== null) {
+                $plans[] = $plan;
+            }
+        }
+
+        // Pass 2: one batched (adaptive) embedding call for all stale texts.
+        $embedded = $texts === [] ? [] : $this->embeddingService->embedDocumentsBatch($texts);
+
+        // Pass 3: persist per model, from the shared batch result.
+        foreach ($plans as $plan) {
+            $this->writePlan($plan, $model_key, $embedded);
         }
     }
 
-    private function syncModel(Model $model, ?string $locale, string $model_key, string $default_locale): void
+    /**
+     * @param  list<string>  $texts
+     * @return array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>}|null
+     */
+    private function planModel(Model $model, ?string $locale, string $model_key, string $default_locale, array &$texts): ?array
     {
         /** @phpstan-ignore method.notFound */
         $by_locale = $model->prepareDataToEmbedByLocale($locale);
 
         if ($by_locale === []) {
-            return;
+            return null;
         }
 
+        $is_translated = class_uses_trait($model, HasTranslations::class);
+
+        $existing = ($locale === null
+            /** @phpstan-ignore method.notFound */
+            ? $model->embeddings()
+            /** @phpstan-ignore method.notFound */
+            : $model->embeddings()->forLocale($locale)
+        )->get();
+
+        $stale = [];
+        $processed_locales = [];
+
+        foreach ($by_locale as $loc => $text) {
+            $row_locale = ($loc === $default_locale && ! $is_translated) ? null : $loc;
+            $processed_locales[] = $row_locale;
+            $content_hash = hash('sha256', $text);
+
+            $is_fresh = $existing->first(static fn (ModelEmbedding $row): bool => $row->locale === $row_locale
+                && $row->model_key === $model_key
+                && $row->content_hash === $content_hash) !== null;
+
+            if ($is_fresh) {
+                continue;
+            }
+
+            $stale[] = ['row_locale' => $row_locale, 'content_hash' => $content_hash, 'text_index' => count($texts)];
+            $texts[] = $text;
+        }
+
+        return ['model' => $model, 'locale' => $locale, 'stale' => $stale, 'processed_locales' => $processed_locales];
+    }
+
+    /**
+     * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>}  $plan
+     * @param  list<\NeuronAI\RAG\Document[]>  $embedded
+     */
+    private function writePlan(array $plan, string $model_key, array $embedded): void
+    {
+        $model = $plan['model'];
+
         try {
-            $is_translated = class_uses_trait($model, HasTranslations::class);
-
-            $existing = ($locale === null
+            foreach ($plan['stale'] as $item) {
                 /** @phpstan-ignore method.notFound */
-                ? $model->embeddings()
-                /** @phpstan-ignore method.notFound */
-                : $model->embeddings()->forLocale($locale)
-            )->get();
+                $model->embeddings()->forLocale($item['row_locale'])->delete();
 
-            $processed_locales = [];
-
-            foreach ($by_locale as $loc => $text) {
-                $row_locale = ($loc === $default_locale && ! $is_translated) ? null : $loc;
-                $processed_locales[] = $row_locale;
-                $content_hash = hash('sha256', $text);
-
-                $is_fresh = $existing->first(static fn (ModelEmbedding $row): bool => $row->locale === $row_locale
-                    && $row->model_key === $model_key
-                    && $row->content_hash === $content_hash) !== null;
-
-                if ($is_fresh) {
-                    continue;
-                }
-
-                /** @phpstan-ignore method.notFound */
-                $model->embeddings()->forLocale($row_locale)->delete();
-
-                foreach ($this->embeddingService->embedDocument($text) as $document) {
+                foreach ($embedded[$item['text_index']] as $document) {
                     /** @phpstan-ignore method.notFound */
                     $model->embeddings()->create([
                         'embedding' => $document->embedding,
-                        'locale' => $row_locale,
+                        'locale' => $item['row_locale'],
                         'model_key' => $model_key,
-                        'content_hash' => $content_hash,
+                        'content_hash' => $item['content_hash'],
                     ]);
                 }
             }
 
-            if ($locale === null) {
+            if ($plan['locale'] === null) {
                 /** @phpstan-ignore method.notFound */
                 $model->embeddings()->get()
-                    ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $processed_locales, true))
+                    ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $plan['processed_locales'], true))
                     ->each(static fn (ModelEmbedding $row) => $row->delete());
             }
 

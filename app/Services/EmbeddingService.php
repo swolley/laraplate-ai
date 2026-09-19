@@ -32,31 +32,40 @@ final readonly class EmbeddingService implements IEmbeddingService
     #[Override]
     public function embedDocument(string $data): array
     {
-        $content = preg_replace("/\n|\t/", ' ', $data);
-        $content = preg_replace("/\s+/", ' ', (string) $content);
-        $content = mb_trim((string) $content);
+        return $this->getProvider()->embedDocuments($this->chunksFor($data));
+    }
 
-        $document = new Document($content);
-        $document->sourceType = 'inline';
-        $document->sourceName = 'document';
+    /**
+     * @param  list<string>  $texts
+     * @return list<Document[]>
+     */
+    #[Override]
+    public function embedDocumentsBatch(array $texts): array
+    {
+        $all_chunks = [];
+        $ranges = [];
 
-        $splitter = $this->splitter ?? SplitterFactory::make();
-        $chunks = $splitter->splitDocument($document);
+        foreach ($texts as $text) {
+            $chunks = $this->chunksFor($text);
+            $ranges[] = [count($all_chunks), count($chunks)];
 
-        // Splitting happens before the prefix is applied, so prefixing the
-        // whole body up front would only survive on the first chunk (the
-        // rest are brand-new Document instances built from a slice of the
-        // original text). Prefix each chunk's own content instead, so every
-        // chunk sent to the provider carries the passage prefix.
-        $passage_prefix = app(EmbeddingModelRegistry::class)->active()->passagePrefix;
-
-        foreach ($chunks as $chunk) {
-            $chunk->content = $passage_prefix . $chunk->content;
+            foreach ($chunks as $chunk) {
+                $all_chunks[] = $chunk;
+            }
         }
 
-        $generator = $this->getProvider();
+        if ($all_chunks === []) {
+            return array_fill(0, count($texts), []);
+        }
 
-        return $generator->embedDocuments($chunks);
+        // One batched (adaptive) provider call for every chunk of every text;
+        // the provider preserves order, so each input's chunks are sliced back.
+        $embedded = $this->getProvider()->embedDocuments($all_chunks);
+
+        return array_map(
+            static fn (array $range): array => array_slice($embedded, $range[0], $range[1]),
+            $ranges,
+        );
     }
 
     /**
@@ -77,6 +86,36 @@ final readonly class EmbeddingService implements IEmbeddingService
     public function getEmbeddingsProvider(): EmbeddingsProviderInterface
     {
         return $this->getProvider();
+    }
+
+    /**
+     * Clean, split and passage-prefix a text into the chunk documents sent to
+     * the provider. Prefixing each chunk (not the whole body) is required
+     * because splitting builds new Document instances from slices of the text,
+     * so a single up-front prefix would only survive on the first chunk.
+     *
+     * @return list<Document>
+     */
+    private function chunksFor(string $data): array
+    {
+        $content = preg_replace("/\n|\t/", ' ', $data);
+        $content = preg_replace("/\s+/", ' ', (string) $content);
+        $content = mb_trim((string) $content);
+
+        $document = new Document($content);
+        $document->sourceType = 'inline';
+        $document->sourceName = 'document';
+
+        $splitter = $this->splitter ?? SplitterFactory::make();
+        $chunks = $splitter->splitDocument($document);
+
+        $passage_prefix = app(EmbeddingModelRegistry::class)->active()->passagePrefix;
+
+        foreach ($chunks as $chunk) {
+            $chunk->content = $passage_prefix . $chunk->content;
+        }
+
+        return $chunks;
     }
 
     private function getProvider(): EmbeddingsProviderInterface

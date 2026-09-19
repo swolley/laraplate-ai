@@ -18,6 +18,15 @@ interface IEmbeddingService
     public function embedDocument(string $data): array;
 
     /**
+     * Embed several texts in a single batched call to the provider, returning
+     * each input's chunk documents (with embeddings) aligned to the input order.
+     *
+     * @param  list<string>  $texts
+     * @return list<Document[]>
+     */
+    public function embedDocumentsBatch(array $texts): array;
+
+    /**
      * @return list<float>
      */
     public function embedText(string $text): array;
