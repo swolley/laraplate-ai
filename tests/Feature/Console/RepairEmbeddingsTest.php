@@ -27,6 +27,29 @@ function repairEmbeddingDocument(array $vector): Document
 }
 
 /**
+ * Stub the single batched embedding call the repair path makes through
+ * GenerateEmbeddingsJob -> ModelEmbeddingSynchronizer, returning one chunk
+ * document per input text from a text => vector map. An input text absent from
+ * the map throws, asserting that a fresh (skipped) record is never embedded.
+ *
+ * @param  array<string, list<float>>  $map
+ */
+function stubRepairEmbedBatch($service, array $map): void
+{
+    $service->shouldReceive('embedDocumentsBatch')
+        ->once()
+        ->andReturnUsing(static function (array $texts) use ($map): array {
+            return array_map(static function (string $text) use ($map): array {
+                if (! array_key_exists($text, $map)) {
+                    throw new RuntimeException("unexpected embed text: {$text}");
+                }
+
+                return [repairEmbeddingDocument($map[$text])];
+            }, $texts);
+        });
+}
+
+/**
  * Runs the repair command via Artisan::call and returns [exitCode, output].
  * Chaining multiple expectsOutputToContain() assertions on $this->artisan()
  * only reliably consumes the first one when several substrings share a
@@ -74,10 +97,7 @@ it('regenerates records missing an embedding and stamps the active model_key', f
     $model->saveQuietly();
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('Alpha')
-        ->andReturn([repairEmbeddingDocument([0.1, 0.2])]);
+    stubRepairEmbedBatch($embedding_service, ['Alpha' => [0.1, 0.2]]);
 
     app()->instance(IEmbeddingService::class, $embedding_service);
 
@@ -102,7 +122,7 @@ it('does not touch records that already carry an embedding when --stale is not s
     $model->embeddings()->create(['embedding' => [0.9, 0.9], 'model_key' => 'legacy-model']);
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldNotReceive('embedDocument');
+    $embedding_service->shouldNotReceive('embedDocumentsBatch');
     app()->instance(IEmbeddingService::class, $embedding_service);
 
     $this->artisan('ai:embeddings:repair', [
@@ -128,10 +148,7 @@ it('--stale regenerates records whose embeddings carry a non-active model_key, l
     $fresh->embeddings()->create(['embedding' => [0.5, 0.5], 'model_key' => $active_key]);
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')
-        ->once()
-        ->with('Stale content')
-        ->andReturn([repairEmbeddingDocument([0.9, 0.9])]);
+    stubRepairEmbedBatch($embedding_service, ['Stale content' => [0.9, 0.9]]);
     app()->instance(IEmbeddingService::class, $embedding_service);
 
     $this->artisan('ai:embeddings:repair', [
@@ -160,7 +177,7 @@ it('warns when the embedding service /health reports a different model than the 
     $model->saveQuietly();
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')->once()->andReturn([repairEmbeddingDocument([0.3, 0.3])]);
+    stubRepairEmbedBatch($embedding_service, ['Gamma' => [0.3, 0.3]]);
     app()->instance(IEmbeddingService::class, $embedding_service);
 
     $active = app(EmbeddingModelRegistry::class)->active();
@@ -184,7 +201,7 @@ it('warns but still succeeds when the embedding service /health cannot be reache
     $model->saveQuietly();
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    $embedding_service->shouldReceive('embedDocument')->once()->andReturn([repairEmbeddingDocument([0.4, 0.4])]);
+    stubRepairEmbedBatch($embedding_service, ['Delta' => [0.4, 0.4]]);
     app()->instance(IEmbeddingService::class, $embedding_service);
 
     [$exit_code, $output] = runRepairEmbeddingsCommand([
