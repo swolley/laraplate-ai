@@ -30,7 +30,10 @@ final readonly class HandleBulkModelIndexingListener
             return;
         }
 
-        $this->synchronizer->sync($embeddable);
+        // announceCompletion: false — the bulk path writes the engine itself in
+        // adaptive batches (Searchable::adaptiveBulkIndex), so emitting the
+        // per-model completion event would double-index every model.
+        $this->synchronizer->sync($embeddable, announceCompletion: false);
     }
 
     private function shouldEmbed(Model $model): bool

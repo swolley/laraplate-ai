@@ -30,8 +30,15 @@ final readonly class ModelEmbeddingSynchronizer
 
     /**
      * @param  iterable<Model>  $models
+     * @param  bool  $announceCompletion  When true (per-model path) each stored
+     *                                    model emits {@see ModelPreProcessingCompleted}
+     *                                    so the finalize listener indexes it.
+     *                                    The bulk path passes false because it
+     *                                    writes the engine itself in one batch,
+     *                                    and the completion event would trigger
+     *                                    a redundant per-model index.
      */
-    public function sync(iterable $models, ?string $locale = null): void
+    public function sync(iterable $models, ?string $locale = null, bool $announceCompletion = true): void
     {
         $model_key = $this->registry->active()->key;
         $default_locale = (string) (config('app.locale') ?: 'en');
@@ -60,7 +67,7 @@ final readonly class ModelEmbeddingSynchronizer
 
         // Pass 3: persist per model, from the shared batch result.
         foreach ($plans as $plan) {
-            $this->writePlan($plan, $model_key, $embedded);
+            $this->writePlan($plan, $model_key, $embedded, $announceCompletion);
         }
     }
 
@@ -113,7 +120,7 @@ final readonly class ModelEmbeddingSynchronizer
      * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>}  $plan
      * @param  list<\NeuronAI\RAG\Document[]>  $embedded
      */
-    private function writePlan(array $plan, string $model_key, array $embedded): void
+    private function writePlan(array $plan, string $model_key, array $embedded, bool $announceCompletion): void
     {
         $model = $plan['model'];
 
@@ -140,7 +147,9 @@ final readonly class ModelEmbeddingSynchronizer
                     ->each(static fn (ModelEmbedding $row) => $row->delete());
             }
 
-            event(new ModelPreProcessingCompleted($model, 'embeddings'));
+            if ($announceCompletion) {
+                event(new ModelPreProcessingCompleted($model, 'embeddings'));
+            }
         } catch (Exception $exception) {
             Log::error('Embedding generation failed for model: ' . $model::class, [
                 'model_id' => $model->getKey(),

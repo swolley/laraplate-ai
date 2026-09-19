@@ -32,8 +32,10 @@ it('batch-embeds only the embeddable models in the chunk', function (): void {
     $synchronizer = Mockery::mock(ModelEmbeddingSynchronizer::class);
     $synchronizer->shouldReceive('sync')
         ->once()
-        ->withArgs(fn (Collection $models): bool => $models->count() === 2
-            && $models->every(fn (Model $m): bool => $m instanceof SearchableModelStub));
+        ->withArgs(fn (Collection $models, ?string $locale, bool $announceCompletion): bool => $models->count() === 2
+            && $models->every(fn (Model $m): bool => $m instanceof SearchableModelStub)
+            // Bulk path must not announce completion: it indexes the batch itself.
+            && $announceCompletion === false);
 
     $listener = new HandleBulkModelIndexingListener($synchronizer);
     $listener->handle(new ModelsRequireIndexing(collect([$embeddableA, $plain, $embeddableB]), true));

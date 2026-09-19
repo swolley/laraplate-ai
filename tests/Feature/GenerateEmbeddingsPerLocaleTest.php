@@ -134,6 +134,25 @@ it('stamps one ModelEmbedding row per locale for a bilingual translated model', 
     Event::assertDispatched(ModelPreProcessingCompleted::class, fn (ModelPreProcessingCompleted $event): bool => $event->model->is($model) && $event->processing_type === 'embeddings');
 });
 
+it('stores embeddings without announcing completion on the bulk path', function (): void {
+    Event::fake([ModelPreProcessingCompleted::class]);
+
+    $model = new EmbeddableTestModel(['title' => 'Plain text']);
+    $model->saveQuietly();
+
+    $service = Mockery::mock(IEmbeddingService::class);
+    stubEmbedBatch($service, ['Plain text' => [0.5, 0.5]]);
+
+    $synchronizer = new ModelEmbeddingSynchronizer($service, app(EmbeddingModelRegistry::class));
+    $synchronizer->sync([$model], announceCompletion: false);
+
+    // Embeddings are still persisted...
+    expect($model->embeddings()->get())->toHaveCount(1)
+        ->and($model->embeddings()->first()->embedding)->toBe([0.5, 0.5]);
+    // ...but no per-model completion event fires: the bulk indexer writes the engine.
+    Event::assertNotDispatched(ModelPreProcessingCompleted::class);
+});
+
 it('stamps a single locale = null row for a non-translated model', function (): void {
     $model = new EmbeddableTestModel(['title' => 'Plain text']);
     $model->saveQuietly();
