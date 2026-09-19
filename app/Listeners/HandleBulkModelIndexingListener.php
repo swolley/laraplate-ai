@@ -33,7 +33,9 @@ final readonly class HandleBulkModelIndexingListener
         // announceCompletion: false — the bulk path writes the engine itself in
         // adaptive batches (Searchable::adaptiveBulkIndex), so emitting the
         // per-model completion event would double-index every model.
-        $this->synchronizer->sync($embeddable, announceCompletion: false);
+        // reload: false — the models arrive fresh from the import query with their
+        // embeddings/translations eager-loaded, so fresh() would only re-query.
+        $this->synchronizer->sync($embeddable, announceCompletion: false, reload: false);
     }
 
     private function shouldEmbed(Model $model): bool

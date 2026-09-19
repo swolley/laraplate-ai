@@ -37,8 +37,14 @@ final readonly class ModelEmbeddingSynchronizer
      *                                    writes the engine itself in one batch,
      *                                    and the completion event would trigger
      *                                    a redundant per-model index.
+     * @param  bool  $reload  When true (per-model path) each model is reloaded with
+     *                        fresh(), because a queued job may carry a stale snapshot.
+     *                        The bulk path passes false: its models come straight from
+     *                        the import query with embeddings (and translations)
+     *                        eager-loaded, so reloading would re-query per model and
+     *                        discard those eager loads.
      */
-    public function sync(iterable $models, ?string $locale = null, bool $announceCompletion = true): void
+    public function sync(iterable $models, ?string $locale = null, bool $announceCompletion = true, bool $reload = true): void
     {
         $model_key = $this->registry->active()->key;
         $default_locale = (string) (config('app.locale') ?: 'en');
@@ -49,7 +55,7 @@ final readonly class ModelEmbeddingSynchronizer
         $texts = [];
 
         foreach ($models as $model) {
-            $fresh = $model->fresh() ?? $model;
+            $fresh = $reload ? ($model->fresh() ?? $model) : $model;
 
             if (! $this->isEmbeddable($fresh)) {
                 continue;
@@ -86,12 +92,20 @@ final readonly class ModelEmbeddingSynchronizer
 
         $is_translated = class_uses_trait($model, HasTranslations::class);
 
-        $existing = ($locale === null
-            /** @phpstan-ignore method.notFound */
-            ? $model->embeddings()
-            /** @phpstan-ignore method.notFound */
-            : $model->embeddings()->forLocale($locale)
-        )->get();
+        // Reuse the eager-loaded embeddings relation (bulk path) when present,
+        // filtering in memory; only query per model when it is not loaded
+        // (per-model path). The bulk path always passes $locale === null.
+        if ($locale === null && $model->relationLoaded('embeddings')) {
+            /** @var \Illuminate\Support\Collection<int, ModelEmbedding> $existing */
+            $existing = $model->getRelation('embeddings');
+        } else {
+            $existing = ($locale === null
+                /** @phpstan-ignore method.notFound */
+                ? $model->embeddings()
+                /** @phpstan-ignore method.notFound */
+                : $model->embeddings()->forLocale($locale)
+            )->get();
+        }
 
         $stale = [];
         $processed_locales = [];
@@ -113,11 +127,11 @@ final readonly class ModelEmbeddingSynchronizer
             $texts[] = $text;
         }
 
-        return ['model' => $model, 'locale' => $locale, 'stale' => $stale, 'processed_locales' => $processed_locales];
+        return ['model' => $model, 'locale' => $locale, 'stale' => $stale, 'processed_locales' => $processed_locales, 'existing' => $existing];
     }
 
     /**
-     * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>}  $plan
+     * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>, existing: \Illuminate\Support\Collection<int, ModelEmbedding>}  $plan
      * @param  list<\NeuronAI\RAG\Document[]>  $embedded
      */
     private function writePlan(array $plan, string $model_key, array $embedded, bool $announceCompletion): void
@@ -141,10 +155,22 @@ final readonly class ModelEmbeddingSynchronizer
             }
 
             if ($plan['locale'] === null) {
-                /** @phpstan-ignore method.notFound */
-                $model->embeddings()->get()
+                // Orphan locales (present in DB but no longer in the plan) are found
+                // from the pre-write snapshot: rows for stale locales are in
+                // processed_locales and were already replaced above, so rejecting
+                // processed locales leaves exactly the orphans to drop.
+                $plan['existing']
                     ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $plan['processed_locales'], true))
                     ->each(static fn (ModelEmbedding $row) => $row->delete());
+            }
+
+            // The bulk path serializes each model right after this via
+            // toSearchableArray(), which prefers the loaded relation: refresh it so
+            // a re-embedded model is indexed with its new vectors, not the stale
+            // snapshot planModel() read.
+            if ($plan['stale'] !== [] && $model->relationLoaded('embeddings')) {
+                /** @phpstan-ignore method.notFound */
+                $model->load('embeddings');
             }
 
             if ($announceCompletion) {

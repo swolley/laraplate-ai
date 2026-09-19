@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
@@ -151,6 +153,40 @@ it('stores embeddings without announcing completion on the bulk path', function 
         ->and($model->embeddings()->first()->embedding)->toBe([0.5, 0.5]);
     // ...but no per-model completion event fires: the bulk indexer writes the engine.
     Event::assertNotDispatched(ModelPreProcessingCompleted::class);
+});
+
+it('issues no per-model embeddings query on the bulk path when the relation is eager-loaded', function (): void {
+    // Seed three models, each with a fresh embedding already stored.
+    $models = collect(range(1, 3))->map(function (int $i): EmbeddableTestModel {
+        $model = new EmbeddableTestModel(['title' => "Text {$i}"]);
+        $model->saveQuietly();
+
+        $seed = Mockery::mock(IEmbeddingService::class);
+        stubEmbedBatch($seed, ["Text {$i}" => [0.1, 0.2]]);
+        (new GenerateEmbeddingsJob($model))->handle($seed);
+
+        return $model->fresh();
+    });
+
+    // Eager-load embeddings the way Searchable::eagerLoadForIndexing does.
+    EloquentCollection::make($models->all())->loadMissing('embeddings');
+
+    // No embedDocumentsBatch expectation: everything is fresh, so a call would throw.
+    $service = Mockery::mock(IEmbeddingService::class);
+    $synchronizer = new ModelEmbeddingSynchronizer($service, app(EmbeddingModelRegistry::class));
+
+    DB::enableQueryLog();
+    $synchronizer->sync($models, announceCompletion: false, reload: false);
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    $embedding_reads = collect($queries)
+        ->filter(static fn (array $q): bool => str_contains($q['query'], 'core_model_embeddings')
+            && str_starts_with(mb_ltrim(mb_strtolower($q['query'])), 'select'))
+        ->count();
+
+    // Reads come from the eager-loaded relation, not one query per model.
+    expect($embedding_reads)->toBe(0);
 });
 
 it('stamps a single locale = null row for a non-translated model', function (): void {
