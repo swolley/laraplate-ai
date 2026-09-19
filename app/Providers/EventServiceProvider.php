@@ -6,6 +6,7 @@ namespace Modules\AI\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Modules\AI\Listeners\HandleAiTextGenerationListener;
+use Modules\AI\Listeners\HandleBulkModelIndexingListener;
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\AI\Listeners\HandleModificationApprovedTranslationListener;
@@ -13,6 +14,7 @@ use Modules\AI\Listeners\HandleModificationModerationListener;
 use Modules\AI\Listeners\HandleTranslationReembeddingListener;
 use Modules\Core\Events\AiTextGenerationRequested;
 use Modules\Core\Events\ModelRequiresIndexing;
+use Modules\Core\Events\ModelsRequireIndexing;
 use Modules\Core\Events\ModificationApproved;
 use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Events\TranslatedModelSaved;
@@ -31,6 +33,9 @@ final class EventServiceProvider extends ServiceProvider
     protected $listen = [
         ModelRequiresIndexing::class => [
             HandleModelIndexingListener::class,
+        ],
+        ModelsRequireIndexing::class => [
+            HandleBulkModelIndexingListener::class,
         ],
         TranslatedModelSaved::class => [
             HandleModelTranslationListener::class,
