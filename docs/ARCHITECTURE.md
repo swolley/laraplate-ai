@@ -425,7 +425,7 @@ sequenceDiagram
 ```php
 // MemoryService::shouldSummarize()
 if (!$conversation->memory_enabled) return false;
-if (!config('ai.features.chat.enable_summary')) return false;
+if (!config('ai.features.chat.summary.enabled')) return false;
 
 $message_count = $conversation->messages()->count();
 $threshold = config('ai.features.chat.summary_threshold', 20);

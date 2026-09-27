@@ -68,7 +68,7 @@ php artisan module:install AI
 
 The AI module configuration is automatically mapped as `ai.*` when the module is active. Configuration file: `Modules/AI/config/config.php`.
 
-Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.enable_summary`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*` and the `features.moderation.*` thresholds. Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`.
+Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.summary.enabled`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*` and the `features.moderation.*` thresholds. Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`.
 
 ```env
 # AI Features

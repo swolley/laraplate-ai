@@ -25,10 +25,10 @@ beforeEach(function (): void {
     config([
         'ai.features.moderation.enabled' => true,
         'ai.features.moderation.system_user_id' => $this->system_user->id,
-        'ai.features.moderation.ai_participates_in_approvals' => true,
+        'ai.features.moderation.votes' => true,
         'ai.features.moderation.approval_mode' => 'threshold',
-        'ai.features.moderation.approve_confidence_threshold' => 0.85,
-        'ai.features.moderation.reject_confidence_threshold' => 0.85,
+        'ai.features.moderation.threshold.approve' => 0.85,
+        'ai.features.moderation.threshold.reject' => 0.85,
     ]);
 });
 
@@ -124,7 +124,7 @@ it('dispatches preprocessing completed without voting when adapter is unsupporte
 
 it('skips voting when ai participation is disabled', function (): void {
     Event::fake([ModificationPreProcessingCompleted::class]);
-    config(['ai.features.moderation.ai_participates_in_approvals' => false]);
+    config(['ai.features.moderation.votes' => false]);
 
     bindModerationStack(new ModerationResult(
         verdict: ModerationVerdict::Approve,

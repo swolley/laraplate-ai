@@ -101,7 +101,7 @@ and the `core.search.vector.enabled` runtime setting set to true (Filament > Set
 
 - `config('ai.features.translation.enabled')` is true
 - Model uses `HasTranslations`
-- `autoTranslateEnabledBySettings()` is true (setting `auto_translate.{table}` or model property)
+- `autoTranslateEnabledBySettings()` is true (setting `translations.auto.{table}` or model property)
 
 ### Flow
 
@@ -141,7 +141,7 @@ AI_TRANSLATION_ENABLED=true
 DEEPL_API_KEY=
 ```
 
-Per-model: `auto_translate.{table}` in group `translations` (seeded by Core for `HasTranslations` models).
+Per-model: `translations.auto.{table}` in group `translations` (seeded by Core for `HasTranslations` models).
 
 ---
 

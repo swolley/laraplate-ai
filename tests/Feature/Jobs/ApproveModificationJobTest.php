@@ -32,9 +32,9 @@ beforeEach(function (): void {
         'ai.features.moderation.enabled' => true,
         'ai.features.moderation.system_user_id' => $this->system_user->id,
         'ai.features.moderation.approval_mode' => ModerationApprovalMode::Threshold->value,
-        'ai.features.moderation.approve_confidence_threshold' => 0.85,
-        'ai.features.moderation.reject_confidence_threshold' => 0.85,
-        'ai.features.moderation.ai_participates_in_approvals' => true,
+        'ai.features.moderation.threshold.approve' => 0.85,
+        'ai.features.moderation.threshold.reject' => 0.85,
+        'ai.features.moderation.votes' => true,
     ]);
 });
 

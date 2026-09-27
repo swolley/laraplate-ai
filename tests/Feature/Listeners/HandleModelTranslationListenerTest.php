@@ -22,7 +22,7 @@ it('dispatches translation job when auto translate is enabled for the model', fu
     $model = new FakeTranslatableModel();
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'auto_translate.' . $model->getTable(),
+        'name' => 'translations.auto.' . $model->getTable(),
         'value' => true,
         'type' => SettingTypeEnum::Boolean,
         'group_name' => 'translations',

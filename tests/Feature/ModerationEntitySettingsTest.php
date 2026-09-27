@@ -18,7 +18,7 @@ it('declares one disabled switch per model with a registered moderation adapter'
     expect($definitions)->toHaveCount(1)
         ->and($definitions[0]['name'])->toBe('features.moderation.entities.' . (new Comment())->getTable())
         ->and($definitions[0]['value'])->toBeFalse()
-        ->and($definitions[0]['group_name'])->toBe('moderation');
+        ->and($definitions[0]['group_name'])->toBe('ai');
 });
 
 it('declares nothing when no moderation adapter is registered', function (): void {

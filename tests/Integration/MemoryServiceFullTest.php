@@ -17,7 +17,7 @@ beforeEach(function (): void {
 });
 
 it('shouldSummarize returns false when memory_enabled is false', function (): void {
-    config()->set('ai.features.chat.enable_summary', true);
+    config()->set('ai.features.chat.summary.enabled', true);
 
     $user = User::factory()->create();
     $conversation = Conversation::query()->create([
@@ -29,7 +29,7 @@ it('shouldSummarize returns false when memory_enabled is false', function (): vo
 });
 
 it('shouldSummarize returns false when config disabled', function (): void {
-    config()->set('ai.features.chat.enable_summary', false);
+    config()->set('ai.features.chat.summary.enabled', false);
 
     $user = User::factory()->create();
     $conversation = Conversation::query()->create([
@@ -41,7 +41,7 @@ it('shouldSummarize returns false when config disabled', function (): void {
 });
 
 it('shouldSummarize returns true when message count >= threshold', function (): void {
-    config()->set('ai.features.chat.enable_summary', true);
+    config()->set('ai.features.chat.summary.enabled', true);
     config()->set('ai.features.chat.summary_threshold', 5);
 
     $user = User::factory()->create();
@@ -62,7 +62,7 @@ it('shouldSummarize returns true when message count >= threshold', function (): 
 });
 
 it('shouldSummarize returns true when messages since last summary >= threshold', function (): void {
-    config()->set('ai.features.chat.enable_summary', true);
+    config()->set('ai.features.chat.summary.enabled', true);
     config()->set('ai.features.chat.summary_threshold', 3);
 
     $user = User::factory()->create();

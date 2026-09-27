@@ -25,7 +25,7 @@ it('dispatches translation job when auto translate is enabled for comments', fun
     Bus::fake();
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'auto_translate.' . (new Comment())->getTable(),
+        'name' => 'translations.auto.' . (new Comment())->getTable(),
         'value' => true,
         'type' => SettingTypeEnum::Boolean,
         'group_name' => 'translations',
@@ -83,7 +83,7 @@ it('does not dispatch when the translation feature is disabled', function (): vo
     config(['ai.features.translation.enabled' => false]);
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'auto_translate.' . (new Comment())->getTable(),
+        'name' => 'translations.auto.' . (new Comment())->getTable(),
         'value' => true,
         'type' => SettingTypeEnum::Boolean,
         'group_name' => 'translations',

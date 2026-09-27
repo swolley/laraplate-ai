@@ -19,7 +19,7 @@ class AIDatabaseSeeder extends Seeder
         return [
             self::setting('features.embeddings.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable embeddings generation'),
             self::setting('features.translation.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable automatic translation'),
-            self::setting('features.chat.enable_summary', false, SettingTypeEnum::Boolean, 'ai', 'Enable chat summarization'),
+            self::setting('features.chat.summary.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable chat summarization'),
             self::setting('features.faq.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable FAQ/RAG answers'),
             self::setting('features.faq.max_documents', 5, SettingTypeEnum::Integer, 'ai', 'Maximum FAQ documents to retrieve'),
             self::setting('features.faq.min_similarity', 0.7, SettingTypeEnum::Float, 'ai', 'Minimum FAQ similarity score'),
@@ -33,9 +33,9 @@ class AIDatabaseSeeder extends Seeder
             self::setting('features.contextual_suggestions.cache_ttl', 3600, SettingTypeEnum::Integer, 'ai', 'Contextual suggestions cache TTL seconds'),
             self::setting('features.moderation.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable AI moderation'),
             self::setting('features.moderation.approval_mode', 'threshold', SettingTypeEnum::String, 'ai', 'AI moderation approval mode', ['threshold', 'dual']),
-            self::setting('features.moderation.ai_participates_in_approvals', true, SettingTypeEnum::Boolean, 'ai', 'Allow AI votes in approval workflow'),
-            self::setting('features.moderation.approve_confidence_threshold', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation approval confidence threshold'),
-            self::setting('features.moderation.reject_confidence_threshold', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation rejection confidence threshold'),
+            self::setting('features.moderation.votes', true, SettingTypeEnum::Boolean, 'ai', 'Allow AI votes in approval workflow'),
+            self::setting('features.moderation.threshold.approve', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation approval confidence threshold'),
+            self::setting('features.moderation.threshold.reject', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation rejection confidence threshold'),
         ];
     }
 

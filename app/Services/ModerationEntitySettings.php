@@ -58,7 +58,7 @@ final readonly class ModerationEntitySettings
                 'encrypted' => false,
                 'choices' => null,
                 'type' => SettingTypeEnum::Boolean,
-                'group_name' => 'moderation',
+                'group_name' => 'ai',
                 'description' => "AI moderation for {$model->getTable()}",
             ];
         }

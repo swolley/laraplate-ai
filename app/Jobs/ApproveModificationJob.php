@@ -64,7 +64,7 @@ final class ApproveModificationJob implements ShouldQueue
             /** @var User $system_user */
             $system_user = User::findOrFail($system_user_id);
 
-            if (! ai_config_bool('ai.features.moderation.ai_participates_in_approvals', true)) {
+            if (! ai_config_bool('ai.features.moderation.votes', true)) {
                 return;
             }
 
@@ -89,8 +89,8 @@ final class ApproveModificationJob implements ShouldQueue
         User $system_user,
         ModerationResult $result,
     ): void {
-        $approve_threshold = ai_config_float('ai.features.moderation.approve_confidence_threshold', 0.85);
-        $reject_threshold = ai_config_float('ai.features.moderation.reject_confidence_threshold', 0.85);
+        $approve_threshold = ai_config_float('ai.features.moderation.threshold.approve', 0.85);
+        $reject_threshold = ai_config_float('ai.features.moderation.threshold.reject', 0.85);
 
         if ($result->safeToAutoApprove && $result->confidence >= $approve_threshold) {
             $modification->approvers_required = 1;

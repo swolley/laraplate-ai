@@ -49,7 +49,7 @@ PROMPT;
             return false;
         }
 
-        if (! ai_config_bool('ai.features.chat.enable_summary', false)) {
+        if (! ai_config_bool('ai.features.chat.summary.enabled', false)) {
             return false;
         }
 

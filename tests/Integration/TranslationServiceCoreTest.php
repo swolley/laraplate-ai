@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Modules\AI\Services\Translation\TranslationService;
 
 it('constructor initializes with deepl provider by default', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     Http::fake([
@@ -24,7 +24,7 @@ it('constructor initializes with deepl provider by default', function (): void {
 });
 
 it('constructor initializes with ai provider', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'ai');
+    config()->set('core.translations.provider', 'ai');
 
     $service = new TranslationService;
 
@@ -32,16 +32,16 @@ it('constructor initializes with ai provider', function (): void {
 });
 
 it('constructor throws on unsupported provider', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'unsupported');
+    config()->set('core.translations.provider', 'unsupported');
     config()->set('core.deepl_api_key', 'test-key');
 
     new TranslationService;
 })->throws(Exception::class, 'Unsupported translation provider');
 
 it('translate caches results', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
-    config()->set('core.translations.cache_enabled', true);
+    config()->set('core.translations.cache.enabled', true);
 
     Http::fake([
         'https://api-free.deepl.com/v2/translate' => Http::response([
@@ -63,7 +63,7 @@ it('translate caches results', function (): void {
 });
 
 it('translate returns empty and zero text as-is', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     $service = new TranslationService;
@@ -73,7 +73,7 @@ it('translate returns empty and zero text as-is', function (): void {
 });
 
 it('translateBatch translates each text', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     Http::fake([
@@ -90,10 +90,10 @@ it('translateBatch translates each text', function (): void {
 });
 
 it('translate returns original when primary fails and fallback is disabled', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
-    config()->set('core.translations.auto_translate_fallback_to_ai', false);
-    config()->set('core.translations.cache_enabled', false);
+    config()->set('core.translations.fallback_to_ai', false);
+    config()->set('core.translations.cache.enabled', false);
 
     Http::fake([
         'https://api-free.deepl.com/v2/translate' => Http::response(null, 500),
@@ -107,7 +107,7 @@ it('translate returns original when primary fails and fallback is disabled', fun
 });
 
 it('translateBatch returns empty array when texts is empty', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     $service = new TranslationService;
@@ -118,10 +118,10 @@ it('translateBatch returns empty array when texts is empty', function (): void {
 });
 
 it('translate returns original text when both primary and fallback fail', function (): void {
-    config()->set('core.translations.auto_translate_provider', 'deepl');
+    config()->set('core.translations.provider', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
-    config()->set('core.translations.auto_translate_fallback_to_ai', true);
-    config()->set('core.translations.cache_enabled', false);
+    config()->set('core.translations.fallback_to_ai', true);
+    config()->set('core.translations.cache.enabled', false);
 
     Http::fake(fn () => Http::response(null, 500));
 

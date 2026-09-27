@@ -17,7 +17,7 @@ it('returns false for shouldSummarize when memory is disabled', function (): voi
 });
 
 it('returns false for shouldSummarize when summary feature is disabled', function (): void {
-    config()->set('ai.features.chat.enable_summary', false);
+    config()->set('ai.features.chat.summary.enabled', false);
 
     $conversation = new Conversation;
     $conversation->memory_enabled = true;
