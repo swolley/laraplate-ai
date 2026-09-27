@@ -68,10 +68,10 @@ php artisan module:install AI
 
 The AI module configuration is automatically mapped as `ai.*` when the module is active. Configuration file: `Modules/AI/config/config.php`.
 
+Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `ai.features.{embeddings,translation,chat,faq,contextual_suggestions,moderation}.enabled`, `ai.features.chat.{max_context_messages,enable_summary}`, `ai.features.faq.{max_documents,min_similarity,format_citations,question_detection.enabled}`, `ai.features.faq.splitter.*` and the `ai.features.moderation.*` thresholds.
+
 ```env
 # AI Features
-AI_EMBEDDINGS_ENABLED=true          # Enable embeddings generation
-AI_TRANSLATION_ENABLED=true          # Enable automatic translation
 
 # Embeddings provider (default: sentence_transformers)
 AI_EMBEDDINGS_PROVIDER=sentence_transformers  # openai, ollama, voyageai, mistral, sentence_transformers
@@ -103,10 +103,7 @@ SENTENCE_TRANSFORMERS_BATCH_SIZE=32  # Documents per /embed batch (lower it if o
 DEEPL_API_KEY=                       # DeepL API key
 
 # Chat Configuration
-AI_CHAT_ENABLED=true                 # Enable chat functionality
 AI_CHAT_PROVIDER=ollama              # Chat provider (ollama, openai, mistral, anthropic)
-AI_CHAT_MAX_CONTEXT=50               # Max messages in context window
-AI_CHAT_ENABLE_SUMMARY=false         # Enable automatic conversation summarization
 
 # Optional Text Generation (answers Core's AiTextGenerationRequested event)
 AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
@@ -119,19 +116,12 @@ AI_TEXT_GENERATION_RATE_WINDOW=60    # Rate-limit window in seconds
 # Live smoke test (tests/Integration/AiTextGenerationLiveSmokeTest.php) runs only with AI_LIVE_TESTS=1 + provider credentials.
 
 # FAQ/RAG Configuration
-AI_FAQ_ENABLED=true                  # Enable FAQ/RAG functionality
 AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/newline); see docs/README.md and rag_paths()
 AI_FAQ_VECTOR_STORE=filesystem       # Vector store: memory (tests), filesystem, elasticsearch (multi-instance)
 AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
 AI_FAQ_ES_EMBEDDING_DIMS=384         # Must match your embeddings model dimensionality
-AI_FAQ_MAX_DOCS=5                    # Max chunks retrieved per question
 AI_FAQ_MIN_SIMILARITY=0.0            # Min cosine score to return a documentation hit; below it retrieval abstains (empty) instead of returning noise. 0 = off. Small models compress scores (e5-small tops ~0.94, unrelated ~0.92) so a useful threshold sits ~0.93 in a narrow band — tune per corpus/model.
-AI_FAQ_FORMAT_CITATIONS=true         # Append source list to RAG answers
-AI_FAQ_SPLITTER=markdown_aware       # Chunking: markdown_aware, sentence, delimiter
-AI_FAQ_SPLITTER_MAX_WORDS=250
-AI_FAQ_SPLITTER_OVERLAP=0
-AI_FAQ_QUESTION_DETECTION=true       # Route question-like chat messages through RAG when index is available
 
 # Tools Configuration
 AI_TOOLS_ENABLED=true                # Enable tool/function calling
@@ -314,7 +304,7 @@ four Core search contracts. Three of them have a Core fallback; one does not:
 | `ISearchPlanner` | `SearchOrchestratorAgent` | `FallbackSearchPlanner` | plan from rules, not from an LLM |
 | `IQueryIntentParser` | `LlmQueryIntentParser` | `SimpleQueryIntentParser` | no LLM query expansion |
 
-Vector retrieval therefore needs **both** `VECTOR_SEARCH_ENABLED=true` in Core and the AI module
+Vector retrieval therefore needs **both** `search.vector_search.enabled` = true in Core and the AI module
 providing `ITextEmbedder`. Pipeline details: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
 
 ## Scripts

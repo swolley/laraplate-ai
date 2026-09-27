@@ -87,8 +87,9 @@ Core / Scout (see Core README):
 
 ```env
 SCOUT_DRIVER=elasticsearch
-VECTOR_SEARCH_ENABLED=true
 ```
+
+and the `search.vector_search.enabled` runtime setting set to true (Filament > Settings).
 
 ---
 
@@ -189,7 +190,7 @@ php artisan ai:embeddings:repair "Modules\CMS\Models\Content" [--chunk=100] [--s
 - `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after switching `AI_EMBEDDINGS_MODEL` to re-embed the backlog.
 - Either way, regeneration dispatches `GenerateEmbeddingsJob` per record with `locale = null` (or runs it inline with `--sync`), which performs a full per-locale regenerate — all locales, stamped with the active `model_key` — through the finalize flow. The command itself does not stamp `model_key`.
 - Preflight `/health` cross-check: before scanning, the command `GET`s `{SENTENCE_TRANSFORMERS_URL}/health` and compares the reported `model` against the active profile's `service_model`. A mismatch (or an unreachable service) only emits a warning — it never aborts the repair run.
-- Requires `VECTOR_SEARCH_ENABLED=true` and a searchable, embeddable model (non-empty `$embed`).
+- Requires `search.vector_search.enabled` = true and a searchable, embeddable model (non-empty `$embed`).
 
 ---
 
