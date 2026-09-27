@@ -102,7 +102,7 @@ final class IntelligentSearchAction
             return false;
         }
 
-        if (! (bool) config('search.vector_search.enabled', false)) {
+        if (! (bool) config('core.search.vector.enabled', false)) {
             return false;
         }
 

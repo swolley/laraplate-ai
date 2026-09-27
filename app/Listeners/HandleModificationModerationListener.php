@@ -11,9 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Jobs\ApproveModificationJob;
-use Modules\Core\Contracts\IModeratableModel;
+use Modules\AI\Services\ModerationEntitySettings;
 use Modules\Core\Events\ModificationRequiresModeration;
-use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\Modification;
 use Modules\Core\Services\ModerationAdapterRegistry;
 
@@ -89,19 +88,7 @@ final class HandleModificationModerationListener
 
     private function supportsAiModeration(Model $model): bool
     {
-        if (! $this->usesApprovalsTrait($model)) {
-            return false;
-        }
-
-        return $model->aiModerationEnabledBySettings();
-    }
-
-    /**
-     * @phpstan-assert-if-true IModeratableModel&Model $model
-     */
-    private function usesApprovalsTrait(Model $model): bool
-    {
-        return in_array(HasApprovals::class, class_uses_recursive($model), true);
+        return ModerationEntitySettings::enabledFor($model);
     }
 
     private function saveEventToCache(ModificationRequiresModeration $event): void

@@ -82,7 +82,7 @@ Canonical English names for AI entities in this module. Use these terms in code,
 | **ModerationContextBuilderRegistry**       | Core registry; AI resolves context without importing domain modules.                     |
 | **ModerationResult**                       | Structured approve / reject / uncertain outcome from `ModerationService`.              |
 | **ModerationApprovalMode**                 | Policy enum: threshold, dual, uncertain-fallback variants.                               |
-| **ai_moderation_{table}**                  | Per-model setting toggling AI moderation via `HasApprovals`.                             |
+| **ai.features.moderation.entities.{table}** | Per-entity AI moderation switch, declared by the AI module for each model with a registered moderation adapter. |
 
 
 ## Contextual suggestions

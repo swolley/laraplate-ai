@@ -8,7 +8,7 @@ use InvalidArgumentException;
 
 /**
  * Resolves embedding-model profiles from `ai.features.embeddings.models`.
- * `dimensions`/`similarity` always derive from Core's `search.vector.*`
+ * `dimensions`/`similarity` always derive from Core's `core.search.vector.*`
  * config rather than the per-model block, so the vector index and the
  * active model can never drift apart.
  */
@@ -34,10 +34,10 @@ final class EmbeddingModelRegistry
             key: $key,
             provider: (string) ($model['provider'] ?? ''),
             serviceModel: (string) ($model['service_model'] ?? ''),
-            dimensions: (int) config('search.vector.dimensions', 384),
+            dimensions: (int) config('core.search.vector.dimensions', 384),
             queryPrefix: (string) ($model['query_prefix'] ?? ''),
             passagePrefix: (string) ($model['passage_prefix'] ?? ''),
-            similarity: (string) config('search.vector.similarity', 'cosine'),
+            similarity: (string) config('core.search.vector.similarity', 'cosine'),
             normalize: (bool) ($model['normalize'] ?? false),
         );
     }

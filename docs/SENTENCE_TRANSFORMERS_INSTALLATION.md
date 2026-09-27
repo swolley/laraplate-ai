@@ -144,7 +144,7 @@ Use the same port in the Python process and in `SENTENCE_TRANSFORMERS_URL`.
 
 Laraplate defaults assume **384-dimensional** vectors:
 
-- Core setting `search.vector_search.dimension` (default `384`)
+- Core setting `core.search.vector.dimensions` (default `384`)
 - `AI_FAQ_ES_EMBEDDING_DIMS` (default `384`)
 - Elasticsearch `dense_vector` mappings for search and RAG
 
@@ -271,7 +271,7 @@ Notes:
 - If omitted, the default is already `sentence_transformers`; the URL must still be reachable.
 - Chat and translation use separate env vars (`AI_CHAT_PROVIDER`, `AI_TRANSLATION_PROVIDER`).
 
-Ensure Core search vector settings match (`search.vector_search.dimension` = `384`). Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).
+Ensure Core search vector settings match (`core.search.vector.dimensions` = `384`). Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).
 
 ---
 

@@ -6,19 +6,15 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Listeners\HandleModificationModerationListener;
+use Modules\AI\Services\ModerationEntitySettings;
 use Modules\CMS\Models\Comment;
 use Modules\CMS\Services\CommentModerationAdapter;
-use Modules\Core\Casts\SettingTypeEnum;
 use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Models\Modification;
-use Modules\Core\Models\Setting;
 use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
-use Modules\Core\Services\PerModelSettingResolver;
 
 beforeEach(function (): void {
-    app(PerModelSettingResolver::class)->flush();
-
     $registry = app(ModerationAdapterRegistry::class);
     $registry->register(app(CommentModerationAdapter::class));
 
@@ -30,15 +26,7 @@ beforeEach(function (): void {
         'permission.users.system' => 'system',
     ]);
 
-    Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'ai_moderation_' . (new Comment())->getTable(),
-        'value' => true,
-        'type' => SettingTypeEnum::Boolean,
-        'group_name' => 'moderation',
-        'description' => 'test',
-    ]);
-
-    app(PerModelSettingResolver::class)->flush();
+    config([ModerationEntitySettings::nameFor(new Comment()) => true]);
 });
 
 it('dispatches approve modification job', function (): void {
@@ -83,11 +71,7 @@ it('skips when feature is disabled', function (): void {
 it('skips when ai moderation is disabled for the modifiable model', function (): void {
     Queue::fake();
 
-    Setting::query()
-        ->where('name', 'ai_moderation_' . (new Comment())->getTable())
-        ->update(['value' => false]);
-
-    app(PerModelSettingResolver::class)->flush();
+    config([ModerationEntitySettings::nameFor(new Comment()) => false]);
 
     $modification = Modification::query()->create([
         'modifiable_type' => Comment::class,

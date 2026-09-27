@@ -55,11 +55,11 @@ final readonly class SearchOrchestratorAgent implements ISearchPlanner
     {
         $is_short = mb_strlen($query) < 20;
         $has_numbers = (bool) preg_match('/\d/', $query);
-        $vector_globally_enabled = (bool) config('search.vector_search.enabled', false);
+        $vector_globally_enabled = (bool) config('core.search.vector.enabled', false);
         $use_vector = $vector_globally_enabled && ! $has_numbers;
 
-        $use_reranker = (bool) config('search.features.reranker', true);
-        $rerank_top_k = $this->intValue(config('search.reranker.top_k'), 30);
+        $use_reranker = (bool) config('core.search.features.reranker', true);
+        $rerank_top_k = $this->intValue(config('core.search.reranker.top_k'), 30);
 
         return [
             'strategy' => $use_vector ? 'hybrid' : 'fulltext',
@@ -108,7 +108,7 @@ final readonly class SearchOrchestratorAgent implements ISearchPlanner
      */
     private function sanitizePlan(array $plan, string $query): array
     {
-        $vector_globally_enabled = (bool) config('search.vector_search.enabled', false);
+        $vector_globally_enabled = (bool) config('core.search.vector.enabled', false);
         $retrieval = $this->planSection($plan, 'retrieval');
         $llm_wants_vector = $this->boolValue($retrieval['use_vector'] ?? null, true);
         $use_vector = $vector_globally_enabled && $llm_wants_vector;

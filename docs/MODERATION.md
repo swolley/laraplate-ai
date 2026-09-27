@@ -14,7 +14,7 @@ AI participates in the **approval workflow** by analyzing pending `Modification`
 |------|--------|
 | AI does not import CMS | No `Comment`, `Content`, or CMS events |
 | Opt-in via registry | `ModerationContextBuilderRegistry::supports($modification)` |
-| Per-model toggle | `ai_moderation_{table}` + `HasApprovals::aiModerationEnabledBySettings()` |
+| Per-entity toggle | `ai.features.moderation.entities.{table}`, seeded by the AI module for each model with a registered `ModerationAdapter` |
 | Outcome on Core tables | `meta` JSON on `approvals` / `disapprovals` |
 
 ---
@@ -108,7 +108,7 @@ Legacy `AI_COMMENT_*` env vars are still read as fallbacks in `config/config.php
 
 Per-model (Core settings, group `moderation`):
 
-- `ai_moderation_cms_comments` — enable AI for comments (default false until enabled in admin/seed)
+- `ai.features.moderation.entities.cms_comments` — enable AI for comments (seeded false)
 
 ---
 

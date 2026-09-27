@@ -32,7 +32,7 @@ return [
 
             // Active embedding-model profile key (see `models` below). Resolved by
             // EmbeddingModelRegistry; dimensions/similarity are derived from Core's
-            // `search.vector.*` config, never hardcoded here, to avoid drift.
+            // `core.search.vector.*` config, never hardcoded here, to avoid drift.
             'active' => env('AI_EMBEDDINGS_MODEL', 'multilingual-e5-small'),
             'models' => [
                 'multilingual-e5-small' => [
@@ -107,12 +107,6 @@ return [
                 'embedding_dims' => (int) env('AI_FAQ_ES_EMBEDDING_DIMS', 384),
             ],
             'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
-            // Minimum cosine-similarity score a documentation hit must reach to be
-            // returned; below it the retriever abstains (empty result) rather than
-            // surfacing noise. 0.0 disables the filter. NOTE: with the compact score
-            // range of small models (e.g. e5-small tops out ~0.94 and scores unrelated
-            // docs ~0.92) a global threshold is fragile — tune per corpus/model.
-            'min_similarity' => (float) env('AI_FAQ_MIN_SIMILARITY', 0.0),
         ],
         'tools' => [
             'enabled' => env('AI_TOOLS_ENABLED', true),

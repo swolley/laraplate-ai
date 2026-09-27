@@ -14,7 +14,7 @@ use Modules\Core\Events\ModelRequiresIndexing;
 
 beforeEach(function (): void {
     Config::set('ai.features.embeddings.enabled', true);
-    Config::set('search.vector_search.enabled', true);
+    Config::set('core.search.vector.enabled', true);
     Queue::fake();
 });
 

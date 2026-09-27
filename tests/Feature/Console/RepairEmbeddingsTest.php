@@ -82,7 +82,7 @@ function fakeHealthyEmbeddingService(): void
 }
 
 beforeEach(function (): void {
-    Config::set('search.vector_search.enabled', true);
+    Config::set('core.search.vector.enabled', true);
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();

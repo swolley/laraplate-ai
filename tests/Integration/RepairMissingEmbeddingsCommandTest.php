@@ -26,7 +26,7 @@ function run_repair_embeddings_command(array $args): CommandTester
 }
 
 beforeEach(function (): void {
-    Config::set('search.vector_search.enabled', true);
+    Config::set('core.search.vector.enabled', true);
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();
@@ -41,7 +41,7 @@ it('returns failure when the model class does not exist', function (): void {
 });
 
 it('returns failure when vector search is disabled', function (): void {
-    Config::set('search.vector_search.enabled', false);
+    Config::set('core.search.vector.enabled', false);
 
     $tester = run_repair_embeddings_command(['model' => EmbeddableTestModel::class]);
 

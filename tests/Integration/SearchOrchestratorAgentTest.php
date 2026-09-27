@@ -13,10 +13,12 @@ beforeEach(function (): void {
 
     if (! $container->bound('config')) {
         $container->singleton('config', fn (): Repository => new Repository([
-            'search' => [
-                'features' => ['reranker' => true],
-                'reranker' => ['top_k' => 30],
-                'vector_search' => ['enabled' => false],
+            'core' => [
+                'search' => [
+                    'features' => ['reranker' => true],
+                    'reranker' => ['top_k' => 30],
+                    'vector' => ['enabled' => false],
+                ],
             ],
         ]));
     }
@@ -28,7 +30,7 @@ it('implements ISearchPlanner contract', function (): void {
 });
 
 it('fallbackPlan returns valid structure', function (): void {
-    config()->set('search.vector_search.enabled', true);
+    config()->set('core.search.vector.enabled', true);
 
     $llm = Mockery::mock(LlmSearchService::class);
     $agent = new SearchOrchestratorAgent($llm);
@@ -40,7 +42,7 @@ it('fallbackPlan returns valid structure', function (): void {
 });
 
 it('disables vector when globally disabled', function (): void {
-    config()->set('search.vector_search.enabled', false);
+    config()->set('core.search.vector.enabled', false);
 
     $llm = Mockery::mock(LlmSearchService::class);
     $agent = new SearchOrchestratorAgent($llm);

@@ -68,7 +68,7 @@ php artisan module:install AI
 
 The AI module configuration is automatically mapped as `ai.*` when the module is active. Configuration file: `Modules/AI/config/config.php`.
 
-Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `ai.features.{embeddings,translation,chat,faq,contextual_suggestions,moderation}.enabled`, `ai.features.chat.{max_context_messages,enable_summary}`, `ai.features.faq.{max_documents,min_similarity,format_citations,question_detection.enabled}`, `ai.features.faq.splitter.*` and the `ai.features.moderation.*` thresholds.
+Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `ai.features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `ai.features.chat.enable_summary`, `ai.features.faq.{max_documents,min_similarity,format_citations}`, `ai.features.faq.splitter.*` and the `ai.features.moderation.*` thresholds.
 
 ```env
 # AI Features
@@ -121,7 +121,6 @@ AI_FAQ_VECTOR_STORE=filesystem       # Vector store: memory (tests), filesystem,
 AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
 AI_FAQ_ES_EMBEDDING_DIMS=384         # Must match your embeddings model dimensionality
-AI_FAQ_MIN_SIMILARITY=0.0            # Min cosine score to return a documentation hit; below it retrieval abstains (empty) instead of returning noise. 0 = off. Small models compress scores (e5-small tops ~0.94, unrelated ~0.92) so a useful threshold sits ~0.93 in a narrow band — tune per corpus/model.
 
 # Tools Configuration
 AI_TOOLS_ENABLED=true                # Enable tool/function calling
@@ -304,7 +303,7 @@ four Core search contracts. Three of them have a Core fallback; one does not:
 | `ISearchPlanner` | `SearchOrchestratorAgent` | `FallbackSearchPlanner` | plan from rules, not from an LLM |
 | `IQueryIntentParser` | `LlmQueryIntentParser` | `SimpleQueryIntentParser` | no LLM query expansion |
 
-Vector retrieval therefore needs **both** `search.vector_search.enabled` = true in Core and the AI module
+Vector retrieval therefore needs **both** `core.search.vector.enabled` = true in Core and the AI module
 providing `ITextEmbedder`. Pipeline details: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
 
 ## Scripts

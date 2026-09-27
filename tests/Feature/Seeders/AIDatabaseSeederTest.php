@@ -20,14 +20,14 @@ it('is idempotent and leaves an operator-changed value untouched on a second run
     $this->seed(AIDatabaseSeeder::class);
 
     Setting::query()->withoutGlobalScopes()
-        ->where('name', 'ai.features.chat.max_context_messages')
+        ->where('name', 'ai.features.faq.max_documents')
         ->update(['value' => json_encode(999), 'description' => 'drifted']);
 
     $this->seed(AIDatabaseSeeder::class);
 
     $setting = Setting::query()->withoutGlobalScopes()
-        ->where('name', 'ai.features.chat.max_context_messages')->sole();
+        ->where('name', 'ai.features.faq.max_documents')->sole();
 
     expect($setting->value)->toBe(999)
-        ->and($setting->description)->toBe('Maximum chat context messages');
+        ->and($setting->description)->toBe('Maximum FAQ documents to retrieve');
 });

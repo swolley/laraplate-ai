@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
-use function ai_config_bool;
-use function ai_config_string;
-
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+
+use function ai_config_bool;
+use function ai_config_string;
 
 final class TranslationService implements TranslationServiceInterface
 {
@@ -28,8 +28,8 @@ final class TranslationService implements TranslationServiceInterface
 
     public function __construct()
     {
-        $provider = ai_config_string('core.auto_translate_provider', 'deepl');
-        $this->cache_enabled = ai_config_bool('core.translation_cache_enabled', true);
+        $provider = ai_config_string('core.translations.auto_translate_provider', 'deepl');
+        $this->cache_enabled = ai_config_bool('core.translations.cache_enabled', true);
 
         // Initialize primary service
         $this->primary_service = match ($provider) {
@@ -39,8 +39,8 @@ final class TranslationService implements TranslationServiceInterface
         };
 
         // Initialize fallback service if enabled
-        if (ai_config_bool('core.auto_translate_fallback_to_ai', true) && $provider !== 'ai') {
-            $this->fallback_service = new AiTranslationService();
+        if (ai_config_bool('core.translations.auto_translate_fallback_to_ai', true) && $provider !== 'ai') {
+            $this->fallback_service = new AiTranslationService;
         }
     }
 

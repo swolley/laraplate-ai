@@ -12,7 +12,7 @@ use Modules\Core\Events\ModelsRequireIndexing;
 
 beforeEach(function (): void {
     Config::set('ai.features.embeddings.enabled', true);
-    Config::set('search.vector_search.enabled', true);
+    Config::set('core.search.vector.enabled', true);
 });
 
 function bulk_listener_stub(int $id): SearchableModelStub
@@ -52,7 +52,7 @@ it('does nothing when the embeddings feature is disabled', function (): void {
 });
 
 it('does nothing when no model in the chunk is embeddable', function (): void {
-    Config::set('search.vector_search.enabled', false);
+    Config::set('core.search.vector.enabled', false);
 
     $synchronizer = Mockery::mock(ModelEmbeddingSynchronizer::class);
     $synchronizer->shouldNotReceive('sync');

@@ -25,7 +25,7 @@ Runs when all are true:
 2. `config('ai.features.moderation.system_user_id')` set
 3. `Modification` is active
 4. `ModerationContextBuilderRegistry::supports($modification)`
-5. Modifiable model: `aiModerationEnabledBySettings()` (`ai_moderation_{table}`)
+5. Modifiable model: `ai.features.moderation.entities.{table}` enabled (`ModerationEntitySettings`)
 
 Actions: `addRequiredPreProcessing('ai_approval')`, cache `modification_moderation:{id}`, dispatch `ApproveModificationJob`, `markAsHandled()`.
 
@@ -60,7 +60,7 @@ If AI does not handle indexing, Core `IndexModelFallbackListener` still runs `In
 | `ai.features.embeddings.enabled` | — | Embedding pipeline |
 | `ai.features.faq.enabled` | — | Documentation RAG assistant |
 
-Per-model flags live in settings (`ai_moderation_{table}`, `auto_translate_{table}`), resolved by `PerModelSettingResolver`.
+AI moderation switches are `ai.features.moderation.entities.{table}` settings, declared by the AI module only for models with a registered `ModerationAdapter` and read from config; `auto_translate_{table}` is resolved by `PerModelSettingResolver`.
 
 ## HowToUse — documentation RAG
 
