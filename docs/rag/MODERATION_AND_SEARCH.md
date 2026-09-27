@@ -46,7 +46,7 @@ When embeddings enabled and model has `$embed`: register `embeddings` pre-proces
 
 ### `HandleModelTranslationListener`
 
-On `TranslatedModelSaved`: if `auto_translate_{table}` enabled, may attach `translation` to pending `model_indexing:*` cache or run standalone `TranslateModelJob`.
+On `TranslatedModelSaved`: if `auto_translate.{table}` enabled, may attach `translation` to pending `model_indexing:*` cache or run standalone `TranslateModelJob`.
 
 If AI does not handle indexing, Core `IndexModelFallbackListener` still runs `IndexInSearchJob`.
 
@@ -60,7 +60,7 @@ If AI does not handle indexing, Core `IndexModelFallbackListener` still runs `In
 | `ai.features.embeddings.enabled` | — | Embedding pipeline |
 | `ai.features.faq.enabled` | — | Documentation RAG assistant |
 
-AI moderation switches are `ai.features.moderation.entities.{table}` settings, declared by the AI module only for models with a registered `ModerationAdapter` and read from config; `auto_translate_{table}` is resolved by `PerModelSettingResolver`.
+AI moderation switches are `ai.features.moderation.entities.{table}` settings, declared by the AI module only for models with a registered `ModerationAdapter` and read from config; `auto_translate.{table}` is resolved by `PerModelSettingResolver`.
 
 ## HowToUse — documentation RAG
 

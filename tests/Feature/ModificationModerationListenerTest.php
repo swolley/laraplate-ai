@@ -26,7 +26,7 @@ beforeEach(function (): void {
         'permission.users.system' => 'system',
     ]);
 
-    config([ModerationEntitySettings::nameFor(new Comment()) => true]);
+    config([ModerationEntitySettings::configKeyFor(new Comment()) => true]);
 });
 
 it('dispatches approve modification job', function (): void {
@@ -71,7 +71,7 @@ it('skips when feature is disabled', function (): void {
 it('skips when ai moderation is disabled for the modifiable model', function (): void {
     Queue::fake();
 
-    config([ModerationEntitySettings::nameFor(new Comment()) => false]);
+    config([ModerationEntitySettings::configKeyFor(new Comment()) => false]);
 
     $modification = Modification::query()->create([
         'modifiable_type' => Comment::class,

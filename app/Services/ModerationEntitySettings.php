@@ -15,20 +15,31 @@ use Modules\Core\Services\ModerationAdapterRegistry;
  */
 final readonly class ModerationEntitySettings
 {
-    public const string NAME_PREFIX = 'ai.features.moderation.entities.';
+    public const string NAME_PREFIX = 'features.moderation.entities.';
 
     public function __construct(
         private ModerationAdapterRegistry $registry,
     ) {}
 
+    /**
+     * Setting name, without the module prefix (the AI module owns the row).
+     */
     public static function nameFor(Model $model): string
     {
         return self::NAME_PREFIX . $model->getTable();
     }
 
+    /**
+     * Runtime config key the settings overlay fills for {@see nameFor()}.
+     */
+    public static function configKeyFor(Model $model): string
+    {
+        return 'ai.' . self::nameFor($model);
+    }
+
     public static function enabledFor(Model $model): bool
     {
-        return (bool) config(self::nameFor($model), false);
+        return (bool) config(self::configKeyFor($model), false);
     }
 
     /**

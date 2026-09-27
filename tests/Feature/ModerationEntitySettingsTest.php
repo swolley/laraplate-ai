@@ -16,7 +16,7 @@ it('declares one disabled switch per model with a registered moderation adapter'
     $definitions = (new ModerationEntitySettings($registry))->definitions();
 
     expect($definitions)->toHaveCount(1)
-        ->and($definitions[0]['name'])->toBe('ai.features.moderation.entities.' . (new Comment())->getTable())
+        ->and($definitions[0]['name'])->toBe('features.moderation.entities.' . (new Comment())->getTable())
         ->and($definitions[0]['value'])->toBeFalse()
         ->and($definitions[0]['group_name'])->toBe('moderation');
 });
@@ -41,7 +41,7 @@ it('seeds the moderation switches owned by the AI module', function (): void {
 });
 
 it('reads the switch from the runtime config the settings overlay fills', function (): void {
-    config([ModerationEntitySettings::nameFor(new Comment()) => true]);
+    config([ModerationEntitySettings::configKeyFor(new Comment()) => true]);
 
     expect(ModerationEntitySettings::enabledFor(new Comment()))->toBeTrue();
 });
