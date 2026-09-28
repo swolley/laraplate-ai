@@ -29,6 +29,7 @@ use Modules\Core\Services\Crud\CrudService;
 use Modules\Core\Services\Crud\DTOs\CrudResult;
 use Modules\Core\Services\Export\TabularCsvExporter;
 use Modules\Core\Services\Export\TabularPdfExporter;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
@@ -264,9 +265,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'search' => "Full-text search {$label} records.",
             'summarize' => "Aggregate {$label} records: group by one or more columns and compute a count plus optional sum/avg/min/max metrics. Honours the same structured filters as list.",
             'export' => "Export {$label} records the current user may read to a CSV or PDF file. Honours the same structured filters and sort as list; returns the file inline (base64).",
-            'create' => "Create a {$label} record. On moderated entities the change is captured for approval instead of applied immediately.",
-            'update' => "Update a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
-            'delete' => "Delete a {$label} record by id. On moderated entities the change is captured for approval instead of applied immediately.",
+            'create' => "Create a {$label} record. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
+            'update' => "Update a {$label} record by id. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
+            'delete' => "Delete a {$label} record by id. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
             'bulk_update' => "Update many {$label} records matched by filters. Preview first (default): returns the match count and a sample without changing anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each change is captured for approval.',
             'bulk_delete' => "Delete many {$label} records matched by filters. Preview first (default): returns the match count and a sample without deleting anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each deletion is captured for approval.',
             'pending_approvals' => "List pending {$label} changes awaiting approval, each with its author; optionally filter by author (name, email or user id).",
@@ -1080,6 +1081,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function present(CrudResult $result, array $request): array
     {
         $data = $result->data;
+
+        // A write sent for approval did not happen: report the request, not a record.
+        if ($result->statusCode === Response::HTTP_ACCEPTED && is_array($data)) {
+            return ['request' => $request, 'status' => 'pending_approval', ...$data];
+        }
 
         $payload = match (true) {
             $data instanceof Model => $data->toArray(),
