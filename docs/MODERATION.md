@@ -62,7 +62,7 @@ Actions:
 1. `ModerationContextBuilderRegistry::build($modification)`
 2. `ModerationService::analyze($context)` → `ModerationResult`
 3. Apply policy (threshold / dual / uncertain fallback)
-4. `User::approve()` / `disapprove()` as system user
+4. `User::approve()` / `disapprove()` as system user (both go through Core's `ModificationVoteService`, which applies a completed decision and fires its event)
 5. Attach `meta` on latest vote row
 6. `ModificationPreProcessingCompleted('ai_approval')`
 
@@ -114,7 +114,7 @@ Per-model (Core settings, group `moderation`):
 
 ## Post-approval translation
 
-`HandleModificationApprovedTranslationListener` listens to Core `ModificationApproved`:
+`HandleModificationApprovedTranslationListener` listens to Core `ModificationApproved`, which `ModificationVoteService` fires for every model once the approval is committed (`ModificationRejected` and `ModificationWithdrawn` are fired the same way and have no AI listener):
 
 ```mermaid
 sequenceDiagram
@@ -158,3 +158,9 @@ Read in Filament via `Modification::latestAutomatedVoteMeta()`.
 | `tests/Feature/ModificationModerationListenerTest.php` | Listener gates + queue |
 | `tests/Feature/Jobs/ApproveModificationJobTest.php` | Threshold outcomes + meta |
 | `Modules/Core/tests/Feature/Events/ModificationRequiresModerationEmitTest.php` | Core emitter |
+
+---
+
+## CRUD tools and approvals
+
+The assistant's `create`, `update` and `delete` CRUD tools go through Core's `CrudService`. When the entity sends the write to approval, the write is not applied and the tool answers `status: pending_approval` with the request id (`modification`) and its `operation`, instead of a record. The tool descriptions tell the model so.
