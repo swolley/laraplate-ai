@@ -37,7 +37,11 @@ final class HandleMediaAnalysisListener
             return;
         }
 
+        // The media pipeline owns both steps: analysis, then embeddings chained
+        // after it (M11). Requiring both makes finalize index once, after the
+        // AnalyzeMediaJob has run and its chained GenerateEmbeddingsJob completes.
         $event->addRequiredPreProcessing('media_analysis');
+        $event->addRequiredPreProcessing('embeddings');
         $this->saveEventToCache($event);
 
         if ($event->sync && app()->runningInConsole()) {

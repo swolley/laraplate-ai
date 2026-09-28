@@ -28,7 +28,7 @@ use Override;
  * @property array<string, string>|null $provenance
  * @property MediaAnalysisStatus $analysis_status
  * @property string|null $analysis_model_version
- * @property \Illuminate\Support\Carbon|null $analyzed_at
+ * @property \Carbon\CarbonImmutable|null $analyzed_at
  */
 final class MediaAnalysis extends Model
 {

@@ -9,20 +9,27 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
+use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
+use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
+use Modules\AI\Ai\MediaAnalysis\MediaVisionResult;
+use Modules\AI\Enums\MediaAnalysisStatus;
+use Modules\AI\Models\MediaAnalysis;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Media;
+use Smalot\PdfParser\Parser as PdfParser;
 use Throwable;
 
 /**
- * Async AI analysis of a claimed media (M6, M11). Registered as the
- * `media_analysis` pre-processing step by {@see \Modules\AI\Listeners\HandleMediaAnalysisListener};
- * on completion it emits {@see ModelPreProcessingCompleted} so Core's finalize
- * listener indexes the media. On failure it degrades the same way, so a failed
- * analysis still lets the deterministic layer index (M12).
- *
- * Task 6 wires the pipeline; Task 7 fills the per-mime analysis (caption/OCR/
- * transcription/idea/intent), writes the {@see \Modules\AI\Models\MediaAnalysis}
- * row keyed by content hash, and chains embeddings after the analysis persists.
+ * Async AI analysis of a claimed media (M6, M11, M15, M20). Per-mime: image →
+ * vision (caption/entities/idea/intent/OCR); audio/video → transcription; PDF →
+ * extracted text. The analysis is keyed by the file `content_hash` and reused
+ * when a fresh row already exists (lookup-before-work, M15). Results are written
+ * to the AI-owned {@see MediaAnalysis} row; empty Core display fields are filled
+ * (M3c); embeddings are chained so the media vector includes the AI text (M11);
+ * and {@see ModelPreProcessingCompleted} is emitted so Core finalizes indexing.
+ * On failure it degrades (M12): still emits completion so the deterministic layer
+ * indexes.
  */
 final class AnalyzeMediaJob implements ShouldQueue
 {
@@ -33,6 +40,11 @@ final class AnalyzeMediaJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /**
+     * @var list<int>
+     */
+    public array $backoff = [30, 60, 120];
+
     public int $timeout = 300;
 
     public function __construct(private readonly Media $media)
@@ -40,16 +52,176 @@ final class AnalyzeMediaJob implements ShouldQueue
         $this->onQueue('media_analysis');
     }
 
-    public function handle(): void
-    {
-        // TODO (Task 7): per-mime analysis, MediaAnalysis row, embeddings chaining.
+    public function handle(
+        MediaVisionAnalyzer $vision,
+        MediaTranscriber $transcriber,
+        MediaAnalysisModelRegistry $registry,
+    ): void {
+        $media = $this->media->fresh() ?? $this->media;
+
+        $hash = $this->contentHash($media);
+
+        if ($hash === null) {
+            event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
+
+            return;
+        }
+
+        $profile = $registry->active('vision');
+        $modelVersion = $profile->key;
+
+        $existing = MediaAnalysis::query()->firstWhere('content_hash', $hash);
+
+        // Lookup-before-work (M15): a fresh analysis for this file already exists.
+        if ($existing instanceof MediaAnalysis
+            && $existing->analysis_status === MediaAnalysisStatus::Completed
+            && $existing->analysis_model_version === $modelVersion) {
+            $this->fillCoreFields($media, null, $existing->entities ?? []);
+            dispatch(new GenerateEmbeddingsJob($media));
+            event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
+
+            return;
+        }
+
+        $analysis = MediaAnalysis::query()->firstOrNew(['content_hash' => $hash]);
+        $analysis->analysis_status = MediaAnalysisStatus::Processing;
+        $analysis->save();
+
+        $mime = (string) $media->mime_type;
+        $type = mb_strtolower((string) strtok($mime, '/'));
+        $caption = null;
+        $provenance = [];
+
+        if ($type === 'image') {
+            $result = $vision->analyze($media->getPath(), $mime, $profile);
+            $caption = $result->caption;
+            $analysis->entities = $result->entities;
+            $analysis->idea = $result->idea;
+            $analysis->intent = $result->intent;
+            $analysis->ocr_text = $result->ocrText;
+            $provenance = $this->producedFrom($result);
+        } elseif ($type === 'audio' || $type === 'video') {
+            $transcript = $transcriber->transcribe($media->getPath(), $mime, $profile);
+            $analysis->transcript = $transcript;
+
+            if ($transcript !== null) {
+                $provenance['transcript'] = 'llm';
+            }
+        } elseif ($mime === 'application/pdf') {
+            $text = $this->pdfText($media->getPath());
+            $analysis->ocr_text = $text;
+
+            if ($text !== null) {
+                $provenance['ocr_text'] = 'llm';
+            }
+        }
+
+        $analysis->provenance = $provenance;
+        $analysis->analysis_status = MediaAnalysisStatus::Completed;
+        $analysis->analyzed_at = now();
+        $analysis->analysis_model_version = $modelVersion;
+        $analysis->save();
+
+        $this->fillCoreFields($media, $caption, $analysis->entities ?? []);
+
+        // Chain embeddings after the analysis persists (M11) so the media vector
+        // includes the AI text contributed through the search seam.
+        dispatch(new GenerateEmbeddingsJob($media));
+
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
     }
 
     public function failed(Throwable $exception): void
     {
-        // Degrade gracefully: signal completion so the document still finalizes
-        // with the deterministic layer instead of being held out of the index.
+        // Degrade gracefully (M12): signal completion so the document still
+        // finalizes with the deterministic layer.
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function producedFrom(MediaVisionResult $result): array
+    {
+        return array_filter([
+            'entities' => $result->entities !== [] ? 'llm' : null,
+            'idea' => $result->idea !== null ? 'llm' : null,
+            'intent' => $result->intent !== null ? 'llm' : null,
+            'ocr_text' => $result->ocrText !== null ? 'llm' : null,
+        ], static fn (?string $v): bool => $v !== null);
+    }
+
+    private function contentHash(Media $media): ?string
+    {
+        $hash = $media->custom_properties['content_hash'] ?? null;
+
+        if (is_string($hash) && $hash !== '') {
+            return $hash;
+        }
+
+        $path = $media->getPath();
+
+        return is_file($path) ? (hash_file('sha256', $path) ?: null) : null;
+    }
+
+    /**
+     * Fill empty Core display fields from the analysis (M3c): write only when the
+     * field is empty or was previously AI-written, never over a human edit.
+     *
+     * @param  list<string>  $entities
+     */
+    private function fillCoreFields(Media $media, ?string $caption, array $entities): void
+    {
+        $custom = $media->custom_properties;
+        $provenance = is_array($custom['_provenance'] ?? null) ? $custom['_provenance'] : [];
+        $changed = false;
+
+        if ($caption !== null && $this->mayFill($custom, $provenance, 'description')) {
+            $custom['description'] = $caption;
+            $provenance['description'] = 'llm';
+            $changed = true;
+        }
+
+        if ($entities !== [] && $this->mayFill($custom, $provenance, 'keywords')) {
+            $custom['keywords'] = $entities;
+            $provenance['keywords'] = 'llm';
+            $changed = true;
+        }
+
+        if ($changed) {
+            $custom['_provenance'] = $provenance;
+            $media->custom_properties = $custom;
+            $media->saveQuietly();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $custom
+     * @param  array<string, mixed>  $provenance
+     */
+    private function mayFill(array $custom, array $provenance, string $field): bool
+    {
+        $current = $custom[$field] ?? null;
+
+        if ($current === null || $current === '' || $current === []) {
+            return true;
+        }
+
+        return ($provenance[$field] ?? null) === 'llm';
+    }
+
+    private function pdfText(string $path): ?string
+    {
+        if (! is_file($path)) {
+            return null;
+        }
+
+        try {
+            $text = mb_trim((new PdfParser())->parseFile($path)->getText());
+
+            return $text === '' ? null : $text;
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

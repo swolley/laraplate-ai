@@ -5,9 +5,15 @@ declare(strict_types=1);
 namespace Modules\AI\Providers;
 
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
+use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
+use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
+use Modules\AI\Ai\MediaAnalysis\Transcription\NullMediaTranscriber;
+use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
+use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationService;
@@ -39,6 +45,7 @@ use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
 use Modules\Core\Search\Contracts\ISearchPlanner;
 use Modules\Core\Search\Contracts\ITextEmbedder;
+use Modules\Core\Search\SearchableContributorRegistry;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 use Override;
 
@@ -58,6 +65,13 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(EmbeddingModelRegistry::class);
+
+        // Media analysis (M6, M21): the model registry plus the swappable analyzer
+        // contracts. Vision is neuron-ai-backed; transcription defaults to a no-op
+        // until the Whisper backend is wired (Task 8).
+        $this->app->singleton(MediaAnalysisModelRegistry::class);
+        $this->app->bind(MediaVisionAnalyzer::class, NeuronVisionAnalyzer::class);
+        $this->app->bind(MediaTranscriber::class, NullMediaTranscriber::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(GraphToolProvider::class);
         $this->app->bind(CrudToolProvider::class);
@@ -101,6 +115,12 @@ class AIServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->registerSearchBindings();
+
+        // Contribute AI media analysis to the media search document/vector through
+        // Core's contributor seam (M4a). No-op until analysis rows exist, so Core
+        // stays AI-agnostic and this is safe to register unconditionally.
+        $this->app->make(SearchableContributorRegistry::class)
+            ->register(new MediaAnalysisSearchContributor());
     }
 
     /**
