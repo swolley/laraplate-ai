@@ -8,6 +8,7 @@ use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Listeners\HandleTranslationReembeddingListener;
 use Modules\AI\Tests\Unit\SearchableModelStub;
 use Modules\Core\Events\TranslationRequiresReembedding;
+use Modules\Core\Search\DeferredSearchIndexing;
 
 beforeEach(function (): void {
     Config::set('ai.features.embeddings.enabled', true);
@@ -39,7 +40,7 @@ it('dispatches GenerateEmbeddingsJob scoped to the event model and locale', func
     $model->id = 1;
 
     $event = new TranslationRequiresReembedding($model, 'it');
-    $listener = new HandleTranslationReembeddingListener();
+    $listener = app(HandleTranslationReembeddingListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class, 1);
@@ -54,7 +55,7 @@ it('dispatches a separate GenerateEmbeddingsJob per event, each scoped to its ow
     $model = new SearchableModelStub;
     $model->id = 1;
 
-    $listener = new HandleTranslationReembeddingListener();
+    $listener = app(HandleTranslationReembeddingListener::class);
     $listener->handle(new TranslationRequiresReembedding($model, 'it'));
     $listener->handle(new TranslationRequiresReembedding($model, 'en'));
 
@@ -70,7 +71,7 @@ it('does not dispatch GenerateEmbeddingsJob when the embeddings feature is disab
     $model->id = 1;
 
     $event = new TranslationRequiresReembedding($model, 'it');
-    $listener = new HandleTranslationReembeddingListener();
+    $listener = app(HandleTranslationReembeddingListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -84,8 +85,22 @@ it('does not dispatch GenerateEmbeddingsJob when the embeddings module allowlist
     $model->id = 1;
 
     $event = new TranslationRequiresReembedding($model, 'it');
-    $listener = new HandleTranslationReembeddingListener();
+    $listener = app(HandleTranslationReembeddingListener::class);
     $listener->handle($event);
+
+    Queue::assertNothingPushed();
+});
+
+it('dispatches no GenerateEmbeddingsJob during a deferred bulk run', function (): void {
+    $model = new SearchableModelStub;
+    $model->id = 1;
+    $listener = app(HandleTranslationReembeddingListener::class);
+
+    app(DeferredSearchIndexing::class)->run(
+        fn () => $listener->handle(new TranslationRequiresReembedding($model, 'it')),
+        batchSize: 10,
+        discard: true,
+    );
 
     Queue::assertNothingPushed();
 });
