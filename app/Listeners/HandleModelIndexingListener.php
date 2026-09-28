@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Services\FeatureModuleGate;
 use Modules\Core\Events\ModelRequiresIndexing;
+use Modules\Core\Models\Media;
 use Modules\Core\Search\Traits\Searchable;
 
 final class HandleModelIndexingListener
@@ -39,6 +40,13 @@ final class HandleModelIndexingListener
 
     private function shouldHandle(Model $model): bool
     {
+        // Media has its own analysis-first pipeline (HandleMediaAnalysisListener):
+        // its embeddings are chained after AI analysis persists, so the generic
+        // embeddings path must not also process it here.
+        if ($model instanceof Media) {
+            return false;
+        }
+
         // Check if AI embeddings feature is enabled
         if (! config('ai.features.embeddings.enabled', true)) {
             return false;

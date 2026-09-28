@@ -7,6 +7,7 @@ namespace Modules\AI\Providers;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Modules\AI\Listeners\HandleAiTextGenerationListener;
 use Modules\AI\Listeners\HandleBulkModelIndexingListener;
+use Modules\AI\Listeners\HandleMediaAnalysisListener;
 use Modules\AI\Listeners\HandleModelIndexingListener;
 use Modules\AI\Listeners\HandleModelTranslationListener;
 use Modules\AI\Listeners\HandleModificationApprovedTranslationListener;
@@ -32,6 +33,9 @@ final class EventServiceProvider extends ServiceProvider
     #[Override]
     protected $listen = [
         ModelRequiresIndexing::class => [
+            // Media analysis runs first so it owns a claimed media's pipeline
+            // (analysis before embeddings); the embeddings listener skips Media.
+            HandleMediaAnalysisListener::class,
             HandleModelIndexingListener::class,
         ],
         ModelsRequireIndexing::class => [
