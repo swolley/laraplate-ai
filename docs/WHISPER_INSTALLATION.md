@@ -1,10 +1,14 @@
 # Self-hosted Whisper for media transcription
 
 Laraplate does not transcribe audio/video inside PHP. The AI module calls a
-**self-hosted HTTP API** on a separate host (VM, LXC container, or bare metal —
-e.g. a Proxmox guest). This guide covers that sidecar service and the Laraplate
-configuration that points to it. It mirrors
+**self-hosted HTTP API** on a separate host (VM/LXC — e.g. a Proxmox guest),
+exactly like the embedding service. This guide covers the Laraplate side and
+points at the canonical service repo. Mirrors
 [`SENTENCE_TRANSFORMERS_INSTALLATION.md`](SENTENCE_TRANSFORMERS_INSTALLATION.md).
+
+**Canonical service:** <https://github.com/swolley/whisper-api> (Flask +
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper)/CTranslate2). Its
+README has the full install steps; this file is the integration + sizing note.
 
 ---
 
@@ -28,17 +32,17 @@ still index (deterministic layer + any other analysis), just without a transcrip
 ## Architecture
 
 ```text
-[Laravel + Horizon]  --POST /transcribe (multipart file)-->  [Whisper host: FastAPI + faster-whisper]
-     .env: WHISPER_URL=http://HOST:9000
+[Laravel + Horizon]  --POST /transcribe (multipart file)-->  [Whisper host: Flask + faster-whisper]
+     .env: WHISPER_URL=http://HOST:8001
 ```
 
-The Laravel application needs outbound HTTP access to the Whisper host. Restrict
-inbound access on the Whisper host to trusted clients (VPN, private network, or
-firewall rules), and set `WHISPER_API_KEY` for a shared-secret Bearer check.
+The Laravel app needs outbound HTTP to the Whisper host. Restrict inbound access
+on that host (VPN/private network/firewall) and set `WHISPER_API_KEY` for a
+shared-secret Bearer check.
 
 ---
 
-## HTTP contract (required)
+## HTTP contract
 
 Laraplate posts to `{base_url}/transcribe` (no trailing slash on the base URL).
 
@@ -50,149 +54,55 @@ Content-Type: multipart/form-data
 file=<the media bytes>        # form field name MUST be "file"
 ```
 
-Response:
-
-```json
-{ "text": "the transcript in the spoken language", "language": "en", "duration": 12.3 }
-```
-
-Only `text` is required by Laraplate; `language`/`duration` are informational. Any
-non-2xx response makes the transcriber return `null` (the media still indexes).
+Response: `{ "text": "...", "language": "en", "duration": 12.3 }`. Only `text` is
+used; any non-2xx response makes the transcriber return `null` (media still indexes).
 
 ---
 
-## Reference service (faster-whisper + FastAPI)
+## Install (Debian LXC on Proxmox, no Docker — how the `ai` host is set up)
 
-[faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) runs
-well on CPU and scales to GPU. Create these three files on the Whisper host.
+The `ai` host already runs the embedding service on `:8000` from a shared
+`/opt/ai-env`; Whisper reuses that venv and takes `:8001`.
 
-`app.py`:
-
-```python
-import os, tempfile
-from faster_whisper import WhisperModel
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
-
-MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
-DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
-COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-API_KEY = os.getenv("WHISPER_API_KEY", "")
-
-model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-app = FastAPI(title="Laraplate Whisper service")
-
-@app.get("/health")
-def health() -> dict:
-    return {"status": "ok", "model": MODEL_SIZE, "device": DEVICE}
-
-@app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...), authorization: str = Header(default=""),
-                     language: str | None = None) -> dict:
-    if API_KEY and authorization != f"Bearer {API_KEY}":
-        raise HTTPException(status_code=401, detail="unauthorized")
-    suffix = os.path.splitext(file.filename or "")[1] or ".bin"
-    with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
-        tmp.write(await file.read()); tmp.flush()
-        segments, info = model.transcribe(tmp.name, language=language)
-        text = " ".join(s.text.strip() for s in segments).strip()
-    return {"text": text, "language": info.language, "duration": info.duration}
+```bash
+apt install -y ffmpeg                                  # decodes audio/video
+git clone https://github.com/swolley/whisper-api.git /opt/whisper-api
+/opt/ai-env/bin/pip install -r /opt/whisper-api/requirements.txt
+printf 'WHISPER_API_KEY=%s\n' "$(openssl rand -hex 24)" > /opt/whisper-api/.env
+chmod 600 /opt/whisper-api/.env
+cp /opt/whisper-api/whisper.service /etc/systemd/system/whisper.service
+systemctl daemon-reload && systemctl enable --now whisper
+curl -s http://127.0.0.1:8001/health          # {"status":"healthy","model":"base",...}
 ```
 
-`requirements.txt`:
-
-```text
-fastapi==0.115.*
-uvicorn[standard]==0.32.*
-faster-whisper==1.0.*
-python-multipart==0.0.*
-```
-
-`Dockerfile`:
-
-```dockerfile
-FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
-ENV WHISPER_MODEL=base WHISPER_DEVICE=cpu WHISPER_COMPUTE_TYPE=int8
-EXPOSE 9000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000"]
-```
+The secret lives only in `/opt/whisper-api/.env` (git-ignored), never in the repo.
+GPU: run with `WHISPER_DEVICE=cuda WHISPER_COMPUTE_TYPE=float16`.
 
 ---
 
-## Install on Proxmox
-
-### Option A — Docker (in an LXC or VM)
-
-```bash
-docker build -t laraplate-whisper .
-docker run -d --name whisper --restart unless-stopped -p 9000:9000 \
-  -e WHISPER_MODEL=base -e WHISPER_API_KEY=change-me \
-  -v whisper-models:/root/.cache/huggingface \
-  laraplate-whisper
-```
-
-The model downloads on first start and is cached in the `whisper-models` volume.
-For GPU passthrough, run with `--gpus all -e WHISPER_DEVICE=cuda -e WHISPER_COMPUTE_TYPE=float16`.
-
-### Option B — systemd (no Docker, e.g. a Debian LXC)
-
-```bash
-apt install -y python3-venv ffmpeg
-python3 -m venv /opt/whisper/.venv && /opt/whisper/.venv/bin/pip install -r requirements.txt
-# copy app.py to /opt/whisper/
-```
-
-`/etc/systemd/system/whisper.service`:
-
-```ini
-[Unit]
-Description=Laraplate Whisper service
-After=network.target
-
-[Service]
-WorkingDirectory=/opt/whisper
-Environment=WHISPER_MODEL=base
-Environment=WHISPER_API_KEY=change-me
-ExecStart=/opt/whisper/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 9000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl enable --now whisper
-curl -s -H "Authorization: Bearer change-me" -F file=@sample.mp3 http://localhost:9000/transcribe
-```
-
----
-
-## Model sizes
+## Model sizing
 
 | `WHISPER_MODEL` | Notes |
 |-----------------|-------|
-| `tiny` / `base` | Fast, low RAM; `base` is the default and transcribes faster-than-realtime on a modern CPU core. |
-| `small` / `medium` | Better accuracy, higher CPU/RAM cost. |
-| `large-v3` | Best accuracy; prefer GPU. |
+| `tiny`/`base` | Fast, ~1 GB RAM. **`base` is the default** and the right pick on the current 4 GB / 2 vCPU test container (which also runs embeddings). |
+| `small` | Better accuracy, ~1.5-2 GB — tight alongside embeddings; raise the LXC RAM first. |
+| `medium`/`large-v3` | Won't fit on 4 GB; needs more RAM or a GPU/dedicated container. |
 
-Pick the model for your latency/quality budget; change it with `WHISPER_MODEL` and restart.
+Change the model with `WHISPER_MODEL` (systemd unit or `/opt/whisper-api/.env`) and
+`systemctl restart whisper`.
 
 ---
 
-## Wire it into Laraplate
+## Wire into Laraplate
 
 `laraplate/.env`:
 
 ```dotenv
-WHISPER_URL=http://HOST:9000
-WHISPER_API_KEY=change-me
+WHISPER_URL=http://ai:8001
+WHISPER_API_KEY=<the key from /opt/whisper-api/.env>
 AI_MEDIA_TRANSCRIPTION_MODEL=whisper-local
 ```
 
-Verify: analyze an audio/video media and confirm the `ai_media_analyses` row for its
-`content_hash` has a non-empty `transcript`. If `WHISPER_URL` is wrong or the service
-is down, transcription silently degrades to `null` and the rest of the analysis still runs.
+Verify: analyze an audio/video media and confirm its `ai_media_analyses` row (by
+`content_hash`) has a non-empty `transcript`. If the service is down or misconfigured,
+transcription silently degrades to `null` and the rest of the analysis still runs.
