@@ -15,4 +15,5 @@ enum AITables: string
     case ConversationSummaries = 'ai_conversation_summaries';
     case ActionRequests = 'ai_action_requests';
     case ContextualSuggestions = 'ai_contextual_suggestions';
+    case MediaAnalyses = 'ai_media_analyses';
 }
