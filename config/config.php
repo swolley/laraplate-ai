@@ -246,6 +246,15 @@ return [
             'batch_size' => (int) env('SENTENCE_TRANSFORMERS_BATCH_SIZE', 32),
         ],
 
+        // Self-hosted Whisper transcription service (Task 8). Unset URL = the
+        // transcriber is a no-op (media index without a transcript). See
+        // whisper-service/README.md in the stack for the local service.
+        'whisper' => [
+            'url' => env('WHISPER_URL'),
+            'api_key' => env('WHISPER_API_KEY'),
+            'timeout' => (int) env('WHISPER_TIMEOUT', 120),
+        ],
+
         'cross_encoder' => [
             'endpoint' => env('CROSS_ENCODER_ENDPOINT', 'http://127.0.0.1:8001/score'),
         ],

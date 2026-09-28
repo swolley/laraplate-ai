@@ -8,7 +8,7 @@ use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
 use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
-use Modules\AI\Ai\MediaAnalysis\Transcription\NullMediaTranscriber;
+use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
@@ -67,11 +67,11 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(EmbeddingModelRegistry::class);
 
         // Media analysis (M6, M21): the model registry plus the swappable analyzer
-        // contracts. Vision is neuron-ai-backed; transcription defaults to a no-op
-        // until the Whisper backend is wired (Task 8).
+        // contracts. Vision is neuron-ai-backed; transcription posts to the self
+        // -hosted Whisper service (a no-op when WHISPER_URL is unset).
         $this->app->singleton(MediaAnalysisModelRegistry::class);
         $this->app->bind(MediaVisionAnalyzer::class, NeuronVisionAnalyzer::class);
-        $this->app->bind(MediaTranscriber::class, NullMediaTranscriber::class);
+        $this->app->bind(MediaTranscriber::class, WhisperTranscriber::class);
         $this->app->singleton(ITranslatableModelClassNames::class, DiscoveryTranslatableModelClassNames::class);
         $this->app->bind(GraphToolProvider::class);
         $this->app->bind(CrudToolProvider::class);
