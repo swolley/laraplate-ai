@@ -8,6 +8,7 @@ use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationService;
 use Modules\CMS\Models\Comment;
+use Modules\Core\Approvals\Operation;
 use Modules\Core\Data\ModerationInput;
 use Modules\Core\Data\ModerationRequest;
 use Modules\Core\Events\ModificationPreProcessingCompleted;
@@ -40,7 +41,7 @@ function createCommentModerationModification(): Modification
         'modifier_id' => User::factory()->create()->id,
         'modifier_type' => User::class,
         'active' => true,
-        'is_update' => false,
+        'operation' => Operation::Create,
         'approvers_required' => 1,
         'disapprovers_required' => 1,
         'md5' => md5((string) microtime(true)),
