@@ -248,7 +248,7 @@ return [
 
         // Self-hosted Whisper transcription service (Task 8). Unset URL = the
         // transcriber is a no-op (media index without a transcript). See
-        // whisper-service/README.md in the stack for the local service.
+        // Modules/AI/docs/WHISPER_INSTALLATION.md to stand up the service.
         'whisper' => [
             'url' => env('WHISPER_URL'),
             'api_key' => env('WHISPER_API_KEY'),
