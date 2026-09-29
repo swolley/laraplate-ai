@@ -15,6 +15,7 @@ use Modules\AI\Console\RefreshAiModelsCommand;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
+use Modules\AI\Observers\MediaAnalysisRefcountObserver;
 use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
@@ -42,6 +43,7 @@ use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\CrudToolProvider;
 use Modules\AI\Services\Tools\GraphToolProvider;
+use Modules\Core\Models\Media;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
@@ -123,6 +125,8 @@ class AIServiceProvider extends ModuleServiceProvider
         // stays AI-agnostic and this is safe to register unconditionally.
         $this->app->make(SearchableContributorRegistry::class)
             ->register(new MediaAnalysisSearchContributor());
+
+        Media::observe(MediaAnalysisRefcountObserver::class);
     }
 
     #[Override]
