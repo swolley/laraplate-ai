@@ -12,6 +12,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Models\ModelEmbedding;
+use NeuronAI\RAG\Document;
 
 /**
  * Generates and stores per-(model, locale) embeddings with skip-if-fresh
@@ -53,6 +54,7 @@ final readonly class ModelEmbeddingSynchronizer
         // that must be embedded across all models.
         $plans = [];
         $texts = [];
+        $text_index_by_hash = [];
 
         foreach ($models as $model) {
             $fresh = $reload ? ($model->fresh() ?? $model) : $model;
@@ -61,7 +63,7 @@ final readonly class ModelEmbeddingSynchronizer
                 continue;
             }
 
-            $plan = $this->planModel($fresh, $locale, $model_key, $default_locale, $texts);
+            $plan = $this->planModel($fresh, $locale, $model_key, $default_locale, $texts, $text_index_by_hash);
 
             if ($plan !== null) {
                 $plans[] = $plan;
@@ -78,10 +80,16 @@ final readonly class ModelEmbeddingSynchronizer
     }
 
     /**
+     * A stale text is embedded at most once: its vectors are copied from any other model
+     * already embedded with the same text and embedding model (a duplicated media file, the
+     * same caption twice), or shared with an identical text queued earlier in this run. Each
+     * model still gets its own rows, so every copy stays an autonomous search result.
+     *
      * @param  list<string>  $texts
-     * @return array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>}|null
+     * @param  array<string, int>  $text_index_by_hash
+     * @return array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int|null, vectors: list<mixed>|null}>, processed_locales: list<string|null>}|null
      */
-    private function planModel(Model $model, ?string $locale, string $model_key, string $default_locale, array &$texts): ?array
+    private function planModel(Model $model, ?string $locale, string $model_key, string $default_locale, array &$texts, array &$text_index_by_hash): ?array
     {
         /** @phpstan-ignore method.notFound */
         $by_locale = $model->prepareDataToEmbedByLocale($locale);
@@ -123,16 +131,28 @@ final readonly class ModelEmbeddingSynchronizer
                 continue;
             }
 
-            $stale[] = ['row_locale' => $row_locale, 'content_hash' => $content_hash, 'text_index' => count($texts)];
-            $texts[] = $text;
+            $vectors = $this->reusableVectors($model, $content_hash, $model_key);
+
+            if ($vectors !== null) {
+                $stale[] = ['row_locale' => $row_locale, 'content_hash' => $content_hash, 'text_index' => null, 'vectors' => $vectors];
+
+                continue;
+            }
+
+            if (! array_key_exists($content_hash, $text_index_by_hash)) {
+                $text_index_by_hash[$content_hash] = count($texts);
+                $texts[] = $text;
+            }
+
+            $stale[] = ['row_locale' => $row_locale, 'content_hash' => $content_hash, 'text_index' => $text_index_by_hash[$content_hash], 'vectors' => null];
         }
 
         return ['model' => $model, 'locale' => $locale, 'stale' => $stale, 'processed_locales' => $processed_locales, 'existing' => $existing];
     }
 
     /**
-     * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int}>, processed_locales: list<string|null>, existing: \Illuminate\Support\Collection<int, ModelEmbedding>}  $plan
-     * @param  list<\NeuronAI\RAG\Document[]>  $embedded
+     * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int|null, vectors: list<mixed>|null}>, processed_locales: list<string|null>, existing: \Illuminate\Support\Collection<int, ModelEmbedding>}  $plan
+     * @param  list<Document[]>  $embedded
      */
     private function writePlan(array $plan, string $model_key, array $embedded, bool $announceCompletion): void
     {
@@ -143,10 +163,15 @@ final readonly class ModelEmbeddingSynchronizer
                 /** @phpstan-ignore method.notFound */
                 $model->embeddings()->forLocale($item['row_locale'])->delete();
 
-                foreach ($embedded[$item['text_index']] as $document) {
+                $vectors = $item['vectors'] ?? array_map(
+                    static fn (Document $document): mixed => $document->embedding,
+                    $embedded[$item['text_index']],
+                );
+
+                foreach ($vectors as $vector) {
                     /** @phpstan-ignore method.notFound */
                     $model->embeddings()->create([
-                        'embedding' => $document->embedding,
+                        'embedding' => $vector,
                         'locale' => $item['row_locale'],
                         'model_key' => $model_key,
                         'content_hash' => $item['content_hash'],
@@ -191,5 +216,40 @@ final readonly class ModelEmbeddingSynchronizer
     {
         return is_callable([$model, 'prepareDataToEmbed'])
             && is_callable([$model, 'embeddings']);
+    }
+
+    /**
+     * Vectors of the same text embedded by the same embedding model for another model, taken
+     * from one source (model and locale) in chunk order; null when there is none.
+     *
+     * @return list<mixed>|null
+     */
+    private function reusableVectors(Model $model, string $content_hash, string $model_key): ?array
+    {
+        $source = ModelEmbedding::query()
+            ->where('content_hash', $content_hash)
+            ->where('model_key', $model_key)
+            ->where(static function ($query) use ($model): void {
+                $query->where('model_type', '!=', $model->getMorphClass())
+                    ->orWhere('model_id', '!=', $model->getKey());
+            })
+            ->orderBy('id')
+            ->first();
+
+        if (! $source instanceof ModelEmbedding) {
+            return null;
+        }
+
+        return ModelEmbedding::query()
+            ->where('model_type', $source->model_type)
+            ->where('model_id', $source->model_id)
+            ->where('locale', $source->locale)
+            ->where('content_hash', $content_hash)
+            ->where('model_key', $model_key)
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (ModelEmbedding $row): mixed => $row->embedding)
+            ->values()
+            ->all();
     }
 }
