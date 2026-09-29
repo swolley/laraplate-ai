@@ -2,6 +2,160 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.0] - 2026-09-29
+
+### 🚀 Features
+
+- *(ai)* Make Sentence Transformers timeout and batch size configurable
+- *(models)* Add IDE helper mixins to ActionRequest, ContextualSuggestion, Conversation, ConversationSummary, and Message models
+- *(ai)* Evaluate the developer documentation index
+- *(ai)* Send the active embedding model per request (multi-model service)
+- *(ai)* Add a min-similarity floor so documentation retrieval can abstain
+- *(ai)* Adaptive batching for the Sentence Transformers embedding calls
+- *(ai)* Batch model embedding calls across models in one request
+- *(ai)* Batch-embed the bulk indexing chunk in one pass
+- *(ai)* Single-locale re-embeds join a deferred indexing run
+- *(ai)* CRUD tools report writes sent for approval
+- *(ai)* Per-feature model choice with defaults in code
+- *(ai)* List the models of OpenAI, Anthropic, Mistral and Ollama
+- *(ai)* Build per-feature model choices from the configured providers
+- *(ai)* Seed model settings and refresh their choices from the providers
+- *(ai)* Every chat-family feature uses its own model setting
+- *(ai)* Media analysis reads its settings; seeded master switch; whisper_local becomes whisper
+- *(ai)* Translation picks DeepL or an AI model, with no fallback; failures retry
+- *(ai)* Embed an identical text once and reuse its vectors per model (M15)
+- *(ai)* Reindex the media owner once its analysis completes (media M9, M14)
+- *(docs)* Update README with PHP version badge and adjust logo size
+- *(ai)* Refcount the shared media analysis by content hash (M19)
+- *(filament)* AI media analysis panel + re-analyze action (media analysis Task 13d, M22)
+
+### 🐛 Bug Fixes
+
+- *(docs)* Restore the test seam Pint's protected_to_private removed
+- *(ai)* Apply the e5 query prefix in documentation retrieval
+- *(rag)* A validator that could not reject, and two mixed values cast blind
+- *(ai)* Do not announce completion on the bulk embedding path
+- *(ai)* Implement embedDocumentsBatch on the documentation test stub
+- *(ai)* Mock embedDocumentsBatch in RepairEmbeddingsTest
+- *(ai)* An unset Ollama URL means Ollama is not configured
+- *(ai)* Review fixes for model selection and translation
+
+### 💼 Other
+
+- Add media-analysis config, model registry and master-switch gate
+
+Task 1 of the media AI analysis plan (M18, M21): a features.media_analysis config
+block mirroring embeddings (runtime master switch default + per-capability model
+registry), MediaAnalysisModelProfile/MediaAnalysisModelRegistry resolving the
+active vision/transcription profile, and MediaAnalysisGate reading the runtime
+Settings row media_analysis.enabled with config fallback plus the per-module
+FeatureModuleGate. Unit + feature tests (7).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Add AI-owned media analysis table keyed by content hash
+
+Task 3 of the media AI analysis plan (M3b, M15): the ai_media_analyses table and
+MediaAnalysis model, keyed uniquely by content_hash so duplicated media share one
+analysis row (entities/idea/intent/ocr/transcript, analysis bag, provenance,
+status, model version). Soft deletes are forced off on this model (not the
+dynamic per-model setting) because a soft-deleted row would keep the unique index
+occupied; refcount cleanup purges outright. Factory with pending/failed states.
+Feature tests (5).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Wire media analysis into the indexing pipeline (M6, M11, M12, M14)
+
+Task 6. HandleMediaAnalysisListener intercepts ModelRequiresIndexing for a
+claimed Media when the master switch allows: registers the media_analysis pre
+-processing step, dispatches AnalyzeMediaJob, and marks the event handled so
+Core's fallback stands down and finalize indexes once analysis completes; off/
+draft/non-media are no-ops so the deterministic fallback indexes (M12).
+HandleModelIndexingListener now skips Media so the generic embeddings path does
+not race the media pipeline. AnalyzeMediaJob is a skeleton emitting the pre
+-processing completion (Task 7 fills the analysis + embeddings chaining). Tests.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Implement AnalyzeMediaJob and media search contribution (M6, M11, M15, M20, M21)
+
+Task 7. AnalyzeMediaJob analyzes a claimed media behind the MediaVisionAnalyzer /
+MediaTranscriber contracts (neuron-ai vision default, null transcriber until
+Task 8), keyed by content_hash with lookup-before-work reuse; per-mime handling
+for image/audio/video/pdf; writes the AI-owned MediaAnalysis row with provenance,
+fills empty Core custom_properties (M3c), chains GenerateEmbeddingsJob after the
+analysis persists (M11), and emits/degrades the pre-processing completion (M12).
+MediaAnalysisSearchContributor surfaces the analysis (idea/intent/entities +
+transcript/OCR) into the media document and vector via Core's contributor seam,
+looked up by content_hash. Contracts, DTO, registry bindings, and fakes; feature
+tests.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Add self-hosted Whisper transcription backend (M21, Task 8)
+
+WhisperTranscriber posts the media file to a self-hosted Whisper service
+(ai.providers.whisper.url/api_key/timeout), bound over the null default; a no-op
+when unconfigured or on error so media still index without a transcript (M12).
+The standalone service (faster-whisper + FastAPI + Docker) lives at the stack
+root whisper-service/. Http::fake feature tests.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Document the self-hosted Whisper service instead of vendoring it
+
+Per operator preference (mirrors sentence-transformers): no service code in the
+repo. Modules/AI/docs/WHISPER_INSTALLATION.md gives the HTTP contract, a
+reference faster-whisper + FastAPI implementation, and Docker/systemd install
+steps for a Proxmox guest. Config comment points to the doc.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+- Point Whisper docs at the canonical repo and port 8001
+
+The service is deployed on the ai host on :8001 (kept in the 800x range next to
+embeddings on :8000) from github.com/swolley/whisper-api (Flask + faster-whisper,
+systemd, shared /opt/ai-env). Doc now references that repo and the integration +
+sizing note rather than a divergent inline implementation.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+### 🚜 Refactor
+
+- *(ai)* Remove the superseded chat message path
+- *(docs)* Inject the rag_paths resolver instead of exposing a seam
+- Narrow findOrFail to a single record with whereKey()->firstOrFail()
+- *(ai)* Extract ModelEmbeddingSynchronizer from GenerateEmbeddingsJob
+- *(ai)* Own the per-entity moderation switches and follow the core.* setting keys
+- *(ai)* Moderation switches named without the module prefix
+- *(ai)* Domain-first moderation setting names
+
+### 📚 Documentation
+
+- *(rag)* Describe how the module is released from the application
+- *(ai)* Add self-hosted Sentence Transformers installation guide
+- *(ai)* Document the module perimeters and correct the superseded references
+- Name the embedding providers this module actually uses
+- *(ai)* Developer RAG retrieval eval dataset + vector-only report
+- *(ai)* Link external sentence-transformers-api repo instead of inlining service code
+- Approvals cover deletes and restores
+- *(ai)* Per-feature model selection and translation without fallback
+- *(ai)* Media analysis user and developer guides
+- Media analysis Filament panel + re-analyze action (media analysis Task 14)
+
+### ⚡ Performance
+
+- *(migrations)* Index all foreign-key and row-scoping columns
+- *(ai)* Skip re-embedding unchanged locales in GenerateEmbeddingsJob
+- *(ai)* Reuse eager-loaded embeddings on the bulk path
+
+### 🧪 Testing
+
+- *(stubs)* Declare the search contract on the stubs that use the Core trait
+- *(ai)* Commit the Core developer documentation retrieval baseline
+- *(ai)* Make the stub embedder prefix-agnostic after the query-prefix fix
+- *(ai)* Modification fixtures carry an operation
+
+### ⚙️ Miscellaneous Tasks
+
+- Rimuove docblock ide-helper generati dai model
+- *(ai)* Drop commented config entries and env docs moved to runtime settings
+
 ## [2.19.0] - 2026-09-15
 
 ### 🚀 Features
