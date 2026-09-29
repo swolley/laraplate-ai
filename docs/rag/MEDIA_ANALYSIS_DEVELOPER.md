@@ -49,3 +49,17 @@ vision model makes existing analyses stale, and they are redone on the next anal
 
 `AnalyzeMediaJob::failed()` signals completion anyway, so the media is still indexed on its deterministic
 layer. A Whisper service that is unset or down yields no transcript; the rest of the analysis runs.
+
+## Filament surface (M22)
+
+The media view shows the AI analysis through Core's resource-schema seam
+(`ResourceSchemaContributorRegistry`, the UI twin of the search-contributor seam), so Core never
+references AI. `MediaAnalysisSchemaContributor` (registered in `AIServiceProvider::boot()`) contributes,
+only while the master switch is on:
+
+- a read-only "AI analysis" infolist section (idea/intent/entities/transcript/OCR/status plus the
+  provenance of AI-generated fields), looked up by the media's `content_hash`;
+- a "Re-analyze" record action that re-dispatches `AnalyzeMediaJob` for the media.
+
+Both are consumed by the Core `MediaResource` gallery view (`Modules/Core/docs/rag/MODULE.md`, "Media
+gallery and curation"); when the switch is off, neither appears.

@@ -23,3 +23,7 @@ this with the setting `media.search_visibility` (`open` shows every media regard
 
 The same file attached twice is analysed once. When the last copy of a file is deleted for good, its
 analysis is deleted too.
+
+On a media's view (in the media gallery, or on its content or ticket) an "AI analysis" panel shows the
+idea, intent, entities and any transcript or extracted text, with a "Re-analyze" button to run the
+analysis again. The panel and the button appear only while media analysis is switched on.
