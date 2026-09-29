@@ -1,0 +1,99 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Http;
+use Modules\AI\Ai\Providers\Models\ModelCatalog;
+use Modules\AI\Enums\AiModelFeature;
+use Modules\AI\Enums\ProviderListingStatus;
+
+beforeEach(function (): void {
+    foreach (['openai', 'anthropic', 'mistral'] as $provider) {
+        config()->set("ai.providers.{$provider}.api_key", '');
+    }
+
+    config()->set('core.deepl_api_key', '');
+    config()->set('ai.providers.ollama.api_url', '');
+    config()->set('ai.providers.whisper.url', '');
+});
+
+it('drops the entries of a provider that is not configured', function (): void {
+    $result = app(ModelCatalog::class)->build([AiModelFeature::Chat], ['features.chat.model' => ['openai:gpt-4o']]);
+
+    expect($result->choices['features.chat.model'])->toBe([])
+        ->and($result->outcomes['openai']->status)->toBe(ProviderListingStatus::NotConfigured)
+        ->and($result->hasFailures())->toBeFalse();
+});
+
+it('keeps the previous entries of a configured provider that fails', function (): void {
+    config()->set('ai.providers.anthropic.api_key', 'ak-test');
+    Http::fake(['api.anthropic.com/*' => Http::response([], 500)]);
+
+    $result = app(ModelCatalog::class)->build(
+        [AiModelFeature::Chat],
+        ['features.chat.model' => ['anthropic:claude-opus-5', 'openai:gpt-4o']],
+    );
+
+    expect($result->choices['features.chat.model'])->toBe(['anthropic:claude-opus-5'])
+        ->and($result->outcomes['anthropic']->status)->toBe(ProviderListingStatus::Failed)
+        ->and($result->hasFailures())->toBeTrue();
+});
+
+it('treats a timeout like any other failure', function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://ollama.test');
+    Http::fake(['ollama.test/*' => Http::failedConnection('Operation timed out')]);
+
+    $result = app(ModelCatalog::class)->build([AiModelFeature::Faq], ['features.faq.model' => ['ollama:llama3.2:3b']]);
+
+    expect($result->choices['features.faq.model'])->toBe(['ollama:llama3.2:3b'])
+        ->and($result->outcomes['ollama']->status)->toBe(ProviderListingStatus::Failed)
+        ->and($result->outcomes['ollama']->error)->toContain('timed out');
+});
+
+it('reports an empty listing as listed, not failed', function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://ollama.test');
+    Http::fake(['ollama.test/api/tags' => Http::response(['models' => []])]);
+
+    $result = app(ModelCatalog::class)->build([AiModelFeature::Chat], ['features.chat.model' => ['ollama:gone:1b']]);
+
+    expect($result->choices['features.chat.model'])->toBe([])
+        ->and($result->outcomes['ollama']->status)->toBe(ProviderListingStatus::Listed)
+        ->and($result->outcomes['ollama']->modelCount)->toBe(0)
+        ->and($result->hasFailures())->toBeFalse();
+});
+
+it('filters by the capabilities each feature requires and calls each provider once', function (): void {
+    config()->set('ai.providers.mistral.api_key', 'mk-test');
+    config()->set('ai.providers.openai.api_key', 'sk-test');
+    Http::fake([
+        'api.mistral.ai/v1/models' => Http::response(['data' => [
+            ['id' => 'mistral-large-latest', 'capabilities' => ['completion_chat' => true, 'function_calling' => true, 'vision' => false]],
+            ['id' => 'mistral-small-no-tools', 'capabilities' => ['completion_chat' => true, 'function_calling' => false, 'vision' => false]],
+        ]]),
+        'api.openai.com/v1/models' => Http::response(['data' => [['id' => 'gpt-4o'], ['id' => 'text-embedding-3-small']]]),
+    ]);
+
+    $result = app(ModelCatalog::class)->build(
+        [AiModelFeature::Chat, AiModelFeature::TextGeneration, AiModelFeature::Vision],
+        [],
+    );
+
+    expect($result->choices['features.chat.model'])->toBe(['mistral:mistral-large-latest', 'openai:gpt-4o'])
+        ->and($result->choices['features.text_generation.model'])->toBe(['mistral:mistral-large-latest', 'mistral:mistral-small-no-tools', 'openai:gpt-4o'])
+        ->and($result->choices['features.media_analysis.vision.model'])->toBe(['openai:gpt-4o']);
+
+    Http::assertSentCount(2);
+});
+
+it('offers providers without a catalogue by name when configured', function (): void {
+    Http::fake();
+    config()->set('core.deepl_api_key', 'dk-test');
+    config()->set('ai.providers.whisper.url', 'http://whisper.test');
+
+    $result = app(ModelCatalog::class)->build([AiModelFeature::Translation, AiModelFeature::Transcription], []);
+
+    expect($result->choices['features.translation.model'])->toBe(['deepl'])
+        ->and($result->choices['features.media_analysis.transcription.model'])->toBe(['whisper']);
+
+    Http::assertNothingSent();
+});
