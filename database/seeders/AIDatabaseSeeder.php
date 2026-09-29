@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Database\Seeders;
 
+use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Services\ModerationEntitySettings;
 use Modules\Core\Casts\SettingTypeEnum;
 use Modules\Core\Overrides\Seeder;
@@ -40,20 +41,51 @@ class AIDatabaseSeeder extends Seeder
     }
 
     /**
+     * One setting per AI feature holding its `provider:model`. The initial value is the
+     * feature's default choice, from code: it does not read config, so seeding never depends on
+     * what the overlay holds. The refresh command owns the choices from its first run on.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function modelSettingDefinitions(): array
+    {
+        return array_map(
+            static function (AiModelFeature $feature): array {
+                $initial = $feature->defaultChoice();
+
+                return [
+                    ...self::setting($feature->settingName(), $initial, SettingTypeEnum::String, 'ai', $feature->settingDescription(), [$initial]),
+                    'action_command' => 'ai:models:refresh --setting={name}',
+                    'action_queued' => false,
+                ];
+            },
+            AiModelFeature::cases(),
+        );
+    }
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
     {
-        $outcome = app(SeedReconciler::class)->reconcile(
+        $reconciler = app(SeedReconciler::class);
+
+        $runtime = $reconciler->reconcile(
             self::internalSettingsDefinition('AI', [
                 ...self::runtimeSettingDefinitions(),
                 ...app(ModerationEntitySettings::class)->definitions(),
             ]),
         );
-
-        $this->command?->line(
-            '    - created ' . count($outcome->created) . ', realigned ' . count($outcome->realigned) . ", unchanged {$outcome->unchanged}",
+        $models = $reconciler->reconcile(
+            self::commandManagedChoicesSettingsDefinition('AI', self::modelSettingDefinitions()),
         );
+
+        $this->command?->line(sprintf(
+            '    - created %d, realigned %d, unchanged %d',
+            count($runtime->created) + count($models->created),
+            count($runtime->realigned) + count($models->realigned),
+            $runtime->unchanged + $models->unchanged,
+        ));
     }
 
     /**

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\AI\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
 use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
+use Modules\AI\Console\RefreshAiModelsCommand;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
@@ -121,6 +123,17 @@ class AIServiceProvider extends ModuleServiceProvider
         // stays AI-agnostic and this is safe to register unconditionally.
         $this->app->make(SearchableContributorRegistry::class)
             ->register(new MediaAnalysisSearchContributor());
+    }
+
+    #[Override]
+    protected function registerCommandSchedules(): void
+    {
+        $this->app->booted(function (): void {
+            $this->app->make(Schedule::class)
+                ->command(RefreshAiModelsCommand::class)
+                ->dailyAt('03:00')
+                ->onOneServer();
+        });
     }
 
     /**
