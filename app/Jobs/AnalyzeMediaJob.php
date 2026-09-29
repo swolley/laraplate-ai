@@ -6,6 +6,7 @@ namespace Modules\AI\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -15,6 +16,7 @@ use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\MediaVisionResult;
 use Modules\AI\Enums\MediaAnalysisStatus;
 use Modules\AI\Models\MediaAnalysis;
+use Modules\Core\Contracts\ISearchableModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Media;
 use Smalot\PdfParser\Parser as PdfParser;
@@ -78,6 +80,7 @@ final class AnalyzeMediaJob implements ShouldQueue
             && $existing->analysis_model_version === $modelVersion) {
             $this->fillCoreFields($media, null, $existing->entities ?? []);
             dispatch(new GenerateEmbeddingsJob($media));
+            $this->reindexOwner($media);
             event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
 
             return;
@@ -128,6 +131,8 @@ final class AnalyzeMediaJob implements ShouldQueue
         // includes the AI text contributed through the search seam.
         dispatch(new GenerateEmbeddingsJob($media));
 
+        $this->reindexOwner($media);
+
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
     }
 
@@ -136,6 +141,19 @@ final class AnalyzeMediaJob implements ShouldQueue
         // Degrade gracefully (M12): signal completion so the document still
         // finalizes with the deterministic layer.
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
+    }
+
+    /**
+     * The owner's document carries this media's compact surrogate (M9), which now includes
+     * the analysis: reindex the single owner so it becomes findable by what the media shows.
+     */
+    private function reindexOwner(Media $media): void
+    {
+        $owner = $media->model;
+
+        if ($owner instanceof ISearchableModel && $owner instanceof Model && $owner->shouldBeSearchable()) {
+            $owner->searchable();
+        }
     }
 
     /**
