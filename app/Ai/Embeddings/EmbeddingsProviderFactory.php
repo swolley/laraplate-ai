@@ -9,6 +9,7 @@ use function ai_config_nullable_string;
 use function ai_config_string;
 
 use InvalidArgumentException;
+use Modules\Core\Exceptions\ConfigurationException;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Embeddings\MistralEmbeddingsProvider;
 use NeuronAI\RAG\Embeddings\OllamaEmbeddingsProvider;
@@ -44,7 +45,8 @@ final class EmbeddingsProviderFactory
 
     private static function createOllama(): OllamaEmbeddingsProvider
     {
-        $url = ai_config_string('ai.providers.ollama.api_url', 'http://localhost:11434/api');
+        $url = ai_config_string('ai.providers.ollama.api_url');
+        throw_if($url === '', ConfigurationException::class, 'Ollama API URL is not configured');
 
         return new OllamaEmbeddingsProvider(
             model: ai_config_string('ai.providers.ollama.model', 'nomic-embed-text'),

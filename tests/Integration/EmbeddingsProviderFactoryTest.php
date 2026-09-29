@@ -73,3 +73,9 @@ it('uses default provider from config when none specified', function (): void {
 
     expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
+
+it('throws when the Ollama URL is missing for embeddings', function (): void {
+    config()->set('ai.providers.ollama.api_url', null);
+
+    EmbeddingsProviderFactory::make('ollama');
+})->throws(Modules\Core\Exceptions\ConfigurationException::class, 'Ollama API URL is not configured');

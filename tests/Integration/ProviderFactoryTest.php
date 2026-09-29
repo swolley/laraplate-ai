@@ -75,3 +75,9 @@ it('throws when Anthropic API key is missing', function (): void {
 
     ProviderFactory::make('anthropic');
 })->throws(Exception::class, 'Anthropic API key is not configured');
+
+it('throws when the Ollama URL is missing', function (): void {
+    config()->set('ai.providers.ollama.api_url', null);
+
+    ProviderFactory::make('ollama');
+})->throws(Modules\Core\Exceptions\ConfigurationException::class, 'Ollama API URL is not configured');

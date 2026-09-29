@@ -51,8 +51,11 @@ final class ProviderFactory
 
     private static function createOllama(?string $model): Ollama
     {
+        $url = ai_config_string('ai.providers.ollama.api_url');
+        throw_if($url === '', ConfigurationException::class, 'Ollama API URL is not configured');
+
         return new Ollama(
-            url: ai_config_string('ai.providers.ollama.api_url', 'http://localhost:11434'),
+            url: $url,
             model: $model ?? ai_config_string('ai.providers.ollama.model', 'llama3.2:3b'),
         );
     }

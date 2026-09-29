@@ -82,7 +82,7 @@ OPENAI_API_URL=                      # OpenAI compatible API URL (optional)
 OPENAI_MODEL=                        # OpenAI model (e.g., gpt-3.5-turbo, text-embedding-3-small)
 
 # Ollama Configuration
-OLLAMA_API_URL=http://localhost:11434  # Ollama API URL
+OLLAMA_API_URL=                      # Ollama API URL, e.g. http://localhost:11434. Required to use Ollama: unset means not configured
 OLLAMA_MODEL=llama3.2:3b            # Ollama model for embeddings/translation
 
 # VoyageAI Configuration

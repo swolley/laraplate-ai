@@ -217,7 +217,7 @@ return [
         ],
 
         'ollama' => [
-            'api_url' => env('OLLAMA_API_URL', 'http://localhost:11434'),
+            'api_url' => env('OLLAMA_API_URL'),
             'model' => env('OLLAMA_MODEL', 'llama3.2:3b'),
         ],
 
