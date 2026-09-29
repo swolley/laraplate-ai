@@ -39,7 +39,8 @@ translation is not saved and is retried later, instead of storing the original t
 The drop-down lists the models the providers themselves offer. The list is refreshed:
 
 - every night;
-- on demand, with the play icon at the start of the setting's row.
+- on demand, with the play icon at the start of the setting's row. The refresh runs in the background
+  ("Command queued"): the new list appears once the queue has processed it.
 
 Only configured providers appear (an API key or a URL set by whoever runs the installation), and only
 models able to do the feature's job: for chat, models that can chat and call tools; for image analysis,

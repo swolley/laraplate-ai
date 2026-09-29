@@ -6,6 +6,7 @@ namespace Modules\AI\Ai\Providers\Models;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use UnexpectedValueException;
 
 /**
  * Reads the models a provider offers. Short timeouts: the grid runs a refresh inside the
@@ -19,6 +20,7 @@ interface ModelLister
 
     /**
      * @throws ConnectionException
+     * @throws UnexpectedValueException when the answer is not a model list
      * @throws RequestException
      *
      * @return list<ListedModel>

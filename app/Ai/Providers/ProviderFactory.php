@@ -62,8 +62,10 @@ final class ProviderFactory
         $url = ai_config_string('ai.providers.ollama.api_url');
         throw_if($url === '', ConfigurationException::class, 'Ollama API URL is not configured');
 
+        // OLLAMA_API_URL is the server base (http://host:11434); neuron-ai joins
+        // `chat` onto its base, which must therefore end with /api.
         return new Ollama(
-            url: $url,
+            url: mb_rtrim($url, '/') . '/api',
             model: $model ?? ai_config_string('ai.providers.ollama.model', 'llama3.2:3b'),
         );
     }

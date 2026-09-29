@@ -11,6 +11,7 @@ use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Helpers\LocaleContext;
 use Override;
+use Throwable;
 
 final class TranslateContentCommand extends Command
 {
@@ -105,7 +106,16 @@ final class TranslateContentCommand extends Command
             if ($sync) {
                 // Run synchronously
                 $job = new TranslateModelJob($model, $locales, $force);
-                $job->handle(resolve(TranslationService::class));
+
+                try {
+                    $job->handle(resolve(TranslationService::class));
+                } catch (Throwable $exception) {
+                    // Synchronous runs have no queue to retry: report, let indexing proceed, move on.
+                    report($exception);
+                    $job->failed($exception);
+                    $this->newLine();
+                    $this->warn("Translation failed for {$model->getKey()}: {$exception->getMessage()}");
+                }
             } else {
                 // Dispatch to queue
                 dispatch(new TranslateModelJob($model, $locales, $force));

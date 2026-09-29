@@ -189,3 +189,15 @@ it('translates the other locales and rethrows the first failure', function (): v
     expect($model->setTranslationCalls)->toHaveCount(1)
         ->and($model->setTranslationCalls[0]['locale'])->toBe('it');
 });
+
+it('signals translation completion when the job gives up', function (): void {
+    Illuminate\Support\Facades\Event::fake([Modules\Core\Events\ModelPreProcessingCompleted::class]);
+
+    $job = new TranslateModelJob(new Modules\AI\Tests\Stubs\TranslatedEmbeddableTestModel, ['it']);
+    $job->failed(new RuntimeException('DeepL down'));
+
+    Illuminate\Support\Facades\Event::assertDispatched(
+        Modules\Core\Events\ModelPreProcessingCompleted::class,
+        static fn (Modules\Core\Events\ModelPreProcessingCompleted $event): bool => $event->processing_type === 'translation',
+    );
+});

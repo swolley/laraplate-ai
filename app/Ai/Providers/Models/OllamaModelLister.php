@@ -9,6 +9,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Modules\AI\Enums\ModelCapability;
 use Override;
+use UnexpectedValueException;
 
 /**
  * Lists the locally installed models, then asks `/api/show` for each model's capabilities.
@@ -29,9 +30,13 @@ final readonly class OllamaModelLister implements ModelLister
             ->throw()
             ->json('models');
 
+        if (! is_array($data)) {
+            throw new UnexpectedValueException('Ollama answered without a model list.');
+        }
+
         $models = [];
 
-        foreach (is_array($data) ? $data : [] as $item) {
+        foreach ($data as $item) {
             $name = is_array($item) ? ($item['name'] ?? null) : null;
 
             if (! is_string($name) || $name === '') {

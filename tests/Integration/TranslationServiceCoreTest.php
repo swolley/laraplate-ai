@@ -110,3 +110,16 @@ it('propagates a provider failure and caches nothing', function (): void {
 
     expect((new TranslationService)->translate('original text', 'en', 'it'))->toBe('Tradotto');
 });
+
+it('keeps translations cached for one provider apart from another', function (): void {
+    config()->set('core.deepl_api_key', 'test-key');
+    $key = static fn (TranslationService $service): string => (new ReflectionMethod($service, 'getCacheKey'))->invoke($service, 'hello', 'en', 'it');
+
+    config()->set('ai.features.translation.model', 'deepl');
+    $deepl = $key(new TranslationService);
+
+    config()->set('ai.features.translation.model', 'ollama:phi3');
+    $ollama = $key(new TranslationService);
+
+    expect($deepl)->not->toBe($ollama);
+});

@@ -50,7 +50,7 @@ final class EmbeddingsProviderFactory
 
         return new OllamaEmbeddingsProvider(
             model: ai_config_string('ai.providers.ollama.model', 'nomic-embed-text'),
-            url: $url . '/api',
+            url: mb_rtrim($url, '/') . '/api',
         );
     }
 

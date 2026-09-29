@@ -126,3 +126,41 @@ it('dispatches TranslateModelJob for each model', function (): void {
     expect($tester->getStatusCode())->toBe(TranslateContentCommand::SUCCESS);
     Queue::assertPushed(TranslateModelJob::class);
 });
+
+it('keeps translating the other models when one fails in sync mode', function (): void {
+    Schema::create('test_translatable_models', function ($table): void {
+        $table->id();
+        $table->timestamps();
+    });
+    Schema::create('test_translatable_model_translations', function ($table): void {
+        $table->id();
+        $table->unsignedBigInteger('translatable_test_model_id');
+        $table->string('locale', 10);
+        $table->text('title')->nullable();
+        $table->text('content')->nullable();
+        $table->timestamps();
+    });
+
+    foreach ([1, 2] as $ignored) {
+        $model = TranslatableTestModel::query()->create([]);
+        TranslatableTestModelTranslation::query()->create([
+            'translatable_test_model_id' => $model->id,
+            'locale' => config('app.locale'),
+            'title' => 'Default title',
+            'content' => 'Default content',
+        ]);
+    }
+
+    $translations = Mockery::mock(Modules\AI\Services\Translation\TranslationService::class);
+    $translations->shouldReceive('translate')->andThrow(new RuntimeException('provider down'));
+    app()->instance(Modules\AI\Services\Translation\TranslationService::class, $translations);
+
+    $command = translate_content_command_with_models([TranslatableTestModel::class]);
+    $command->setLaravel(app());
+
+    $tester = new CommandTester($command);
+    $tester->execute(['model' => 'TranslatableTestModel', '--locale' => 'it', '--sync' => true]);
+
+    expect($tester->getStatusCode())->toBe(TranslateContentCommand::SUCCESS)
+        ->and(mb_substr_count($tester->getDisplay(), 'provider down'))->toBe(2);
+});

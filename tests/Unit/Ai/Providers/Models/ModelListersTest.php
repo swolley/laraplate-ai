@@ -122,3 +122,13 @@ it('treats unknown capabilities as satisfying any requirement', function (): voi
         ->and((new ListedModel('m', [ModelCapability::Chat]))->satisfies([ModelCapability::Chat, ModelCapability::Tools]))->toBeFalse()
         ->and((new ListedModel('m', [ModelCapability::Chat, ModelCapability::Tools]))->satisfies([ModelCapability::Chat]))->toBeTrue();
 });
+
+it('fails on an answer without a model list instead of listing nothing', function (): void {
+    Http::fake([
+        'api.openai.com/*' => Http::response('<html>proxy error</html>', 200),
+        'ollama.test/api/tags' => Http::response(['error' => 'loading']),
+    ]);
+
+    expect(fn () => (new OpenAiModelLister('sk-test'))->list())->toThrow(UnexpectedValueException::class)
+        ->and(fn () => (new OllamaModelLister('http://ollama.test'))->list())->toThrow(UnexpectedValueException::class);
+});

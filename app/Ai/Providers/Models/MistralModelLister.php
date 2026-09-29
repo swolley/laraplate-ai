@@ -7,6 +7,7 @@ namespace Modules\AI\Ai\Providers\Models;
 use Illuminate\Support\Facades\Http;
 use Modules\AI\Enums\ModelCapability;
 use Override;
+use UnexpectedValueException;
 
 final readonly class MistralModelLister implements ModelLister
 {
@@ -22,9 +23,13 @@ final readonly class MistralModelLister implements ModelLister
             ->throw()
             ->json('data');
 
+        if (! is_array($data)) {
+            throw new UnexpectedValueException('Mistral answered without a model list.');
+        }
+
         $models = [];
 
-        foreach (is_array($data) ? $data : [] as $item) {
+        foreach ($data as $item) {
             $id = is_array($item) ? ($item['id'] ?? null) : null;
 
             if (! is_string($id) || $id === '' || ($item['archived'] ?? false) === true) {

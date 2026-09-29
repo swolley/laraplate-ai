@@ -44,7 +44,7 @@ it('seeds one model setting per feature with its refresh action', function (): v
             ->and($setting->value)->toBe($initial)
             ->and($setting->choices)->toBe([$initial])
             ->and($setting->action_command)->toBe('ai:models:refresh --setting={name}')
-            ->and($setting->action_queued)->toBeFalse();
+            ->and($setting->action_queued)->toBeTrue();
     }
 });
 

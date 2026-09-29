@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Providers\Models;
 
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Modules\AI\Ai\Providers\AiModelChoice;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Enums\ProviderListingStatus;
+use Throwable;
 
 /**
  * Builds the model choices of a set of features. Each needed provider is called once per
- * build. A provider that is not configured loses its entries; one that fails keeps the
- * entries it had, so an outage never empties a list.
+ * build. A provider that is not configured loses its entries; one that fails (any error,
+ * including an answer that is not a model list) keeps the entries it had, so an outage never
+ * empties a list and one provider cannot abort the others.
  */
 final readonly class ModelCatalog
 {
@@ -67,7 +67,7 @@ final readonly class ModelCatalog
 
         try {
             $models = $lister->list();
-        } catch (ConnectionException|RequestException $exception) {
+        } catch (Throwable $exception) {
             return [new ProviderOutcome($provider, ProviderListingStatus::Failed, error: $exception->getMessage()), null];
         }
 

@@ -57,7 +57,9 @@ class AIDatabaseSeeder extends Seeder
                 return [
                     ...self::setting($feature->settingName(), $initial, SettingTypeEnum::String, 'ai', $feature->settingDescription(), [$initial]),
                     'action_command' => 'ai:models:refresh --setting={name}',
-                    'action_queued' => false,
+                    // Queued: a refresh calls up to five providers in turn, plus one Ollama
+                    // request per installed model, which can outlast a web request.
+                    'action_queued' => true,
                 ];
             },
             AiModelFeature::cases(),

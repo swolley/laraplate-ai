@@ -17,6 +17,11 @@ final class TranslationService implements TranslationServiceInterface
     private readonly bool $cache_enabled;
 
     /**
+     * The chosen provider and model: a cached translation belongs to the service that made it.
+     */
+    private readonly string $cache_scope;
+
+    /**
      * In-memory cache for translations during the request.
      *
      * @var array<string, string>
@@ -31,6 +36,7 @@ final class TranslationService implements TranslationServiceInterface
     {
         $choice = AiModelChoice::forFeature(AiModelFeature::Translation);
         $this->cache_enabled = ai_config_bool('core.translations.cache.enabled', true);
+        $this->cache_scope = $choice->value();
 
         $this->service = $choice->provider === 'deepl'
             ? new DeepLTranslationService()
@@ -89,6 +95,6 @@ final class TranslationService implements TranslationServiceInterface
 
     private function getCacheKey(string $text, string $from_locale, string $to_locale): string
     {
-        return 'translation:' . md5($text . $from_locale . $to_locale);
+        return 'translation:' . md5($this->cache_scope . '|' . $text . $from_locale . $to_locale);
     }
 }

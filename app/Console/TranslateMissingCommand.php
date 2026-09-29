@@ -11,6 +11,7 @@ use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
 use Modules\Core\Helpers\LocaleContext;
 use Override;
+use Throwable;
 
 final class TranslateMissingCommand extends Command
 {
@@ -123,7 +124,16 @@ final class TranslateMissingCommand extends Command
 
             if ($sync) {
                 $job = new TranslateModelJob($model, $locales, false);
-                $job->handle(resolve(TranslationService::class));
+
+                try {
+                    $job->handle(resolve(TranslationService::class));
+                } catch (Throwable $exception) {
+                    // Synchronous runs have no queue to retry: report, let indexing proceed, move on.
+                    report($exception);
+                    $job->failed($exception);
+                    $this->newLine();
+                    $this->warn("Translation failed for {$model->getKey()}: {$exception->getMessage()}");
+                }
             } else {
                 dispatch(new TranslateModelJob($model, $locales, false));
             }

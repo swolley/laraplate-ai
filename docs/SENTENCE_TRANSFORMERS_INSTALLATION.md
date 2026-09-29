@@ -11,8 +11,6 @@ Embeddings are selected **per feature**, not by a global `AI_PROVIDER` variable 
 | Config key (`ai.*`) | Purpose | Default provider id |
 |---------------------|---------|---------------------|
 | `features.embeddings.default_provider` | Search indexing (`GenerateEmbeddingsJob`), vector search, RAG chunk vectors | `sentence_transformers` |
-| `features.chat.default_provider` | Interactive chat LLM | `ollama` |
-| `features.translation.default_provider` | Automatic model translation | `deepl` |
 
 For Sentence Transformers you only need the **embeddings** provider and its URL.
 
@@ -269,7 +267,7 @@ Notes:
 
 - `AI_EMBEDDINGS_PROVIDER` accepts `sentence_transformers` or `sentence-transformers`.
 - If omitted, the default is already `sentence_transformers`; the URL must still be reachable.
-- Chat and translation use separate env vars (`AI_CHAT_PROVIDER`, `AI_TRANSLATION_PROVIDER`).
+- Chat, translation and every other AI feature choose their model in Filament > Settings (`features.*.model`), not in env; see `rag/AI_MODEL_SELECTION_USER.md`.
 
 Ensure Core search vector settings match (`core.search.vector.dimensions` = `384`). Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).
 

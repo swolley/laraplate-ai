@@ -7,6 +7,7 @@ namespace Modules\AI\Ai\Providers\Models;
 use Illuminate\Support\Facades\Http;
 use Modules\AI\Enums\ModelCapability;
 use Override;
+use UnexpectedValueException;
 
 /**
  * Every Claude model chats and calls tools; vision comes from `capabilities.image_input`, and
@@ -31,7 +32,11 @@ final readonly class AnthropicModelLister implements ModelLister
 
             $data = $response->json('data');
 
-            foreach (is_array($data) ? $data : [] as $item) {
+            if (! is_array($data)) {
+                throw new UnexpectedValueException('Anthropic answered without a model list.');
+            }
+
+            foreach ($data as $item) {
                 $id = is_array($item) ? ($item['id'] ?? null) : null;
 
                 if (is_string($id) && $id !== '') {

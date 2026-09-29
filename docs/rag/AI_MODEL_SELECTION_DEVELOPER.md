@@ -28,7 +28,9 @@ overlay writes, and falls back to `AiModelFeature::defaultChoice()`:
 
 `AIDatabaseSeeder::modelSettingDefinitions()` seeds one setting per feature with that default as value and
 as only choice, through `commandManagedChoicesSettingsDefinition()` (a re-seed never overwrites refreshed
-choices), with the action `ai:models:refresh --setting={name}`.
+choices), with the action `ai:models:refresh --setting={name}`, queued (`action_queued = true`): a refresh
+calls up to five providers in turn plus one Ollama request per installed model, which can outlast a web
+request's time limit.
 
 ## Consumers
 
@@ -45,7 +47,8 @@ provider and no model it uses `OPENAI_MODEL`, `OLLAMA_MODEL`, `MISTRAL_MODEL`, o
 ## Providers and capabilities
 
 A provider is configured when its API key (openai, anthropic, mistral; DeepL reads `core.deepl_api_key`)
-or its URL (ollama, whisper) is set. Ollama has no default URL: unset means not configured.
+or its URL (ollama, whisper) is set. Ollama has no default URL: unset means not configured. `OLLAMA_API_URL`
+is the server base (`http://host:11434`); chat, embeddings and the lister each append `/api`.
 
 | Provider | Endpoint | Capabilities |
 |---|---|---|
@@ -67,7 +70,7 @@ other feature needs chat.
 - Not configured: its entries are dropped.
 - Answering: its models with the required capabilities are listed (an empty answer lists none and is not
   a failure).
-- Failing (connection error or HTTP error): the entries it had in the current choices are kept, recognised
+- Failing (connection error, HTTP error, an answer that is not a model list, or any other error): the entries it had in the current choices are kept, recognised
   by their `provider:` prefix, and the failure is reported.
 - Choices are sorted.
 

@@ -101,10 +101,9 @@ AI_MODERATION_APPROVE_THRESHOLD=0.85
 AI_MODERATION_REJECT_THRESHOLD=0.85
 AI_MODERATOR_USER_ID=1
 AI_MODERATION_QUEUE=default
-AI_MODERATION_PROVIDER=
 ```
 
-Legacy `AI_COMMENT_*` env vars are still read as fallbacks in `config/config.php`.
+The moderation model is the setting `features.moderation.model` in Filament > Settings (see `rag/AI_MODEL_SELECTION_USER.md`); `AI_MODERATION_PROVIDER` and `AI_COMMENT_MOD_PROVIDER` were removed. Other legacy `AI_COMMENT_*` env vars are still read as fallbacks in `config/config.php`.
 
 Per-model (Core settings, group `moderation`):
 

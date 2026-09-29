@@ -20,6 +20,7 @@ use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Helpers\LocaleContext;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
+use Throwable;
 
 final class TranslateModelJob implements ShouldQueue
 {
@@ -116,14 +117,25 @@ final class TranslateModelJob implements ShouldQueue
             }
         }
 
-        // Indexing waits for this event: send it when every locale is done, or when the job
-        // gives up, so a failing provider cannot hold indexing back for good.
-        if (class_uses_trait($model, Searchable::class) && ($failure === null || $this->tries <= $this->attempts())) {
+        // Indexing waits for this event. On failure it is sent by failed(), once the queue
+        // gives up, so a retry does not index a half-translated model.
+        if ($failure === null && class_uses_trait($model, Searchable::class)) {
             event(new ModelPreProcessingCompleted($model, 'translation'));
         }
 
         if ($failure !== null) {
             throw $failure;
+        }
+    }
+
+    /**
+     * The queue gave up (all tries spent, or a timeout): let indexing proceed with the
+     * translations that were saved, instead of waiting for a completion that never comes.
+     */
+    public function failed(Throwable $exception): void
+    {
+        if (class_uses_trait($this->model, Searchable::class)) {
+            event(new ModelPreProcessingCompleted($this->model, 'translation'));
         }
     }
 

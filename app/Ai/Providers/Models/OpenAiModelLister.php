@@ -6,6 +6,7 @@ namespace Modules\AI\Ai\Providers\Models;
 
 use Illuminate\Support\Facades\Http;
 use Override;
+use UnexpectedValueException;
 
 /**
  * OpenAI lists every model family without capabilities: the families no AI feature can use
@@ -30,9 +31,13 @@ final readonly class OpenAiModelLister implements ModelLister
             ->throw()
             ->json('data');
 
+        if (! is_array($data)) {
+            throw new UnexpectedValueException('OpenAI answered without a model list.');
+        }
+
         $models = [];
 
-        foreach (is_array($data) ? $data : [] as $item) {
+        foreach ($data as $item) {
             $id = is_array($item) ? ($item['id'] ?? null) : null;
 
             if (is_string($id) && $id !== '' && ! self::isIncompatible($id)) {

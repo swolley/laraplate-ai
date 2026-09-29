@@ -80,3 +80,11 @@ it('throws when the Ollama URL is missing', function (): void {
 
     ProviderFactory::make('ollama');
 })->throws(Modules\Core\Exceptions\ConfigurationException::class, 'Ollama API URL is not configured');
+
+it('points chat at the Ollama api path of the configured base URL', function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://ollama.test/');
+
+    $provider = ProviderFactory::make('ollama', 'llama3.2:3b');
+
+    expect((new ReflectionProperty($provider, 'url'))->getValue($provider))->toBe('http://ollama.test/api');
+});

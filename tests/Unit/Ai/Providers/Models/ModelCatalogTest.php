@@ -97,3 +97,16 @@ it('offers providers without a catalogue by name when configured', function (): 
 
     Http::assertNothingSent();
 });
+
+it('keeps the previous entries when a provider answers with something that is not a model list', function (): void {
+    config()->set('ai.providers.mistral.api_key', 'mk-test');
+    Http::fake(['api.mistral.ai/*' => Http::response('<html>maintenance</html>', 200)]);
+
+    $result = app(ModelCatalog::class)->build(
+        [AiModelFeature::TextGeneration],
+        ['features.text_generation.model' => ['mistral:mistral-large-latest']],
+    );
+
+    expect($result->choices['features.text_generation.model'])->toBe(['mistral:mistral-large-latest'])
+        ->and($result->outcomes['mistral']->status)->toBe(ProviderListingStatus::Failed);
+});
