@@ -8,7 +8,7 @@ use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 
 function transcriptionProfile(): MediaAnalysisModelProfile
 {
-    return new MediaAnalysisModelProfile('transcription', 'whisper-local', 'whisper_local', 'base');
+    return new MediaAnalysisModelProfile('transcription', 'whisper', 'whisper', '');
 }
 
 function audioFixture(): string

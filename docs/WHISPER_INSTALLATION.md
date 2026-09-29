@@ -14,12 +14,15 @@ README has the full install steps; this file is the integration + sizing note.
 
 ## What uses the transcriber
 
-Transcription is part of **media analysis** and is selected through the media
-model registry, not a global provider variable.
+Transcription is part of **media analysis**. Media analysis is switched on from
+Filament > Settings (`features.media_analysis.enabled`), and the transcription
+provider is the setting `features.media_analysis.transcription.model`, whose only
+choice is `whisper`. The Whisper model itself is chosen on the Whisper host with
+`WHISPER_MODEL`: Laraplate does not send one.
 
-| Config key (`ai.*`) | Purpose | Default |
+| Key (`ai.*`) | Purpose | Default |
 |---------------------|---------|---------|
-| `features.media_analysis.capabilities.transcription.active` | Which transcription profile runs | `whisper-local` |
+| `features.media_analysis.transcription.model` (setting) | Which transcription provider runs | `whisper` |
 | `providers.whisper.url` | Base URL of the Whisper service | *(unset = transcription off)* |
 | `providers.whisper.api_key` | Optional Bearer token | *(unset = no auth)* |
 | `providers.whisper.timeout` | Per-request timeout (seconds) | `120` |
@@ -100,8 +103,9 @@ Change the model with `WHISPER_MODEL` (systemd unit or `/opt/whisper-api/.env`) 
 ```dotenv
 WHISPER_URL=http://ai:8001
 WHISPER_API_KEY=<the key from /opt/whisper-api/.env>
-AI_MEDIA_TRANSCRIPTION_MODEL=whisper-local
 ```
+
+Then turn on `features.media_analysis.enabled` in Filament > Settings.
 
 Verify: analyze an audio/video media and confirm its `ai_media_analyses` row (by
 `content_hash`) has a non-empty `transcript`. If the service is down or misconfigured,

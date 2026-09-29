@@ -66,7 +66,7 @@ it('writes the analysis row, fills empty Core fields and chains embeddings for a
         ->and($analysis->idea)->toBe('joy')
         ->and($analysis->intent)->toBe('inform')
         ->and($analysis->entities)->toBe(['man'])
-        ->and($analysis->analysis_model_version)->toBe('claude-sonnet-5');
+        ->and($analysis->analysis_model_version)->toBe('anthropic:claude-sonnet-5');
 
     $custom = $media->fresh()->custom_properties;
     expect($custom['description'])->toBe('A man smiling')
@@ -81,7 +81,7 @@ it('reuses a fresh analysis for the same hash without calling the analyzer (M15)
     $hash = hash('sha256', 'shared');
     MediaAnalysis::factory()->create([
         'content_hash' => $hash,
-        'analysis_model_version' => 'claude-sonnet-5',
+        'analysis_model_version' => 'anthropic:claude-sonnet-5',
     ]);
 
     // No result => the fake throws if analyze() is called.

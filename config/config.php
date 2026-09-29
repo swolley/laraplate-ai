@@ -51,41 +51,14 @@ return [
                 ],
             ],
         ],
-        // Media LLM analysis (M1-M21 in the media spec). The runtime master
-        // switch (M18) lives in the Settings table (name `media_analysis.enabled`,
-        // group `ai`); the `enabled` value here is only the static default used
-        // when no setting row exists. Analysis models are a registry per
-        // capability (M21), resolved by MediaAnalysisModelRegistry, mirroring the
-        // embeddings registry above.
+        // Media LLM analysis (M1-M21 in the media spec). The master switch is the
+        // setting `features.media_analysis.enabled` and the models are the settings
+        // `features.media_analysis.{vision,transcription}.model`; only the
+        // per-module allowlist is config.
         'media_analysis' => [
-            'enabled' => env('AI_MEDIA_ANALYSIS_ENABLED', false),
-
             // Optional per-module allowlist. Empty = every module (default).
             // Matched by FeatureModuleGate against the model's Modules\{Name}\ namespace.
             'modules' => [],
-
-            'capabilities' => [
-                // Vision: caption, idea, intent, image OCR.
-                'vision' => [
-                    'active' => env('AI_MEDIA_VISION_MODEL', 'claude-sonnet-5'),
-                    'models' => [
-                        'claude-sonnet-5' => ['provider' => 'anthropic', 'service_model' => 'claude-sonnet-5'],
-                        'claude-haiku-4-5' => ['provider' => 'anthropic', 'service_model' => 'claude-haiku-4-5'],
-                        'claude-opus-5' => ['provider' => 'anthropic', 'service_model' => 'claude-opus-5'],
-                        'gpt-4o' => ['provider' => 'openai', 'service_model' => 'gpt-4o'],
-                        'gpt-4o-mini' => ['provider' => 'openai', 'service_model' => 'gpt-4o-mini'],
-                        'ollama-vision' => ['provider' => 'ollama', 'service_model' => env('AI_MEDIA_VISION_OLLAMA_MODEL', 'llava')],
-                    ],
-                ],
-                // Transcription: audio/video speech-to-text (self-hosted default).
-                'transcription' => [
-                    'active' => env('AI_MEDIA_TRANSCRIPTION_MODEL', 'whisper-local'),
-                    'models' => [
-                        'whisper-local' => ['provider' => 'whisper_local', 'service_model' => env('AI_MEDIA_WHISPER_LOCAL_MODEL', 'base')],
-                        'whisper-api' => ['provider' => 'openai', 'service_model' => 'whisper-1'],
-                    ],
-                ],
-            ],
         ],
 
         'translation' => [
