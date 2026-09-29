@@ -68,7 +68,7 @@ php artisan module:install AI
 
 The AI module configuration is automatically mapped as `ai.*` when the module is active. Configuration file: `Modules/AI/config/config.php`.
 
-Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.summary.enabled`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*` and the `features.moderation.*` thresholds. Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`.
+Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.summary.enabled`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*`, the `features.moderation.*` thresholds, `features.media_analysis.enabled` (seeded off), and the model of each AI feature, `features.*.model` (value `provider:model`, choices refreshed from the providers by `ai:models:refresh`, nightly or from the setting row; see `docs/rag/AI_MODEL_SELECTION_DEVELOPER.md`). Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`. A value managed by a setting has no env variable: its default lives in code.
 
 ```env
 # AI Features
@@ -79,11 +79,11 @@ AI_EMBEDDINGS_PROVIDER=sentence_transformers  # openai, ollama, voyageai, mistra
 # OpenAI Configuration
 OPENAI_API_KEY=                      # OpenAI API key
 OPENAI_API_URL=                      # OpenAI compatible API URL (optional)
-OPENAI_MODEL=                        # OpenAI model (e.g., gpt-3.5-turbo, text-embedding-3-small)
+OPENAI_MODEL=                        # Model used by embeddings with OpenAI (AI features take their model from Settings)
 
 # Ollama Configuration
 OLLAMA_API_URL=                      # Ollama API URL, e.g. http://localhost:11434. Required to use Ollama: unset means not configured
-OLLAMA_MODEL=llama3.2:3b            # Ollama model for embeddings/translation
+OLLAMA_MODEL=llama3.2:3b            # Model used by embeddings with Ollama (AI features take their model from Settings)
 
 # VoyageAI Configuration
 VOYAGEAI_API_KEY=                    # VoyageAI API key
@@ -91,7 +91,7 @@ VOYAGEAI_MODEL=voyage-3-lite        # VoyageAI model
 
 # Mistral Configuration
 MISTRAL_API_KEY=                     # Mistral API key
-MISTRAL_MODEL=mistral-large-latest  # Mistral model
+MISTRAL_MODEL=mistral-large-latest  # Model used by embeddings with Mistral (AI features take their model from Settings)
 
 # Sentence Transformers Configuration
 SENTENCE_TRANSFORMERS_URL=http://localhost:8000  # Sentence Transformers API URL
@@ -102,13 +102,8 @@ SENTENCE_TRANSFORMERS_BATCH_SIZE=32  # Documents per /embed batch (lower it if o
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key
 
-# Chat Configuration
-AI_CHAT_PROVIDER=ollama              # Chat provider (ollama, openai, mistral, anthropic)
-
 # Optional Text Generation (answers Core's AiTextGenerationRequested event)
 AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
-AI_TEXT_GENERATION_PROVIDER=ollama   # Provider for those requests (defaults to AI_CHAT_PROVIDER)
-AI_TEXT_GENERATION_MODEL=            # Optional model override for this feature only (blank = provider default)
 AI_TEXT_GENERATION_MAX_CHARS=500     # Hard cap on the returned text (truncated on a word boundary)
 AI_TEXT_GENERATION_CACHE_TTL=0       # Optional cache TTL (seconds) keyed by (purpose, prompt); 0 = off
 AI_TEXT_GENERATION_RATE_MAX=60       # Max requests per purpose within the window (0 = unlimited)
@@ -131,6 +126,8 @@ AI_GUARDRAILS_PROMPT_INJECTION=false # Enable prompt injection detection
 LAKERA_API_KEY=                      # Lakera Guard API key
 LAKERA_ENDPOINT=https://api.lakera.ai/  # Lakera endpoint
 ```
+
+Removed on 2026-09-29, now settings in Filament > Settings (see above): `AI_CHAT_PROVIDER`, `AI_TEXT_GENERATION_PROVIDER`, `AI_TEXT_GENERATION_MODEL`, `AI_MODERATION_PROVIDER`, `AI_COMMENT_MOD_PROVIDER`, `AI_SEARCH_ORCHESTRATION_PROVIDER`, `AI_TRANSLATION_PROVIDER`, `ANTHROPIC_MODEL`, `AI_MEDIA_ANALYSIS_ENABLED`, `AI_MEDIA_VISION_MODEL`, `AI_MEDIA_VISION_OLLAMA_MODEL`, `AI_MEDIA_TRANSCRIPTION_MODEL`, `AI_MEDIA_WHISPER_LOCAL_MODEL`.
 
 ### Module Priority
 

@@ -136,8 +136,11 @@ See [MODERATION.md](./MODERATION.md#post-approval-translation).
 
 ### Configuration
 
+The provider is the setting `features.translation.model` in Filament > Settings: `deepl`, or an AI model
+as `provider:model` (choices refreshed by `ai:models:refresh`). `DEEPL_API_KEY` configures DeepL. There is
+no fallback: a failing provider saves and caches nothing for that locale, and the job is retried.
+
 ```env
-AI_TRANSLATION_ENABLED=true
 DEEPL_API_KEY=
 ```
 
@@ -175,6 +178,7 @@ stateDiagram-v2
 | Pre-processing completes after cache expiry | `FinalizeModelIndexingListener` indexes the model directly (late-retry recovery) |
 | Translation disabled | Indexing may still run with embeddings only |
 | Translation without pending indexing | `TranslateModelJob` runs standalone |
+| Translation provider fails | Nothing is saved or cached for that locale; the other locales are translated; the job retries (3 tries, backoff 30/60/120 s); indexing proceeds when the job succeeds or gives up |
 
 ---
 
