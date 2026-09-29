@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
+use Modules\AI\Ai\MediaAnalysis\MediaAnalysisGate;
 use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
@@ -15,6 +16,7 @@ use Modules\AI\Console\RefreshAiModelsCommand;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
+use Modules\AI\Filament\MediaAnalysisSchemaContributor;
 use Modules\AI\Observers\MediaAnalysisRefcountObserver;
 use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
@@ -43,6 +45,7 @@ use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\CrudToolProvider;
 use Modules\AI\Services\Tools\GraphToolProvider;
+use Modules\Core\Filament\ResourceSchemaContributorRegistry;
 use Modules\Core\Models\Media;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
@@ -125,6 +128,12 @@ class AIServiceProvider extends ModuleServiceProvider
         // stays AI-agnostic and this is safe to register unconditionally.
         $this->app->make(SearchableContributorRegistry::class)
             ->register(new MediaAnalysisSearchContributor());
+
+        // Contribute the AI analysis panel + re-analyze action to the media Filament
+        // view through Core's resource-schema seam (M22). Gated by the master switch
+        // inside the contributor, so Core stays AI-agnostic.
+        $this->app->make(ResourceSchemaContributorRegistry::class)
+            ->register(new MediaAnalysisSchemaContributor($this->app->make(MediaAnalysisGate::class)));
 
         Media::observe(MediaAnalysisRefcountObserver::class);
     }
