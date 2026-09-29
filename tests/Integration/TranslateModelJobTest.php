@@ -168,3 +168,24 @@ it('cannot resolve source translation when the model exposes no translation API'
 
     expect($method->invoke($job, $model, 'en'))->toBeNull();
 });
+
+it('translates the other locales and rethrows the first failure', function (): void {
+    $defaultTranslation = Mockery::mock(Model::class)->makePartial();
+    $defaultTranslation->title = 'Hello';
+
+    $model = new TranslateModelJobStub;
+    $model->defaultTranslation = $defaultTranslation;
+    $model->hasTranslationResult = false;
+    TranslateModelJobStub::$translatableFields = ['title'];
+
+    $translationService = Mockery::mock(TranslationService::class);
+    $translationService->shouldReceive('translate')->with('Hello', 'en', 'fr')->andThrow(new RuntimeException('DeepL down'));
+    $translationService->shouldReceive('translate')->with('Hello', 'en', 'it')->andReturn('Ciao');
+
+    $job = new TranslateModelJob($model, ['fr', 'it'], true);
+
+    expect(fn () => $job->handle($translationService))->toThrow(RuntimeException::class, 'DeepL down');
+
+    expect($model->setTranslationCalls)->toHaveCount(1)
+        ->and($model->setTranslationCalls[0]['locale'])->toBe('it');
+});

@@ -95,6 +95,8 @@ final class TranslateModelJob implements ShouldQueue
         $locales_to_translate = $this->locales === [] ? LocaleContext::getAvailable() : $this->locales;
         $locales_to_translate = array_filter($locales_to_translate, fn (string $locale): bool => $locale !== $default_locale);
 
+        $failure = null;
+
         foreach ($locales_to_translate as $locale) {
             if (! $this->force && $model->hasTranslation($locale)) {
                 continue;
@@ -109,11 +111,19 @@ final class TranslateModelJob implements ShouldQueue
                     'locale' => $locale,
                     'error' => $e->getMessage(),
                 ]);
+
+                $failure ??= $e;
             }
         }
 
-        if (class_uses_trait($model, Searchable::class)) {
+        // Indexing waits for this event: send it when every locale is done, or when the job
+        // gives up, so a failing provider cannot hold indexing back for good.
+        if (class_uses_trait($model, Searchable::class) && ($failure === null || $this->tries <= $this->attempts())) {
             event(new ModelPreProcessingCompleted($model, 'translation'));
+        }
+
+        if ($failure !== null) {
+            throw $failure;
         }
     }
 

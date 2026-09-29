@@ -5,17 +5,14 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Translation;
 
 use function ai_config_bool;
-use function ai_config_string;
 
-use Exception;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
+use Modules\AI\Ai\Providers\AiModelChoice;
+use Modules\AI\Enums\AiModelFeature;
 
 final class TranslationService implements TranslationServiceInterface
 {
-    private readonly TranslationServiceInterface $primary_service;
-
-    private ?TranslationServiceInterface $fallback_service = null;
+    private readonly TranslationServiceInterface $service;
 
     private readonly bool $cache_enabled;
 
@@ -26,22 +23,18 @@ final class TranslationService implements TranslationServiceInterface
      */
     private array $memory_cache = [];
 
+    /**
+     * DeepL or an AI model, as chosen in Settings. No fallback: a failure propagates, so
+     * nothing is cached and the queued translation is retried.
+     */
     public function __construct()
     {
-        $provider = ai_config_string('core.translations.provider', 'deepl');
+        $choice = AiModelChoice::forFeature(AiModelFeature::Translation);
         $this->cache_enabled = ai_config_bool('core.translations.cache.enabled', true);
 
-        // Initialize primary service
-        $this->primary_service = match ($provider) {
-            'deepl' => new DeepLTranslationService(),
-            'ai' => new AiTranslationService(),
-            default => throw new Exception("Unsupported translation provider: {$provider}"),
-        };
-
-        // Initialize fallback service if enabled
-        if (ai_config_bool('core.translations.fallback_to_ai', true) && $provider !== 'ai') {
-            $this->fallback_service = new AiTranslationService;
-        }
+        $this->service = $choice->provider === 'deepl'
+            ? new DeepLTranslationService()
+            : new AiTranslationService(provider: $choice->provider, model: $choice->model);
     }
 
     public function translate(string $text, string $from_locale, string $to_locale): string
@@ -91,31 +84,7 @@ final class TranslationService implements TranslationServiceInterface
 
     private function performTranslation(string $text, string $from_locale, string $to_locale): string
     {
-        try {
-            return $this->primary_service->translate($text, $from_locale, $to_locale);
-        } catch (Exception $e) {
-            Log::warning('Primary translation service failed, trying fallback', [
-                'error' => $e->getMessage(),
-                'from' => $from_locale,
-                'to' => $to_locale,
-            ]);
-
-            // @codeCoverageIgnoreStart
-            if ($this->fallback_service instanceof TranslationServiceInterface) {
-                try {
-                    return $this->fallback_service->translate($text, $from_locale, $to_locale);
-                } catch (Exception $fallback_error) {
-                    Log::error('Fallback translation service also failed', [
-                        'error' => $fallback_error->getMessage(),
-                        'from' => $from_locale,
-                        'to' => $to_locale,
-                    ]);
-                }
-            }
-            // @codeCoverageIgnoreEnd
-
-            return $text;
-        }
+        return $this->service->translate($text, $from_locale, $to_locale);
     }
 
     private function getCacheKey(string $text, string $from_locale, string $to_locale): string

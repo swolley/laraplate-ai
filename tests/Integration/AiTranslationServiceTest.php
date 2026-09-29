@@ -6,10 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Services\Translation\AiTranslationService;
 
-beforeEach(function (): void {
-    config()->set('ai.features.translation.default_provider', 'ollama');
-});
-
 it('translate returns empty string as-is', function (): void {
     $service = new AiTranslationService;
 
@@ -58,30 +54,7 @@ it('translate rethrows the provider failure after logging it', function (): void
         ->toThrow(RuntimeException::class, 'provider unavailable');
 });
 
-it('resolves an unknown provider name to the configured default', function (): void {
-    config()->set('ai.features.translation.default_provider', 'invalid');
-
-    $received_provider = 'untouched';
-    $handler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $handler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Ciao'));
-
-    $agent = Mockery::mock(ChatAgent::class);
-    $agent->shouldReceive('chat')->andReturn($handler);
-
-    $service = new AiTranslationService(chatAgentFactory: function (?string $provider) use (&$received_provider, $agent): ChatAgent {
-        $received_provider = $provider;
-
-        return $agent;
-    });
-
-    expect($service->translate('hello', 'en', 'it'))->toBe('Ciao')
-        ->and($received_provider)->toBeNull();
-});
-
 it('translate calls ChatAgent and returns translated text', function (): void {
-    config()->set('ai.features.translation.default_provider', 'ollama');
-
     $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
     $mockAgentHandler->shouldReceive('getMessage')
         ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Ciao'));
@@ -114,8 +87,6 @@ it('translateBatch calls translate for each text', function (): void {
     $service = new AiTranslationService(
         chatAgentFactory: fn (?string $provider) => $mockAgent,
     );
-
-    config()->set('ai.features.translation.default_provider', 'openai');
     $result = $service->translateBatch(['Hello', 'World'], 'en', 'it');
 
     expect($result)->toBe(['Ciao', 'Mondo']);
@@ -129,20 +100,26 @@ it('translate logs error and throws on exception', function (): void {
         chatAgentFactory: fn (?string $provider) => $mockAgent,
     );
 
-    config()->set('ai.features.translation.default_provider', 'ollama');
-
     expect(fn (): string => $service->translate('Hello', 'en', 'it'))->toThrow(Exception::class, 'Translation failed');
 });
 
-it('resolveProvider maps known providers correctly', function (): void {
-    $service = new AiTranslationService;
-    $method = new ReflectionMethod($service, 'resolveProvider');
+it('hands its provider to the agent factory', function (): void {
+    $received_provider = 'untouched';
+    $handler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
+    $handler->shouldReceive('getMessage')->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Ciao'));
+    $agent = Mockery::mock(ChatAgent::class);
+    $agent->shouldReceive('chat')->andReturn($handler);
 
-    expect($method->invoke($service, 'openai'))->toBe('openai')
-        ->and($method->invoke($service, 'ollama'))->toBe('ollama')
-        ->and($method->invoke($service, 'mistral'))->toBe('mistral')
-        ->and($method->invoke($service, 'anthropic'))->toBe('anthropic')
-        ->and($method->invoke($service, 'deepl'))->toBeNull()
-        ->and($method->invoke($service, 'ai'))->toBeNull()
-        ->and($method->invoke($service, null))->toBeNull();
+    $service = new AiTranslationService(
+        chatAgentFactory: function (?string $provider) use (&$received_provider, $agent): ChatAgent {
+            $received_provider = $provider;
+
+            return $agent;
+        },
+        provider: 'mistral',
+        model: 'mistral-large-latest',
+    );
+
+    expect($service->translate('hello', 'en', 'it'))->toBe('Ciao')
+        ->and($received_provider)->toBe('mistral');
 });

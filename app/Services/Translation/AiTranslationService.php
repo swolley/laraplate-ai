@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Translation;
 
-use function ai_config_nullable_string;
-
 use Closure;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Chat\Messages\UserMessage;
 
 final readonly class AiTranslationService implements TranslationServiceInterface
@@ -18,6 +17,8 @@ final readonly class AiTranslationService implements TranslationServiceInterface
 
     public function __construct(
         private ?Closure $chatAgentFactory = null,
+        private ?string $provider = null,
+        private ?string $model = null,
     ) {}
 
     public function translate(string $text, string $from_locale, string $to_locale): string
@@ -26,10 +27,8 @@ final readonly class AiTranslationService implements TranslationServiceInterface
             return $text;
         }
 
-        $provider = ai_config_nullable_string('ai.features.translation.default_provider');
-
         try {
-            $agent = $this->makeChatAgent($this->resolveProvider($provider));
+            $agent = $this->makeChatAgent();
 
             $prompt = "Translate the following text from {$from_locale} to {$to_locale}:\n\n{$text}";
             $response = $agent->chat(new UserMessage($prompt));
@@ -38,7 +37,7 @@ final readonly class AiTranslationService implements TranslationServiceInterface
         } catch (Exception $e) {
             Log::error('AI translation error', [
                 'error' => $e->getMessage(),
-                'provider' => $provider,
+                'provider' => $this->provider,
                 'from' => $from_locale,
                 'to' => $to_locale,
             ]);
@@ -58,28 +57,21 @@ final readonly class AiTranslationService implements TranslationServiceInterface
         return $translations;
     }
 
-    /**
-     * Resolve the provider name for translations.
-     * When the translation provider is 'ai' or 'deepl', fallback to chat default.
-     */
-    private function resolveProvider(?string $provider): ?string
-    {
-        return match ($provider) {
-            'openai', 'ollama', 'mistral', 'anthropic' => $provider,
-            default => null,
-        };
-    }
-
-    private function makeChatAgent(?string $provider): ChatAgent
+    private function makeChatAgent(): ChatAgent
     {
         if ($this->chatAgentFactory instanceof Closure) {
-            return ($this->chatAgentFactory)($provider);
+            return ($this->chatAgentFactory)($this->provider);
+        }
+
+        if ($this->provider === null) {
+            return ChatAgent::forFeature(AiModelFeature::Translation, self::SYSTEM_PROMPT);
         }
 
         /** @var ChatAgent */
         return ChatAgent::make(
-            providerName: $provider,
+            providerName: $this->provider,
             systemPrompt: self::SYSTEM_PROMPT,
+            model: $this->model,
         );
     }
 }

@@ -62,8 +62,6 @@ return [
         ],
 
         'translation' => [
-            'default_provider' => env('AI_TRANSLATION_PROVIDER', 'deepl'),
-
             // Optional per-module allowlist. Empty = every module (default).
             // When non-empty, only models whose owning module is listed are translated,
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Modules\AI\Services\Translation\TranslationService;
 
 it('constructor initializes with deepl provider by default', function (): void {
-    config()->set('core.translations.provider', 'deepl');
+    config()->set('ai.features.translation.model', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     Http::fake([
@@ -23,23 +23,8 @@ it('constructor initializes with deepl provider by default', function (): void {
     expect($result)->toBe('Translated');
 });
 
-it('constructor initializes with ai provider', function (): void {
-    config()->set('core.translations.provider', 'ai');
-
-    $service = new TranslationService;
-
-    expect($service->translate('', 'en', 'it'))->toBe('');
-});
-
-it('constructor throws on unsupported provider', function (): void {
-    config()->set('core.translations.provider', 'unsupported');
-    config()->set('core.deepl_api_key', 'test-key');
-
-    new TranslationService;
-})->throws(Exception::class, 'Unsupported translation provider');
-
 it('translate caches results', function (): void {
-    config()->set('core.translations.provider', 'deepl');
+    config()->set('ai.features.translation.model', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
     config()->set('core.translations.cache.enabled', true);
 
@@ -63,7 +48,7 @@ it('translate caches results', function (): void {
 });
 
 it('translate returns empty and zero text as-is', function (): void {
-    config()->set('core.translations.provider', 'deepl');
+    config()->set('ai.features.translation.model', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     $service = new TranslationService;
@@ -73,7 +58,7 @@ it('translate returns empty and zero text as-is', function (): void {
 });
 
 it('translateBatch translates each text', function (): void {
-    config()->set('core.translations.provider', 'deepl');
+    config()->set('ai.features.translation.model', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     Http::fake([
@@ -89,25 +74,8 @@ it('translateBatch translates each text', function (): void {
     expect($result)->toBe(['Uno', 'Due']);
 });
 
-it('translate returns original when primary fails and fallback is disabled', function (): void {
-    config()->set('core.translations.provider', 'deepl');
-    config()->set('core.deepl_api_key', 'test-key');
-    config()->set('core.translations.fallback_to_ai', false);
-    config()->set('core.translations.cache.enabled', false);
-
-    Http::fake([
-        'https://api-free.deepl.com/v2/translate' => Http::response(null, 500),
-    ]);
-
-    $service = new TranslationService;
-
-    $result = $service->translate('original text', 'en', 'it');
-
-    expect($result)->toBe('original text');
-});
-
 it('translateBatch returns empty array when texts is empty', function (): void {
-    config()->set('core.translations.provider', 'deepl');
+    config()->set('ai.features.translation.model', 'deepl');
     config()->set('core.deepl_api_key', 'test-key');
 
     $service = new TranslationService;
@@ -117,17 +85,28 @@ it('translateBatch returns empty array when texts is empty', function (): void {
     expect($result)->toBe([]);
 });
 
-it('translate returns original text when both primary and fallback fail', function (): void {
-    config()->set('core.translations.provider', 'deepl');
-    config()->set('core.deepl_api_key', 'test-key');
-    config()->set('core.translations.fallback_to_ai', true);
-    config()->set('core.translations.cache.enabled', false);
-
-    Http::fake(fn () => Http::response(null, 500));
+it('builds the AI translator on the translation choice', function (): void {
+    config()->set('ai.features.translation.model', 'ollama:phi3');
 
     $service = new TranslationService;
+    $inner = (new ReflectionProperty($service, 'service'))->getValue($service);
 
-    $result = $service->translate('original text', 'en', 'it');
+    expect($inner)->toBeInstanceOf(Modules\AI\Services\Translation\AiTranslationService::class)
+        ->and((new ReflectionProperty($inner, 'provider'))->getValue($inner))->toBe('ollama')
+        ->and((new ReflectionProperty($inner, 'model'))->getValue($inner))->toBe('phi3');
+});
 
-    expect($result)->toBe('original text');
-})->skip('TranslationService creates AiTranslationService with new; fallback ChatAgent requires Workflow initialization not available in unit test');
+it('propagates a provider failure and caches nothing', function (): void {
+    config()->set('ai.features.translation.model', 'deepl');
+    config()->set('core.deepl_api_key', 'test-key');
+    config()->set('core.translations.cache.enabled', true);
+    Cache::flush();
+
+    Http::fake(['https://api-free.deepl.com/v2/translate' => Http::sequence()
+        ->push(null, 500)
+        ->push(['translations' => [['text' => 'Tradotto']]], 200)]);
+
+    expect(fn (): string => (new TranslationService)->translate('original text', 'en', 'it'))->toThrow(Exception::class);
+
+    expect((new TranslationService)->translate('original text', 'en', 'it'))->toBe('Tradotto');
+});
