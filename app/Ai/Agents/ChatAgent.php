@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Agents;
 
+use Modules\AI\Ai\Providers\AiModelChoice;
 use Modules\AI\Ai\Providers\ProviderFactory;
+use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Agent\Agent;
 use NeuronAI\Providers\AIProviderInterface;
 
@@ -30,6 +32,16 @@ class ChatAgent extends Agent
     {
         /** @phpstan-ignore new.static */
         return new static(...$arguments);
+    }
+
+    /**
+     * An agent on the provider and model chosen in Settings for this feature.
+     */
+    public static function forFeature(AiModelFeature $feature, ?string $systemPrompt = null): static
+    {
+        $choice = AiModelChoice::forFeature($feature);
+
+        return static::make($choice->provider, $systemPrompt, $choice->model);
     }
 
     protected function provider(): AIProviderInterface

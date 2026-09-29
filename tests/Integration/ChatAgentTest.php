@@ -17,7 +17,7 @@ it('initialises the inherited workflow executor (parent constructor runs)', func
 });
 
 it('creates a ChatAgent via static make', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
     config()->set('ai.providers.ollama.model', 'llama3.2:3b');
 
@@ -27,7 +27,7 @@ it('creates a ChatAgent via static make', function (): void {
 });
 
 it('uses default system prompt when none provided', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
 
     $agent = ChatAgent::make();
@@ -39,7 +39,7 @@ it('uses default system prompt when none provided', function (): void {
 });
 
 it('uses custom system prompt when provided', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
 
     $agent = ChatAgent::make(systemPrompt: 'You are a translator.');
@@ -51,7 +51,7 @@ it('uses custom system prompt when provided', function (): void {
 });
 
 it('resolves provider via ProviderFactory', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
     config()->set('ai.providers.ollama.model', 'llama3.2:3b');
 

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Modules\AI\Services;
 
 use function ai_config_bool;
-use function ai_config_string;
 
 use Closure;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Data\ModerationResult;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\Core\Data\ModerationRequest;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -85,12 +85,7 @@ final readonly class ModerationService
             return $factory();
         }
 
-        $provider = ai_config_string(
-            'ai.features.moderation.provider',
-            ai_config_string('ai.features.chat.default_provider', 'ollama'),
-        );
-
-        return ChatAgent::make($provider, $request->systemPrompt);
+        return ChatAgent::forFeature(AiModelFeature::Moderation, $request->systemPrompt);
     }
 
     private function retryJson(ChatAgent $agent, ModerationRequest $request): ?string

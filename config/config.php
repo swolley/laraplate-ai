@@ -96,10 +96,6 @@ return [
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
             'modules' => [],
         ],
-        'chat' => [
-            'default_provider' => env('AI_CHAT_PROVIDER', 'ollama'),
-        ],
-
         // Optional one-shot text generation answering Core's
         // AiTextGenerationRequested event (e.g. SAO ownership-suggestion
         // phrasing). Opt-in: off unless explicitly enabled. Any failure or a
@@ -195,11 +191,9 @@ return [
         ],
         'search_orchestration' => [
             'enabled' => env('AI_SEARCH_ORCHESTRATION_ENABLED', true),
-            'default_provider' => env('AI_SEARCH_ORCHESTRATION_PROVIDER'),
         ],
         'moderation' => [
             'queue' => env('AI_MODERATION_QUEUE', env('AI_COMMENT_MOD_QUEUE', 'default')),
-            'provider' => env('AI_MODERATION_PROVIDER', env('AI_COMMENT_MOD_PROVIDER')),
         ],
     ],
 
@@ -227,7 +221,6 @@ return [
 
         'anthropic' => [
             'api_key' => env('ANTHROPIC_API_KEY'),
-            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
         ],
 
         'sentence_transformers' => [

@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
-use function ai_config_string;
-
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
 
@@ -84,12 +83,9 @@ class LlmSearchService
 
     private function createAgent(string $system_prompt): ChatAgent
     {
-        $provider_name = $this->provider ?? ai_config_string(
-            'ai.features.search_orchestration.default_provider',
-            ai_config_string('ai.features.chat.default_provider', 'ollama'),
-        );
-
-        return ChatAgent::make($provider_name, $system_prompt);
+        return $this->provider !== null
+            ? ChatAgent::make($this->provider, $system_prompt)
+            : ChatAgent::forFeature(AiModelFeature::SearchOrchestration, $system_prompt);
     }
 
     private function getSearchPlanSystemPrompt(): string

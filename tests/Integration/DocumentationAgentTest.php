@@ -23,7 +23,7 @@ it('instructions returns documentation system prompt', function (): void {
 });
 
 it('provider returns AIProviderInterface', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.faq.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
 
     $agent = DocumentationAgent::make();

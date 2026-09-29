@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Agents;
 
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
+use Modules\AI\Ai\Providers\AiModelChoice;
 use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
+use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\RAG;
@@ -55,7 +57,13 @@ class DocumentationAgent extends RAG
 
     protected function provider(): AIProviderInterface
     {
-        return ProviderFactory::make($this->providerName);
+        if ($this->providerName !== null) {
+            return ProviderFactory::make($this->providerName);
+        }
+
+        $choice = AiModelChoice::forFeature(AiModelFeature::Faq);
+
+        return ProviderFactory::make($choice->provider, $choice->model);
     }
 
     protected function instructions(): string

@@ -7,6 +7,7 @@ namespace Modules\AI\Ai\Providers;
 use function ai_config_string;
 
 use InvalidArgumentException;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\Core\Exceptions\ConfigurationException;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\Providers\Anthropic\Anthropic;
@@ -19,15 +20,22 @@ use NeuronAI\Providers\OpenAI\OpenAI;
  */
 final class ProviderFactory
 {
+    private const string ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+
     /**
      * Build a provider. An explicit `$model` overrides the provider's configured
      * default, letting one feature (e.g. text generation) target a different
      * model than another without changing the shared provider config; `null`
-     * keeps the configured default.
+     * keeps the configured default. Without a provider, provider and model come
+     * from the chat choice in Settings.
      */
     public static function make(?string $provider = null, ?string $model = null): AIProviderInterface
     {
-        $provider ??= ai_config_string('ai.features.chat.default_provider', 'ollama');
+        if ($provider === null) {
+            $choice = AiModelChoice::forFeature(AiModelFeature::Chat);
+            $provider = $choice->provider;
+            $model ??= $choice->model;
+        }
 
         return match ($provider) {
             'openai' => self::createOpenAI($model),
@@ -78,7 +86,7 @@ final class ProviderFactory
 
         return new Anthropic(
             key: $api_key,
-            model: $model ?? ai_config_string('ai.providers.anthropic.model', 'claude-sonnet-4-20250514'),
+            model: $model ?? self::ANTHROPIC_DEFAULT_MODEL,
         );
     }
 }

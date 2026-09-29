@@ -13,6 +13,7 @@ use Exception;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -156,7 +157,7 @@ PROMPT;
         }
 
         /** @var ChatAgent */
-        return ChatAgent::make(systemPrompt: self::SUGGESTION_SYSTEM_PROMPT); // @codeCoverageIgnore
+        return ChatAgent::forFeature(AiModelFeature::ContextualSuggestions, self::SUGGESTION_SYSTEM_PROMPT); // @codeCoverageIgnore
     }
 
     /**

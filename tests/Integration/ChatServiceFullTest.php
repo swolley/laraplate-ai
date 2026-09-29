@@ -30,7 +30,7 @@ it('createConversation creates a Conversation record', function (): void {
 });
 
 it('buildProtectedAgent wraps the authorized context and forbids following it', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
     config()->set('ai.providers.ollama.model', 'llama3.2:3b');
 

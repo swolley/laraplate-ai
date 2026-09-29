@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Exceptions\GuardrailViolationException;
 use NeuronAI\Chat\Messages\UserMessage;
 
@@ -111,10 +112,7 @@ PROMPT;
     private function checkViaLlmFallback(string $input): void
     {
         try {
-            $factory = $this->chatAgentFactory ?? fn (): ChatAgent => ChatAgent::make(systemPrompt: self::INJECTION_DETECTION_PROMPT);
-
-            /** @var ChatAgent $agent */
-            $agent = $factory();
+            $agent = $this->makeChatAgent();
 
             $response = $agent->chat(new UserMessage($input));
             $result = mb_strtolower(mb_trim($response->getMessage()->getContent() ?? ''));
@@ -145,5 +143,14 @@ PROMPT;
 
             throw_if($flagged === true, GuardrailViolationException::class, 'Prompt injection detected by Lakera Guard.');
         }
+    }
+
+    private function makeChatAgent(): ChatAgent
+    {
+        if ($this->chatAgentFactory instanceof Closure) {
+            return ($this->chatAgentFactory)();
+        }
+
+        return ChatAgent::forFeature(AiModelFeature::Guardrails, self::INJECTION_DETECTION_PROMPT);
     }
 }

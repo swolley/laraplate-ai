@@ -37,7 +37,6 @@ it('creates a Mistral provider when configured', function (): void {
 
 it('creates an Anthropic provider when configured', function (): void {
     config()->set('ai.providers.anthropic.api_key', 'test-key');
-    config()->set('ai.providers.anthropic.model', 'claude-sonnet-4-20250514');
 
     $provider = ProviderFactory::make('anthropic');
 
@@ -49,7 +48,7 @@ it('throws exception for unsupported provider', function (): void {
 })->throws(Exception::class, 'Unsupported AI provider: non-existent');
 
 it('uses default provider from config when none specified', function (): void {
-    config()->set('ai.features.chat.default_provider', 'ollama');
+    config()->set('ai.features.chat.model', 'ollama:llama3.2:3b');
     config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
     config()->set('ai.providers.ollama.model', 'llama3.2:3b');
 

@@ -11,6 +11,7 @@ use Closure;
 use Exception;
 use Illuminate\Database\Eloquent\Collection;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\ConversationSummary;
 use Modules\AI\Models\Message;
@@ -194,6 +195,6 @@ PROMPT;
         }
 
         /** @var ChatAgent */
-        return ChatAgent::make(systemPrompt: $systemPrompt); // @codeCoverageIgnore
+        return ChatAgent::forFeature(AiModelFeature::ChatSummary, $systemPrompt); // @codeCoverageIgnore
     }
 }

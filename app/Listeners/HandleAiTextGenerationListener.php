@@ -158,13 +158,6 @@ final readonly class HandleAiTextGenerationListener
             return ($this->chatAgentFactory)();
         }
 
-        $choice = AiModelChoice::forFeature(AiModelFeature::TextGeneration);
-
-        /** @var ChatAgent */
-        return ChatAgent::make( // @codeCoverageIgnore
-            providerName: $choice->provider,
-            systemPrompt: self::SYSTEM_PROMPT,
-            model: $choice->model,
-        );
+        return ChatAgent::forFeature(AiModelFeature::TextGeneration, self::SYSTEM_PROMPT); // @codeCoverageIgnore
     }
 }
