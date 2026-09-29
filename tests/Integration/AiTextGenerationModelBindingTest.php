@@ -9,6 +9,10 @@ use Modules\AI\Tests\Stubs\RecordingHttpClient;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\Providers\Ollama\Ollama;
 
+beforeEach(function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://ollama.test');
+});
+
 it('binds the requested model and marshals the provider call over faked HTTP', function (): void {
     $client = new RecordingHttpClient(['message' => ['content' => 'Ada Lovelace owns this area.']]);
 
@@ -38,8 +42,7 @@ it('falls back to the provider default model when none is requested', function (
 });
 
 it('builds the text-generation chat agent on the configured model', function (): void {
-    config()->set('ai.features.text_generation.default_provider', 'ollama');
-    config()->set('ai.features.text_generation.model', 'phi3');
+    config()->set('ai.features.text_generation.model', 'ollama:phi3');
 
     $agent = invokeMakeChatAgent(new HandleAiTextGenerationListener());
 
@@ -47,8 +50,7 @@ it('builds the text-generation chat agent on the configured model', function ():
 });
 
 it('leaves the chat agent model null when the feature configures none', function (): void {
-    config()->set('ai.features.text_generation.default_provider', 'ollama');
-    config()->set('ai.features.text_generation.model', null);
+    config()->set('ai.features.text_generation.model', 'ollama');
 
     $agent = invokeMakeChatAgent(new HandleAiTextGenerationListener());
 

@@ -106,12 +106,6 @@ return [
         // guard tripping leaves the request unfulfilled so the caller falls back.
         'text_generation' => [
             'enabled' => env('AI_TEXT_GENERATION_ENABLED', false),
-            'default_provider' => env('AI_TEXT_GENERATION_PROVIDER', env('AI_CHAT_PROVIDER', 'ollama')),
-
-            // Optional model override for this feature only; null keeps the
-            // provider's configured default model. Lets ownership phrasing run
-            // on a cheaper/smaller model than interactive chat.
-            'model' => env('AI_TEXT_GENERATION_MODEL'),
 
             // Hard cap on the returned text; longer generations are truncated on
             // a word boundary rather than rejected.

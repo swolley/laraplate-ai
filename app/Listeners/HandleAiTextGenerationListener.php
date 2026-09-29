@@ -6,13 +6,14 @@ namespace Modules\AI\Listeners;
 
 use function ai_config_bool;
 use function ai_config_int;
-use function ai_config_string;
 
 use Closure;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Ai\Providers\AiModelChoice;
+use Modules\AI\Enums\AiModelFeature;
 use Modules\Core\Events\AiTextGenerationRequested;
 use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
@@ -144,7 +145,7 @@ final readonly class HandleAiTextGenerationListener
     {
         Log::info('ai.text_generation', [
             'purpose' => $purpose,
-            'provider' => ai_config_string('ai.features.text_generation.default_provider'),
+            'provider' => AiModelChoice::forFeature(AiModelFeature::TextGeneration)->provider,
             'outcome' => $outcome,
             'latency_ms' => $latencyMs,
             'output_chars' => $outputChars,
@@ -157,13 +158,13 @@ final readonly class HandleAiTextGenerationListener
             return ($this->chatAgentFactory)();
         }
 
-        $model = ai_config_string('ai.features.text_generation.model');
+        $choice = AiModelChoice::forFeature(AiModelFeature::TextGeneration);
 
         /** @var ChatAgent */
         return ChatAgent::make( // @codeCoverageIgnore
-            providerName: ai_config_string('ai.features.text_generation.default_provider'),
+            providerName: $choice->provider,
             systemPrompt: self::SYSTEM_PROMPT,
-            model: $model === '' ? null : $model,
+            model: $choice->model,
         );
     }
 }
