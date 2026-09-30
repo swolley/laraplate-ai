@@ -6,7 +6,6 @@ namespace Modules\AI\Jobs;
 
 use function ai_config_bool;
 use function ai_config_float;
-use function ai_config_int;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,6 +17,7 @@ use Modules\AI\Data\ModerationResult;
 use Modules\AI\Enums\ModerationApprovalMode;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Services\ModerationService;
+use Modules\AI\Services\ModerationSystemUser;
 use Modules\Core\Events\ModificationPreProcessingCompleted;
 use Modules\Core\Models\Approval;
 use Modules\Core\Models\Disapproval;
@@ -40,6 +40,7 @@ final class ApproveModificationJob implements ShouldQueue
     public function handle(
         ModerationService $service,
         ModerationAdapterRegistry $registry,
+        ModerationSystemUser $system_users,
     ): void {
         $modification = $this->modification->fresh();
 
@@ -47,9 +48,9 @@ final class ApproveModificationJob implements ShouldQueue
             return;
         }
 
-        $system_user_id = ai_config_int('ai.features.moderation.system_user_id');
+        $system_user = $system_users->resolve();
 
-        if ($system_user_id <= 0) {
+        if (! $system_user instanceof User) {
             return;
         }
 
@@ -60,9 +61,6 @@ final class ApproveModificationJob implements ShouldQueue
 
             $request = $registry->build($modification);
             $result = $service->analyze($request);
-
-            /** @var User $system_user */
-            $system_user = User::findOrFail($system_user_id);
 
             if (! ai_config_bool('ai.features.moderation.votes', true)) {
                 return;
@@ -78,7 +76,7 @@ final class ApproveModificationJob implements ShouldQueue
 
             $this->handleThresholdMode($modification, $system_user, $result);
         } catch (Throwable) {
-            $this->applyUncertainFallback($modification, User::query()->find($system_user_id));
+            $this->applyUncertainFallback($modification, $system_user);
         } finally {
             event(new ModificationPreProcessingCompleted($modification, 'ai_approval'));
         }

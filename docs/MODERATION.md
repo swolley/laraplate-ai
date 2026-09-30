@@ -45,7 +45,7 @@ flowchart TB
 Runs when:
 
 1. `config('ai.features.moderation.enabled')`
-2. `config('ai.features.moderation.system_user_id')` is set
+2. A user carries the username in `config('permission.users.system')` (Core seeds it; env `SYSTEM_USER`, default `system`)
 3. `Modification` is active
 4. Registry has a builder for `modifiable_type`
 5. Modifiable model has AI moderation enabled (settings)
@@ -99,7 +99,6 @@ AI_MODERATION_APPROVAL_MODE=threshold
 AI_MODERATION_AI_VOTES=true
 AI_MODERATION_APPROVE_THRESHOLD=0.85
 AI_MODERATION_REJECT_THRESHOLD=0.85
-AI_MODERATOR_USER_ID=1
 AI_MODERATION_QUEUE=default
 ```
 

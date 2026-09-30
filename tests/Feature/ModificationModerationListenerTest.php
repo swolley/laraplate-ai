@@ -19,10 +19,9 @@ beforeEach(function (): void {
     $registry = app(ModerationAdapterRegistry::class);
     $registry->register(app(CommentModerationAdapter::class));
 
-    $this->system_user = User::factory()->create();
+    $this->system_user = User::factory()->create(['username' => 'system']);
     config([
         'ai.features.moderation.enabled' => true,
-        'ai.features.moderation.system_user_id' => $this->system_user->id,
         'ai.features.moderation.queue' => 'default',
         'permission.users.system' => 'system',
     ]);
@@ -129,6 +128,30 @@ it('skips when the system user is not configured', function (): void {
     app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
 
     Queue::assertNothingPushed();
+});
+
+it('skips when no user carries the configured system username', function (): void {
+    Queue::fake();
+    config(['permission.users.system' => 'no-such-system-user']);
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => Comment::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'operation' => Operation::Create,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('missing-system-user'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    $event = new ModificationRequiresModeration($modification);
+    app(HandleModificationModerationListener::class)->handle($event);
+
+    Queue::assertNothingPushed();
+    expect($event->isHandled())->toBeFalse();
 });
 
 it('skips inactive modifications', function (): void {

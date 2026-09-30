@@ -22,7 +22,7 @@ Canonical bus documentation: `Modules/Core/docs/rag/EVENT_ORCHESTRATION.md`.
 Runs when all are true:
 
 1. `config('ai.features.moderation.enabled')`
-2. `config('ai.features.moderation.system_user_id')` set
+2. A user carries the username in `config('permission.users.system')` (Core-seeded system user)
 3. `Modification` is active
 4. `ModerationContextBuilderRegistry::supports($modification)`
 5. Modifiable model: `ai.features.moderation.entities.{table}` enabled (`ModerationEntitySettings`)
@@ -55,7 +55,7 @@ If AI does not handle indexing, Core `IndexModelFallbackListener` still runs `In
 | Key | Env (legacy) | Meaning |
 |-----|--------------|---------|
 | `ai.features.moderation.enabled` | `AI_MODERATION_ENABLED` | Master switch |
-| `ai.features.moderation.system_user_id` | `AI_MODERATOR_USER_ID` | Actor for votes |
+| `permission.users.system` | `SYSTEM_USER` | Username of the system user AI votes as |
 | `ai.features.moderation.threshold_*` | `AI_COMMENT_*` | Score thresholds (comments) |
 | `ai.features.embeddings.enabled` | — | Embedding pipeline |
 | `ai.features.faq.enabled` | — | Documentation RAG assistant |
@@ -78,7 +78,7 @@ Corpus roots: `docs/rag/`, active `Modules/*/docs/rag/` (see `docs/rag/README.md
 
 | Symptom | Check |
 |---------|--------|
-| Job never queued | Feature flags, queue worker, `system_user_id` |
+| Job never queued | Feature flags, queue worker, a user with the `permission.users.system` username |
 | BindingResolutionException on moderation | Builder registered in domain `ServiceProvider` |
 | AI votes but comment still hidden | Human `approvers_required` not satisfied |
 | RAG answers wrong on moderation | Re-run `ai:index-rag-docs` after updating `docs/rag` files |

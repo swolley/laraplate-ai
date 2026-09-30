@@ -7,6 +7,7 @@ use Modules\AI\Data\ModerationResult;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationService;
+use Modules\AI\Services\ModerationSystemUser;
 use Modules\CMS\Models\Comment;
 use Modules\Core\Approvals\Operation;
 use Modules\Core\Data\ModerationInput;
@@ -20,12 +21,13 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 
 beforeEach(function (): void {
-    $this->system_user = User::factory()->create();
+    $user_class = user_class();
+    $this->system_user = $user_class::factory()->create(['username' => 'ai-moderator']);
     $this->system_user->assignRole(Role::findOrCreate('superadmin', 'web'));
 
     config([
         'ai.features.moderation.enabled' => true,
-        'ai.features.moderation.system_user_id' => $this->system_user->id,
+        'permission.users.system' => $this->system_user->username,
         'ai.features.moderation.votes' => true,
         'ai.features.moderation.approval_mode' => 'threshold',
         'ai.features.moderation.threshold.approve' => 0.85,
@@ -84,6 +86,7 @@ it('skips inactive modifications', function (): void {
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     Event::assertNotDispatched(ModificationPreProcessingCompleted::class);
@@ -91,14 +94,30 @@ it('skips inactive modifications', function (): void {
 
 it('skips when the system user is not configured', function (): void {
     Event::fake([ModificationPreProcessingCompleted::class]);
-    config(['ai.features.moderation.system_user_id' => 0]);
+    config(['permission.users.system' => '']);
 
     (new ApproveModificationJob(createCommentModerationModification()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     Event::assertNotDispatched(ModificationPreProcessingCompleted::class);
+});
+
+it('skips when no user carries the configured system username', function (): void {
+    Event::fake([ModificationPreProcessingCompleted::class]);
+    config(['permission.users.system' => 'no-such-system-user']);
+
+    (new ApproveModificationJob(createCommentModerationModification()))->handle(
+        app(ModerationService::class),
+        app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
+    );
+
+    Event::assertNotDispatched(ModificationPreProcessingCompleted::class);
+    expect(Approval::query()->count())->toBe(0)
+        ->and(Disapproval::query()->count())->toBe(0);
 });
 
 it('dispatches preprocessing completed without voting when adapter is unsupported', function (): void {
@@ -117,6 +136,7 @@ it('dispatches preprocessing completed without voting when adapter is unsupporte
     (new ApproveModificationJob(createCommentModerationModification()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     Event::assertDispatched(ModificationPreProcessingCompleted::class);
@@ -138,6 +158,7 @@ it('skips voting when ai participation is disabled', function (): void {
     (new ApproveModificationJob(createCommentModerationModification()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     Event::assertDispatched(ModificationPreProcessingCompleted::class);
@@ -158,6 +179,7 @@ it('routes threshold mode to uncertain when auto approval is unsafe', function (
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     $modification->refresh();
@@ -212,6 +234,7 @@ it('auto rejects high-confidence rejections in threshold mode', function (): voi
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     expect(Disapproval::query()->where('modification_id', $modification->id)->exists())->toBeTrue();
@@ -232,6 +255,7 @@ it('applies uncertain fallback when confidence is below threshold', function ():
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     $modification->refresh();
@@ -256,6 +280,7 @@ it('casts the first ai vote in dual approval mode', function (): void {
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     $modification->refresh();
@@ -281,6 +306,7 @@ it('casts preliminary disapproval in dual mode when ai rejects', function (): vo
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     expect(Disapproval::query()->where('modification_id', $modification->id)->exists())->toBeTrue();
@@ -302,6 +328,7 @@ it('falls back to human review when moderation analysis fails', function (): voi
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     expect(Disapproval::query()->where('modification_id', $modification->id)->exists())->toBeTrue();
@@ -324,6 +351,7 @@ it('always dispatches preprocessing completed event', function (): void {
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
+        app(ModerationSystemUser::class),
     );
 
     Event::assertDispatched(

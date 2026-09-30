@@ -12,14 +12,17 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationEntitySettings;
+use Modules\AI\Services\ModerationSystemUser;
 use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Models\Modification;
+use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 
 final class HandleModificationModerationListener
 {
     public function __construct(
         private readonly ModerationAdapterRegistry $registry,
+        private readonly ModerationSystemUser $system_users,
     ) {}
 
     public function handle(ModificationRequiresModeration $event): void
@@ -44,10 +47,8 @@ final class HandleModificationModerationListener
             return false;
         }
 
-        $system_user_id = config('permission.users.system');
-
-        if ($system_user_id === null || $system_user_id === '') {
-            Log::warning('AI moderation skipped: system_user_id is not configured.');
+        if (! $this->system_users->resolve() instanceof User) {
+            Log::warning('AI moderation skipped: no user carries the configured system username (permission.users.system).');
 
             return false;
         }

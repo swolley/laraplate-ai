@@ -7,6 +7,7 @@ use Modules\AI\Enums\ModerationApprovalMode;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationService;
+use Modules\AI\Services\ModerationSystemUser;
 use Modules\CMS\Models\Comment;
 use Modules\Core\Approvals\Operation;
 use Modules\Core\Data\ModerationInput;
@@ -23,7 +24,8 @@ beforeEach(function (): void {
     LocaleContext::set('en');
     $this->content = createMinimalTestContentForComments();
 
-    $this->system_user = User::factory()->create([
+    $user_class = user_class();
+    $this->system_user = $user_class::factory()->create([
         'email' => 'ai-moderator@system.local',
         'username' => 'ai-moderator',
     ]);
@@ -31,7 +33,7 @@ beforeEach(function (): void {
 
     config([
         'ai.features.moderation.enabled' => true,
-        'ai.features.moderation.system_user_id' => $this->system_user->id,
+        'permission.users.system' => $this->system_user->username,
         'ai.features.moderation.approval_mode' => ModerationApprovalMode::Threshold->value,
         'ai.features.moderation.threshold.approve' => 0.85,
         'ai.features.moderation.threshold.reject' => 0.85,
@@ -106,7 +108,7 @@ it('casts preliminary disapprove when uncertain and stores meta on disapproval',
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andReturn($result);
 
-    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request));
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request), app(ModerationSystemUser::class));
 
     $modification->refresh();
     $disapproval = Disapproval::query()->where('modification_id', $modification->id)->first();
@@ -139,7 +141,7 @@ it('auto approves when confidence is high and stores meta on approval', function
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andReturn($result);
 
-    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request));
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request), app(ModerationSystemUser::class));
 
     $approval = Approval::query()->where('modification_id', $modification->id)->first();
 
@@ -170,7 +172,7 @@ it('auto rejects when verdict is reject with high confidence and stores meta on 
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andReturn($result);
 
-    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request));
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry($request), app(ModerationSystemUser::class));
 
     $disapproval = Disapproval::query()->where('modification_id', $modification->id)->first();
 
