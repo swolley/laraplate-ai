@@ -370,6 +370,44 @@ divide by every scored case. A strategy that never runs on any scored case
 is omitted from the report. Design:
 `docs/superpowers/specs/2026-09-10-r3-phase2-per-strategy-breakdown-design.md`.
 
+### Retrieval tuning (`ai:tune-retrieval`)
+
+`php artisan ai:tune-retrieval --source=<source> --dataset=<file> --output=<file>
+[--grid=default|<grid.json>] [--metric=ndcg_at_5] [--force]` produces the values of
+Core's retrieval tuning profile (`Modules/Core/config/search_tuning.php`, applied
+when the Core setting `search.adaptive_tuning` is on; see
+`Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`). Per dataset case with
+`expected_hit_ids` it retrieves **once** with the reranker off through
+`PerStrategyEngineRetrieverInterface` (recording `meta['per_strategy']`) and once
+with it on. Every grid candidate then re-fuses the recorded rankings with
+`Modules\Core\Search\Services\RankFusion` instead of re-querying the engine,
+and is scored with `IrMetrics::atK()` overall and per `QueryClass`
+(`identifier`, `short_keyword`, `multi_term`, `natural_language`, derived from the
+same query analysis the runtime uses).
+
+- Candidates are partial fusion parameter sets (`keyword_weight`, `vector_weight`,
+  `hybrid_weight`, `rrf_k`, `rrf_weight`, `agreement_boost`); what a candidate omits
+  keeps the planner value for that query. `--grid=default` is 108 candidates (six
+  weight triples crossed with `rrf_k`, `rrf_weight`, `agreement_boost`); a JSON file
+  holding a list of parameter sets replaces it. Ranking parameters (`rerank_top_k`,
+  `rerank_blend`) are rejected: the rerank blend cannot be replayed from fused
+  scores, so the reranked ordering is reported separately under `reranked`.
+- The report (`version`, `source`, `dataset`, `metric`, `case_count`,
+  `class_counts`, `committed`, `reranked`, `candidates` sorted by the metric with
+  `metrics`, `per_class_metrics` and `delta_vs_committed`, `winner`,
+  `class_winners`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
+  never overwritten without `--force`. `committed` scores the currently committed
+  profile the same way.
+- The command prints a ready-to-paste `default` / `classes` block and writes
+  **no file but its report**: a human reads the per-class table, accepts a
+  candidate only if it wins both overall and on the class it targets, pastes it,
+  bumps `version` and cites the report path in the profile.
+
+Real numbers need Elasticsearch and embeddings (a dev-seeded, indexed corpus); the
+CMS and SAO baseline gate tests also assert that the committed profile, switched
+on, does not score below their committed baselines on `ndcg_at_5` and
+`recall_at_5`.
+
 ## Documentation evaluation
 
 `ai:evaluate-documentation` scores documentation retrieval per module and index
