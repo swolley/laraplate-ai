@@ -27,6 +27,8 @@ use NeuronAI\RAG\Splitter\SplitterInterface;
 
 final readonly class DocumentationService
 {
+    private const int INDEX_BATCH_SIZE = 100;
+
     /**
      * @param  Closure(): DocumentationAgent|null  $agentFactory  Optional factory for testing
      * @param  Closure(): bool|null  $ragPathsResolver  Whether the `rag_paths()` helper is
@@ -299,7 +301,7 @@ final readonly class DocumentationService
             ? ($this->agentFactory)($profile)
             : DocumentationAgent::make(indexProfile: $profile);
 
-        foreach (array_chunk($split_documents, 100) as $batch) {
+        foreach ($this->batchBySource($split_documents) as $batch) {
             if ($use_incremental_reindex) {
                 $agent->reindexBySource($batch);
 
@@ -310,6 +312,44 @@ final readonly class DocumentationService
         }
 
         return count($split_documents);
+    }
+
+    /**
+     * Packs chunks into batches of about {@see self::INDEX_BATCH_SIZE} documents without ever
+     * splitting one source across two batches: {@see DocumentationAgent::reindexBySource()}
+     * deletes each source it receives before adding it, so a later batch holding the tail of a
+     * source would delete the chunks an earlier batch just added. A source larger than the
+     * batch size becomes a batch of its own.
+     *
+     * @param  list<Document>  $documents
+     * @return list<list<Document>>
+     */
+    private function batchBySource(array $documents): array
+    {
+        /** @var array<string, list<Document>> $by_source */
+        $by_source = [];
+
+        foreach ($documents as $document) {
+            $by_source[$document->getSourceType() . ':' . $document->getSourceName()][] = $document;
+        }
+
+        $batches = [];
+        $current = [];
+
+        foreach ($by_source as $source_documents) {
+            if ($current !== [] && count($current) + count($source_documents) > self::INDEX_BATCH_SIZE) {
+                $batches[] = $current;
+                $current = [];
+            }
+
+            array_push($current, ...$source_documents);
+        }
+
+        if ($current !== []) {
+            $batches[] = $current;
+        }
+
+        return $batches;
     }
 
     private function shouldUseIncrementalReindex(

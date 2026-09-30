@@ -9,11 +9,76 @@ use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 
-it('indexes documentation chunks in bounded batches', function (): void {
-    $source = file_get_contents(base_path('Modules/AI/app/Services/DocumentationService.php'));
+it('never splits one source across two reindexBySource batches', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-docs-batches-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/large.md', "# Large\n\nBody.");
+    file_put_contents($tmp_dir . '/small.md', "# Small\n\nBody.");
 
-    expect($source)->toContain('array_chunk($split_documents, 100)')
-        ->and($source)->not->toContain('$agent->addDocuments($split_documents);');
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    $chunk_splitter = new class implements SplitterInterface
+    {
+        public function splitDocument(Document $document): array
+        {
+            $count = str_contains($document->sourceName, 'large') ? 150 : 3;
+            $chunks = [];
+
+            for ($i = 0; $i < $count; $i++) {
+                $chunk = new Document($document->getContent() . ' #' . $i);
+                $chunk->sourceType = $document->sourceType;
+                $chunk->sourceName = $document->sourceName;
+                $chunks[] = $chunk;
+            }
+
+            return $chunks;
+        }
+
+        public function splitDocuments(array $documents): array
+        {
+            return array_merge(...array_map($this->splitDocument(...), $documents));
+        }
+    };
+
+    /** @var list<array<string, int>> $calls */
+    $calls = [];
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldReceive('reindexBySource')
+        ->atLeast()
+        ->once()
+        ->andReturnUsing(function (array $documents) use (&$calls): void {
+            $per_source = [];
+
+            foreach ($documents as $document) {
+                $key = $document->sourceType . ':' . $document->sourceName;
+                $per_source[$key] = ($per_source[$key] ?? 0) + 1;
+            }
+
+            $calls[] = $per_source;
+        });
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock, $chunk_splitter);
+
+    try {
+        expect($service->indexDocuments($tmp_dir))->toBe(153);
+
+        $sources_seen = [];
+
+        foreach ($calls as $per_source) {
+            foreach ($per_source as $key => $count) {
+                expect($sources_seen)->not->toHaveKey($key);
+                $sources_seen[$key] = $count;
+            }
+        }
+
+        expect($sources_seen)->toHaveCount(2)
+            ->and(array_sum($sources_seen))->toBe(153)
+            ->and(max($sources_seen))->toBe(150);
+    } finally {
+        unlink($tmp_dir . '/large.md');
+        unlink($tmp_dir . '/small.md');
+        rmdir($tmp_dir);
+    }
 });
 
 it('indexDocuments returns 0 for invalid path', function (): void {
