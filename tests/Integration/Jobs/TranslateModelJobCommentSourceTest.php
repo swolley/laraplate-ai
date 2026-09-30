@@ -17,6 +17,7 @@ it('uses chronological original translation as source for comments', function ()
     $comment = Comment::factory()->create([
         'content_id' => $this->content->id,
         'user_id' => $this->user->id,
+        'body' => 'Later English',
     ]);
 
     $italian = $comment->translations()->create([
@@ -25,11 +26,6 @@ it('uses chronological original translation as source for comments', function ()
     ]);
     $italian->created_at = now()->subHour();
     $italian->save();
-
-    $comment->translations()->create([
-        'locale' => 'en',
-        'body' => 'Later English',
-    ]);
 
     $job = new TranslateModelJob($comment);
     $method = new ReflectionMethod(TranslateModelJob::class, 'resolveSourceTranslation');
