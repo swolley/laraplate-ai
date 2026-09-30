@@ -185,3 +185,28 @@ it('auto rejects when verdict is reject with high confidence and stores meta on 
             'categories' => ['spam'],
         ]);
 });
+
+it('never publishes a comment a human rejects after the AI preliminary disapproval', function (): void {
+    $modification = createCommentModification();
+    $service = Mockery::mock(ModerationService::class);
+    $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(
+        verdict: ModerationVerdict::Uncertain,
+        confidence: 0.4,
+        categories: ['off_topic'],
+        reason: 'Cannot determine safety.',
+        safeToAutoApprove: false,
+    ));
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry(testModerationRequest()), app(ModerationSystemUser::class));
+
+    $modification->refresh();
+    expect($modification->disapprovers_required)->toBe(2)
+        ->and($modification->active)->toBeTrue();
+
+    $moderator = User::factory()->create();
+    $moderator->assignRole(Role::findOrCreate('superadmin', 'web'));
+    resolve(Modules\Core\Services\ModificationVoteService::class)->cast($moderator, $modification->fresh(), false, 'Off topic');
+
+    expect($modification->fresh()->active)->toBeFalse()
+        ->and($modification->fresh()->disapprovals()->count())->toBe(2)
+        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(0);
+});
