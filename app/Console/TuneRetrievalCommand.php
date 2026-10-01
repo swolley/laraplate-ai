@@ -43,7 +43,7 @@ final class TuneRetrievalCommand extends Command
                             {--force : Replace an existing report}';
 
     #[Override]
-    protected $description = 'Rank retrieval fusion parameter sets per query class against a curated dataset, re-fusing recorded per-strategy rankings, and print a profile block for config/search_tuning.php.';
+    protected $description = 'Rank retrieval fusion parameter sets per query class against a curated dataset, re-fusing recorded per-strategy rankings, and print a profile block for config/search_tuning.php <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
 
     public function handle(
         ApplicationContentRetrievalProviderRegistryInterface $providers,
