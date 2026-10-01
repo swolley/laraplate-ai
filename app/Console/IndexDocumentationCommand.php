@@ -22,7 +22,7 @@ final class IndexDocumentationCommand extends Command
                             {--full : Delete the vector store first, then rebuild from the selected documentation}';
 
     #[Override]
-    protected $description = 'Index documentation for FAQ/RAG. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Index documentation for FAQ/RAG <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     /**
      * Index documentation for FAQ/RAG

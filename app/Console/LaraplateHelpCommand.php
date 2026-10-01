@@ -19,7 +19,7 @@ final class LaraplateHelpCommand extends Command
                             {--question= : Ask a single question and exit}';
 
     #[Override]
-    protected $description = 'Open a terminal RAG assistant for application documentation. <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Open a terminal RAG assistant for application documentation <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     /**
      * Open a terminal RAG assistant for Laraplate documentation (interactive REPL or one-shot with --question).

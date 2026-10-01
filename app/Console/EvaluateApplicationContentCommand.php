@@ -25,7 +25,7 @@ final class EvaluateApplicationContentCommand extends Command
                             {--force : Replace an existing report}';
 
     #[Override]
-    protected $description = 'Evaluate a registered application content retrieval provider without calling the chat model.';
+    protected $description = 'Evaluate a registered application content retrieval provider without calling the chat model <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
 
     public function handle(
         ApplicationContentRetrievalProviderRegistryInterface $providers,

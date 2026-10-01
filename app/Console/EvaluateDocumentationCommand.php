@@ -26,7 +26,7 @@ final class EvaluateDocumentationCommand extends Command
                             {--force : Replace an existing report}';
 
     #[Override]
-    protected $description = 'Evaluate documentation RAG retrieval for a module without calling the chat model.';
+    protected $description = 'Evaluate documentation RAG retrieval for a module without calling the chat model <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
 
     public function handle(
         DocumentationEvaluationService $evaluation,

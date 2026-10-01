@@ -31,7 +31,7 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
                             {--force : Replace an existing report}';
 
     #[Override]
-    protected $description = 'Evaluate per-strategy retrieval ranking quality (keyword, vector, hybrid, fused, reranked) for a registered application content source against the real search engine.';
+    protected $description = 'Evaluate per-strategy retrieval ranking quality (keyword, vector, hybrid, fused, reranked) for a registered application content source against the real search engine <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
 
     public function handle(
         ApplicationContentRetrievalProviderRegistryInterface $providers,
