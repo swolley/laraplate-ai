@@ -39,6 +39,7 @@ final class TuneRetrievalCommand extends Command
                             {--holdout=0.3 : Share of the cases kept out of the selection to validate the winner (0 to 0.5, 0 turns it off)}
                             {--min-class-cases=8 : Selection cases a query class needs before it gets its own override}
                             {--class-margin=0.01 : How much a class override must beat the overall winner by (0 to 1)}
+                            {--noise-margin=auto : Gain that counts as noise, from 0 to 1 (auto is one selection case, never below 0.01; 0 turns it off)}
                             {--output= : New JSON report path}
                             {--force : Replace an existing report}';
 
@@ -72,7 +73,7 @@ final class TuneRetrievalCommand extends Command
         $safeguards = $this->safeguards();
 
         if (! $safeguards instanceof RetrievalTuningSafeguards) {
-            $this->error('The --holdout, --min-class-cases or --class-margin option is out of range.');
+            $this->error('The --holdout, --min-class-cases, --class-margin or --noise-margin option is out of range.');
 
             return self::FAILURE;
         }
@@ -164,6 +165,7 @@ final class TuneRetrievalCommand extends Command
             $this->info(sprintf('Ranked %d candidates by %s.', count($grid), $metric));
             $this->line('// ai:tune-retrieval report: ' . $output_path);
             $this->line($this->validationSummary($report));
+            $this->line($this->noiseSummary($report));
 
             foreach (explode(PHP_EOL, $tuning->profileBlock($report)) as $line) {
                 $this->line($line);
@@ -187,12 +189,19 @@ final class TuneRetrievalCommand extends Command
         $min_class_cases = $this->numericOption('min-class-cases', (float) $recommended->minClassCases);
         $margin = $this->numericOption('class-margin', $recommended->classMargin);
 
+        $noise = $this->option('noise-margin');
+        $automatic_noise = $noise === null || (is_string($noise) && in_array(mb_strtolower(mb_trim($noise)), ['', 'auto'], true));
+
         if ($holdout === null || $min_class_cases === null || $margin === null || $min_class_cases !== floor($min_class_cases)) {
             return null;
         }
 
+        if (! $automatic_noise && ! is_numeric($noise)) {
+            return null;
+        }
+
         try {
-            return new RetrievalTuningSafeguards($holdout, (int) $min_class_cases, $margin);
+            return new RetrievalTuningSafeguards($holdout, (int) $min_class_cases, $margin, $automatic_noise ? null : (float) $noise);
         } catch (InvalidArgumentException) {
             return null;
         }
@@ -227,6 +236,30 @@ final class TuneRetrievalCommand extends Command
             ),
             'skipped' => '// Validation skipped: ' . (string) ($validation['reason'] ?? 'no held-out cases') . '. The profile below is not validated on held-out cases.',
             default => '// Validation off (--holdout=0). The profile below is not validated on held-out cases.',
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     */
+    private function noiseSummary(array $report): string
+    {
+        $noise = is_array($report['noise'] ?? null) ? $report['noise'] : [];
+
+        return match ($noise['status'] ?? null) {
+            'passed' => sprintf(
+                '// Noise check: the winner beats the committed profile by %s on %d selection cases, over the %s margin.',
+                (string) ($noise['gain'] ?? '?'),
+                (int) ($noise['selection_cases'] ?? 0),
+                (string) ($noise['margin'] ?? '?'),
+            ),
+            'within_noise' => sprintf(
+                '// Noise check: the best candidate beats the committed profile by %s on %d selection cases, no more than the %s margin: no winner.',
+                (string) ($noise['gain'] ?? '?'),
+                (int) ($noise['selection_cases'] ?? 0),
+                (string) ($noise['margin'] ?? '?'),
+            ),
+            default => '// Noise check off (--noise-margin=0). The profile below is not checked against noise.',
         };
     }
 

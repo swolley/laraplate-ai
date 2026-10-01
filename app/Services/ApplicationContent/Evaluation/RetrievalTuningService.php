@@ -178,7 +178,8 @@ final readonly class RetrievalTuningService
         usort($candidates, static fn (array $a, array $b): int => $b['metrics'][$metric] <=> $a['metrics'][$metric]);
 
         $validation = $this->validate($held_out, $source, $metric, $candidates[0]['params'], $safeguards, $split_reason);
-        $rejected = $validation['status'] === 'failed';
+        $noise = $this->noise($candidates[0], $committed, $metric, count($selection), $safeguards);
+        $rejected = $validation['status'] === 'failed' || $noise['status'] === 'within_noise';
         $class_overrides = $rejected
             ? ['winners' => [], 'skipped' => []]
             : $this->classWinners($candidates, $metric, $this->classCounts($selection), $safeguards);
@@ -209,6 +210,7 @@ final readonly class RetrievalTuningService
                 'metrics' => $candidates[0]['metrics'],
             ],
             'validation' => $validation,
+            'noise' => $noise,
             'class_winners' => $class_overrides['winners'],
             'class_winners_skipped' => $class_overrides['skipped'],
         ];
@@ -223,8 +225,18 @@ final readonly class RetrievalTuningService
     public function profileBlock(array $report): string
     {
         $validation = is_array($report['validation'] ?? null) ? $report['validation'] : [];
+        $noise = is_array($report['noise'] ?? null) ? $report['noise'] : [];
 
         if (array_key_exists('winner', $report) && $report['winner'] === null) {
+            if (($validation['status'] ?? null) !== 'failed' && ($noise['status'] ?? null) === 'within_noise') {
+                return sprintf(
+                    '// No winner: the best candidate beat the committed profile by %s on the selection cases, no more than the noise margin of %s (%d cases); keep the committed profile.',
+                    (string) ($noise['gain'] ?? '?'),
+                    (string) ($noise['margin'] ?? '?'),
+                    (int) ($noise['selection_cases'] ?? 0),
+                );
+            }
+
             return '// No winner: the best candidate on the selection cases lost to the committed profile on the held-out ones; keep the committed profile.';
         }
 
@@ -236,6 +248,7 @@ final readonly class RetrievalTuningService
             $lines[] = '// This profile was not validated on held-out cases (' . ($validation['reason'] ?? 'held-out validation disabled') . '): treat it as a hint, not a measurement.';
         }
 
+        $lines[] = "// Cite the report: copy it to docs/evaluations/retrieval-tuning/ in Core and add 'report' => 'docs/evaluations/retrieval-tuning/<file>.json' (a test checks it).";
         $lines[] = "'default' => " . $this->exportParameters($winner, '    ') . ',';
         $lines[] = "'classes' => [";
 
@@ -551,6 +564,14 @@ final readonly class RetrievalTuningService
                 continue;
             }
 
+            $noise = round($safeguards->tolerance($selection_counts[$class] ?? 0), 4);
+
+            if ($noise > 0.0 && $gain <= $noise) {
+                $skipped[$class] = 'within_noise';
+
+                continue;
+            }
+
             $winners[$class] = $best['params'];
         }
 
@@ -625,6 +646,35 @@ final readonly class RetrievalTuningService
             'committed_metric' => $committed_value,
             'delta' => $delta,
             ...($failed ? ['rejected_params' => $winner] : []),
+        ];
+    }
+
+    /**
+     * Whether the winner's gain over the committed profile on the selection cases is more than
+     * noise: a gain no bigger than the margin is what a single flipped case could produce.
+     *
+     * @param  Candidate  $winner
+     * @param  Scored  $committed
+     * @return array<string, mixed>
+     */
+    private function noise(array $winner, array $committed, string $metric, int $selection_cases, RetrievalTuningSafeguards $safeguards): array
+    {
+        $margin = round($safeguards->tolerance($selection_cases), 4);
+
+        if ($margin <= 0.0) {
+            return ['status' => 'disabled'];
+        }
+
+        $gain = $winner['delta_vs_committed'][$metric];
+
+        return [
+            'status' => $gain > $margin ? 'passed' : 'within_noise',
+            'metric' => $metric,
+            'selection_cases' => $selection_cases,
+            'margin' => $margin,
+            'winner_metric' => $winner['metrics'][$metric],
+            'committed_metric' => $committed['metrics'][$metric],
+            'gain' => $gain,
         ];
     }
 

@@ -374,7 +374,7 @@ is omitted from the report. Design:
 
 `php artisan ai:tune-retrieval --source=<source> --dataset=<file> --output=<file>
 [--grid=default|<grid.json>] [--metric=ndcg_at_5] [--holdout=0.3] [--min-class-cases=8]
-[--class-margin=0.01] [--force]` produces the values of
+[--class-margin=0.01] [--noise-margin=auto] [--force]` produces the values of
 Core's retrieval tuning profile (`Modules/Core/config/search_tuning.php`, applied
 when the Core setting `search.adaptive_tuning` is on; see
 `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`). Per dataset case with
@@ -402,22 +402,37 @@ same query analysis the runtime uses).
   committed profile and `validation.rejected_params` shows what lost); `--min-class-cases`
   [8] withholds a class override that has fewer selection cases; `--class-margin` [0.01]
   withholds one that does not beat the overall winner by more than that. Withheld classes
-  are listed in `class_winners_skipped` with the reason (`too_few_cases` or `margin`). A
+  are listed in `class_winners_skipped` with the reason (`too_few_cases`, `margin` or `within_noise`). A
   dataset too small for the split gives `validation.status` `skipped`, and `--holdout=0`
   gives `disabled`: in both the block opens with a comment saying the profile is not
   validated on held-out cases. Ties resolve to the first candidate, which is the L0
   constants. These narrow the risk, they do not remove it: a few dozen cases remain noisy.
+- **Noise margin.** A gain that one flipped case could produce is not a result.
+  `--noise-margin` [`auto`] is that margin: the winner must beat the committed profile on
+  the selection cases by **more than** it, or `winner` is `null` and the block says to keep
+  the committed profile (`noise.status` `within_noise`). `auto` is one case of the sample
+  (`1 / selection cases`) with a floor of 0.01, a number from 0 to 1 fixes it, and `0` turns
+  the check off (`disabled`). The same margin, sized on the class's own selection cases, is a
+  floor for a class override: with eight cases in a class, one case is 0.125, so a smaller
+  gain is withheld as `within_noise`. It checks the gain against the sample size, not the
+  winner against chance: it does not replace the held-out validation.
 - The report (`version`, `source`, `dataset`, `metric`, `case_count`,
   `class_counts`, `train_case_count`, `holdout_case_count`, `train_class_counts`,
   `safeguards`, `committed`, `reranked`, `candidates` sorted by the metric with
   `metrics`, `per_class_metrics` and `delta_vs_committed`, `winner`, `validation`,
-  `class_winners`, `class_winners_skipped`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
+  `noise`, `class_winners`, `class_winners_skipped`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
   never overwritten without `--force`. `committed` scores the currently committed
   profile the same way.
 - The command prints a ready-to-paste `default` / `classes` block and writes
   **no file but its report**: a human reads the per-class table, accepts a
   candidate only if it wins both overall and on the class it targets, pastes it,
-  bumps `version` and cites the report path in the profile.
+  bumps `version`, copies the report to `Modules/Core/docs/evaluations/retrieval-tuning/`
+  and cites it in the profile with `'report' => 'docs/evaluations/retrieval-tuning/<file>.json'`.
+  A test (`CommittedRetrievalTuningProfileTest`) fails a profile with measured values
+  that cites no report, or whose report did not pass both the held-out validation and the
+  noise check, or holds other values; a profile that only restates the L0 constants is exempt.
+  The report holds metrics and parameters only, no query text and no content, so it can be
+  committed even when the corpus is not.
 
 Real numbers need Elasticsearch and embeddings (a dev-seeded, indexed corpus). The
 CMS and SAO baseline gate tests assert that the committed profile, switched on, does

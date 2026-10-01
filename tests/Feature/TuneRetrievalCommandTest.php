@@ -134,10 +134,13 @@ it('writes only its report, prints a profile block and refuses to overwrite with
     $profile_hash = hash_file('sha256', $profile_path);
 
     try {
+        // The noise check is off here: this test is about what the command writes, and a one-case
+        // dataset cannot clear any noise margin (see the noise tests below).
         $this->artisan('ai:tune-retrieval', [
             '--dataset' => $fixture['dataset'],
             '--source' => 'cms.strategy_records',
             '--output' => $fixture['output'],
+            '--noise-margin' => '0',
         ])
             ->expectsOutputToContain("'default' => [")
             ->expectsOutputToContain("'classes' => [")
@@ -186,6 +189,8 @@ it('refuses safeguards outside their range before tuning anything', function (ar
     'held-out share not a number' => [['--holdout' => 'lots']],
     'no class cases' => [['--min-class-cases' => '0']],
     'margin above one' => [['--class-margin' => '2']],
+    'noise margin above one' => [['--noise-margin' => '2']],
+    'noise margin not a number' => [['--noise-margin' => 'lots']],
 ]);
 
 it('applies the recommended safeguards by default and records them in the report', function (): void {
@@ -202,7 +207,7 @@ it('applies the recommended safeguards by default and records them in the report
 
         $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
 
-        expect($report['safeguards'])->toBe(['holdout_fraction' => 0.3, 'min_class_cases' => 8, 'class_margin' => 0.01])
+        expect($report['safeguards'])->toBe(['holdout_fraction' => 0.3, 'min_class_cases' => 8, 'class_margin' => 0.01, 'noise_margin' => 'auto'])
             ->and($report['validation']['status'])->toBeIn(['skipped', 'passed', 'failed']);
     } finally {
         tuneCommandCleanup($fixture['directory']);
@@ -220,6 +225,7 @@ it('turns the held-out validation off with a zero share, and says the profile wa
             '--holdout' => '0',
             '--min-class-cases' => '1',
             '--class-margin' => '0',
+            '--noise-margin' => '0',
         ])
             ->expectsOutputToContain('not validated on held-out cases')
             ->assertSuccessful();
@@ -227,7 +233,52 @@ it('turns the held-out validation off with a zero share, and says the profile wa
         $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
 
         expect($report['validation']['status'])->toBe('disabled')
-            ->and($report['safeguards'])->toBe(['holdout_fraction' => 0.0, 'min_class_cases' => 1, 'class_margin' => 0.0]);
+            ->and($report['noise']['status'])->toBe('disabled')
+            ->and($report['safeguards'])->toBe(['holdout_fraction' => 0.0, 'min_class_cases' => 1, 'class_margin' => 0.0, 'noise_margin' => 0.0]);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('declares no winner for a dataset too small to clear the automatic noise margin, and says why', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+        ])
+            ->expectsOutputToContain('no winner')
+            ->expectsOutputToContain('keep the committed profile')
+            ->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['winner'])->toBeNull()
+            ->and($report['noise']['status'])->toBe('within_noise')
+            ->and($report['noise']['selection_cases'])->toBe(1)
+            ->and($report['noise']['margin'])->toBe(1.0);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('records a fixed noise margin given on the command line', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--noise-margin' => '0.05',
+        ])->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['safeguards']['noise_margin'])->toBe(0.05)
+            ->and($report['noise']['margin'])->toBe(0.05);
     } finally {
         tuneCommandCleanup($fixture['directory']);
     }

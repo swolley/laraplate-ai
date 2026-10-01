@@ -124,6 +124,7 @@ it('prints the winner as a profile block ready to paste', function (): void {
     ]);
 
     expect($block)->toContain("'default' => [")
+        ->and($block)->toContain("'report' => 'docs/evaluations/retrieval-tuning/")
         ->and($block)->toContain("'keyword_weight' => 0.5,")
         ->and($block)->toContain("'rrf_k' => 60,")
         ->and($block)->toContain("'identifier' => [")
@@ -283,4 +284,115 @@ it('rejects safeguards outside their range', function (array $arguments): void {
     'negative holdout' => [['holdoutFraction' => -0.1]],
     'no class cases' => [['minClassCases' => 0]],
     'margin above one' => [['classMargin' => 1.5]],
+    'negative noise margin' => [['noiseMargin' => -0.1]],
+    'noise margin above one' => [['noiseMargin' => 1.5]],
 ])->throws(InvalidArgumentException::class);
+
+it('resolves the noise margin: off, fixed, or one case of the sample with a floor', function (): void {
+    expect((new RetrievalTuningSafeguards)->tolerance(10))->toBe(0.0)
+        ->and((new RetrievalTuningSafeguards(noiseMargin: 0.2))->tolerance(10))->toBe(0.2)
+        ->and((new RetrievalTuningSafeguards(noiseMargin: null))->tolerance(4))->toBe(0.25)
+        ->and((new RetrievalTuningSafeguards(noiseMargin: null))->tolerance(500))->toBe(0.01)
+        ->and(RetrievalTuningSafeguards::recommended()->noiseMargin)->toBeNull()
+        ->and((new RetrievalTuningSafeguards(noiseMargin: null))->toArray()['noise_margin'])->toBe('auto');
+});
+
+/**
+ * @return list<ApplicationContentEvaluationCase>
+ */
+function retrievalTuningShortCases(int $count): array
+{
+    return array_map(static fn (int $i): ApplicationContentEvaluationCase => retrievalTuningCase("short-{$i}", 'Mario Rossi'), range(0, $count - 1));
+}
+
+it('keeps the winner when it beats the committed profile by more than the noise margin', function (): void {
+    $unguarded = retrievalTuningTune(retrievalTuningShortCases(6));
+    $gain = $unguarded['candidates'][0]['delta_vs_committed']['ndcg_at_5'];
+
+    expect($gain)->toBeGreaterThan(0.05)
+        ->and($unguarded['noise']['status'])->toBe('disabled');
+
+    $report = retrievalTuningTune(retrievalTuningShortCases(6), new RetrievalTuningSafeguards(noiseMargin: $gain - 0.01));
+
+    expect($report['winner'])->not->toBeNull()
+        ->and($report['noise']['status'])->toBe('passed')
+        ->and($report['noise']['gain'])->toBe($gain)
+        ->and($report['noise']['margin'])->toBe(round($gain - 0.01, 4))
+        ->and($report['noise']['selection_cases'])->toBe(6);
+});
+
+it('declares no winner when the best candidate beats the committed profile by no more than the noise margin', function (): void {
+    $gain = retrievalTuningTune(retrievalTuningShortCases(6))['candidates'][0]['delta_vs_committed']['ndcg_at_5'];
+
+    $report = retrievalTuningTune(retrievalTuningShortCases(6), new RetrievalTuningSafeguards(noiseMargin: $gain));
+
+    expect($report['winner'])->toBeNull()
+        ->and($report['noise']['status'])->toBe('within_noise')
+        ->and($report['class_winners'])->toBe([])
+        ->and($report['candidates'])->toHaveCount(2);
+
+    $block = app(RetrievalTuningService::class)->profileBlock($report);
+
+    expect($block)->toContain('noise margin')
+        ->and($block)->toContain('keep the committed profile')
+        ->and($block)->not->toContain("'default' =>");
+});
+
+it('sizes the automatic margin on the selection cases: one case of the sample, never below the floor', function (int $count, float $margin): void {
+    $report = retrievalTuningTune(retrievalTuningShortCases($count), new RetrievalTuningSafeguards(noiseMargin: null));
+
+    expect($report['noise']['margin'])->toBe($margin)
+        ->and($report['noise']['selection_cases'])->toBe($count);
+})->with([
+    'four cases' => [4, 0.25],
+    'forty cases' => [40, 0.025],
+    'past the floor' => [150, 0.01],
+]);
+
+/**
+ * Many short cases that the vector ranking serves, so the overall winner clears the noise margin,
+ * plus identifier cases the keyword ranking serves better: on those a keyword-only candidate gains
+ * 0.1309 of ndcg_at_5 over the vector winner, which is more than one case of the class only from
+ * eight cases up (1 / 8 = 0.125).
+ *
+ * @return list<ApplicationContentEvaluationCase>
+ */
+function retrievalTuningLopsidedCases(int $identifiers): array
+{
+    $cases = retrievalTuningShortCases(40);
+
+    for ($i = 0; $i < $identifiers; $i++) {
+        $identifier = retrievalTuningCase("identifier-{$i}", 'fattura INV-1042');
+        $cases[] = new ApplicationContentEvaluationCase(
+            id: $identifier->id,
+            query: $identifier->query,
+            locale: 'en',
+            limit: 5,
+            expectedHitIds: ['cms.contents:1'],
+            expectedCitationReferences: [],
+            expectAuthorizedEmpty: false,
+            expectSupportedAnswer: false,
+            expectAbstention: false,
+            slices: [],
+            authorization: $identifier->authorization,
+        );
+    }
+
+    return $cases;
+}
+
+it('does not let a class override the winner by what one of its cases could move', function (): void {
+    $report = retrievalTuningTune(retrievalTuningLopsidedCases(7), new RetrievalTuningSafeguards(minClassCases: 1, noiseMargin: null));
+
+    expect($report['noise']['status'])->toBe('passed')
+        ->and($report['class_winners'])->toBe([])
+        ->and($report['class_winners_skipped'])->toBe(['identifier' => 'within_noise']);
+});
+
+it('lets a class override the winner once its gain clears the noise of its own cases', function (): void {
+    $report = retrievalTuningTune(retrievalTuningLopsidedCases(8), new RetrievalTuningSafeguards(minClassCases: 1, noiseMargin: null));
+
+    expect($report['class_winners'])->toHaveKey('identifier')
+        ->and($report['class_winners']['identifier']['keyword_weight'])->toBe(1.0)
+        ->and($report['class_winners_skipped'])->toBe([]);
+});
