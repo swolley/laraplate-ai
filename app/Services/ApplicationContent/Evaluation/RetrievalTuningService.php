@@ -122,7 +122,9 @@ final readonly class RetrievalTuningService
         array $grid,
         string $metric,
         callable $retrieval,
+        ?RetrievalTuningSafeguards $safeguards = null,
     ): array {
+        $safeguards ??= new RetrievalTuningSafeguards();
         $source = ApplicationContentSourceDescriptor::normalizeSource($source);
 
         if ($dataset->source !== $source) {
@@ -160,11 +162,12 @@ final readonly class RetrievalTuningService
             ];
         }
 
-        $committed = $this->score($records, $source, null);
+        [$selection, $held_out, $split_reason] = $this->split($records, $safeguards->holdoutFraction);
+        $committed = $this->score($selection, $source, null);
         $candidates = [];
 
         foreach ($grid as $parameters) {
-            $scored = $this->score($records, $source, $parameters);
+            $scored = $this->score($selection, $source, $parameters);
             $candidates[] = [
                 'params' => $parameters,
                 ...$scored,
@@ -173,6 +176,12 @@ final readonly class RetrievalTuningService
         }
 
         usort($candidates, static fn (array $a, array $b): int => $b['metrics'][$metric] <=> $a['metrics'][$metric]);
+
+        $validation = $this->validate($held_out, $source, $metric, $candidates[0]['params'], $safeguards, $split_reason);
+        $rejected = $validation['status'] === 'failed';
+        $class_overrides = $rejected
+            ? ['winners' => [], 'skipped' => []]
+            : $this->classWinners($candidates, $metric, $this->classCounts($selection), $safeguards);
 
         return [
             'version' => '1',
@@ -185,17 +194,23 @@ final readonly class RetrievalTuningService
             'metric' => $metric,
             'case_count' => count($records),
             'class_counts' => $this->classCounts($records),
+            'train_case_count' => count($selection),
+            'holdout_case_count' => count($held_out),
+            'train_class_counts' => $this->classCounts($selection),
+            'safeguards' => $safeguards->toArray(),
             'committed' => [
                 'profile_version' => $this->profile->profile()['version'] ?? null,
                 ...$committed,
             ],
             'reranked' => $this->rerankedMetrics($records),
             'candidates' => $candidates,
-            'winner' => $candidates === [] ? null : [
+            'winner' => $rejected ? null : [
                 'params' => $candidates[0]['params'],
                 'metrics' => $candidates[0]['metrics'],
             ],
-            'class_winners' => $this->classWinners($candidates, $metric),
+            'validation' => $validation,
+            'class_winners' => $class_overrides['winners'],
+            'class_winners_skipped' => $class_overrides['skipped'],
         ];
     }
 
@@ -207,9 +222,21 @@ final readonly class RetrievalTuningService
      */
     public function profileBlock(array $report): string
     {
+        $validation = is_array($report['validation'] ?? null) ? $report['validation'] : [];
+
+        if (array_key_exists('winner', $report) && $report['winner'] === null) {
+            return '// No winner: the best candidate on the selection cases lost to the committed profile on the held-out ones; keep the committed profile.';
+        }
+
         $winner = is_array($report['winner'] ?? null) && is_array($report['winner']['params'] ?? null) ? $report['winner']['params'] : [];
         $class_winners = is_array($report['class_winners'] ?? null) ? $report['class_winners'] : [];
-        $lines = ["'default' => " . $this->exportParameters($winner, '    ') . ','];
+        $lines = [];
+
+        if (in_array($validation['status'] ?? null, ['disabled', 'skipped'], true)) {
+            $lines[] = '// This profile was not validated on held-out cases (' . ($validation['reason'] ?? 'held-out validation disabled') . '): treat it as a hint, not a measurement.';
+        }
+
+        $lines[] = "'default' => " . $this->exportParameters($winner, '    ') . ',';
         $lines[] = "'classes' => [";
 
         foreach (QueryClass::cases() as $class) {
@@ -218,6 +245,12 @@ final readonly class RetrievalTuningService
         }
 
         $lines[] = '],';
+
+        $skipped = is_array($report['class_winners_skipped'] ?? null) ? $report['class_winners_skipped'] : [];
+
+        foreach ($skipped as $class => $reason) {
+            $lines[] = "// Class override withheld for {$class}: {$reason}.";
+        }
 
         return implode(PHP_EOL, $lines);
     }
@@ -474,18 +507,22 @@ final readonly class RetrievalTuningService
     }
 
     /**
-     * The best candidate per class, kept only when it beats the overall winner on that class.
+     * The best candidate per class, kept only when it beats the overall winner on that class by more
+     * than the margin and the class has enough selection cases. A class that would have won but was
+     * held back is listed with the reason, so the report shows what the safeguards withheld.
      *
      * @param  list<Candidate>  $candidates
-     * @return array<string, array<string, int|float>>
+     * @param  array<string, int>  $selection_counts
+     * @return array{winners: array<string, array<string, int|float>>, skipped: array<string, string>}
      */
-    private function classWinners(array $candidates, string $metric): array
+    private function classWinners(array $candidates, string $metric, array $selection_counts, RetrievalTuningSafeguards $safeguards): array
     {
         if ($candidates === []) {
-            return [];
+            return ['winners' => [], 'skipped' => []];
         }
 
         $winners = [];
+        $skipped = [];
 
         foreach (array_keys($candidates[0]['per_class_metrics']) as $class) {
             $best = $candidates[0];
@@ -496,12 +533,99 @@ final readonly class RetrievalTuningService
                 }
             }
 
-            if ($best !== $candidates[0]) {
-                $winners[$class] = $best['params'];
+            if ($best === $candidates[0]) {
+                continue;
+            }
+
+            if (($selection_counts[$class] ?? 0) < $safeguards->minClassCases) {
+                $skipped[$class] = 'too_few_cases';
+
+                continue;
+            }
+
+            $gain = $best['per_class_metrics'][$class][$metric] - $candidates[0]['per_class_metrics'][$class][$metric];
+
+            if ($safeguards->classMargin > 0.0 && $gain <= $safeguards->classMargin) {
+                $skipped[$class] = 'margin';
+
+                continue;
+            }
+
+            $winners[$class] = $best['params'];
+        }
+
+        return ['winners' => $winners, 'skipped' => $skipped];
+    }
+
+    /**
+     * Splits the cases deterministically: a case is held out when a hash of its id falls under the
+     * fraction, so the same dataset always splits the same way whatever the order of the cases.
+     * When the split cannot be used (nothing held out, or nothing left to select from) every case
+     * is used for selection and the reason is returned.
+     *
+     * @param  list<CaseRecord>  $records
+     * @return array{0: list<CaseRecord>, 1: list<CaseRecord>, 2: string|null}
+     */
+    private function split(array $records, float $fraction): array
+    {
+        if ($fraction <= 0.0) {
+            return [$records, [], null];
+        }
+
+        $threshold = (int) round($fraction * 1000);
+        $selection = [];
+        $held_out = [];
+
+        foreach ($records as $record) {
+            if ($threshold > crc32($record['case']->id) % 1000) {
+                $held_out[] = $record;
+            } else {
+                $selection[] = $record;
             }
         }
 
-        return $winners;
+        if ($held_out === []) {
+            return [$records, [], 'no_held_out_cases'];
+        }
+
+        if ($selection === []) {
+            return [$records, [], 'no_selection_cases'];
+        }
+
+        return [$selection, $held_out, null];
+    }
+
+    /**
+     * Checks the winner on the held-out cases: it must not score below the committed profile there.
+     *
+     * @param  list<CaseRecord>  $held_out
+     * @param  array<string, int|float>  $winner
+     * @return array<string, mixed>
+     */
+    private function validate(array $held_out, string $source, string $metric, array $winner, RetrievalTuningSafeguards $safeguards, ?string $split_reason): array
+    {
+        if ($safeguards->holdoutFraction <= 0.0) {
+            return ['status' => 'disabled'];
+        }
+
+        if ($held_out === []) {
+            return ['status' => 'skipped', 'reason' => $split_reason ?? 'no_held_out_cases'];
+        }
+
+        $winner_value = $this->score($held_out, $source, $winner)['metrics'][$metric];
+        $committed_value = $this->score($held_out, $source, null)['metrics'][$metric];
+        $delta = round($winner_value - $committed_value, 4);
+        $failed = $delta < 0.0;
+
+        return [
+            'status' => $failed ? 'failed' : 'passed',
+            'metric' => $metric,
+            'held_out_cases' => count($held_out),
+            'winner_metric' => $winner_value,
+            'committed_metric' => $committed_value,
+            'delta' => $delta,
+            ...($failed ? ['rejected_params' => $winner] : []),
+        ];
     }
 
     /**

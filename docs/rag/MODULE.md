@@ -373,7 +373,8 @@ is omitted from the report. Design:
 ### Retrieval tuning (`ai:tune-retrieval`)
 
 `php artisan ai:tune-retrieval --source=<source> --dataset=<file> --output=<file>
-[--grid=default|<grid.json>] [--metric=ndcg_at_5] [--force]` produces the values of
+[--grid=default|<grid.json>] [--metric=ndcg_at_5] [--holdout=0.3] [--min-class-cases=8]
+[--class-margin=0.01] [--force]` produces the values of
 Core's retrieval tuning profile (`Modules/Core/config/search_tuning.php`, applied
 when the Core setting `search.adaptive_tuning` is on; see
 `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`). Per dataset case with
@@ -392,10 +393,25 @@ same query analysis the runtime uses).
   holding a list of parameter sets replaces it. Ranking parameters (`rerank_top_k`,
   `rerank_blend`) are rejected: the rerank blend cannot be replayed from fused
   scores, so the reranked ordering is reported separately under `reranked`.
+- **Overfitting safeguards.** The grid is searched and scored on the same cases, so a
+  small or lopsided dataset can crown a winner that only memorised it. Three guards
+  (`RetrievalTuningSafeguards`, defaults of the command in brackets): `--holdout` [0.3]
+  keeps that share of the cases out of the selection, picked deterministically from a
+  hash of the case id, and the winner must not score below the committed profile on
+  them, otherwise there is **no winner** (`winner` is `null`, the block says to keep the
+  committed profile and `validation.rejected_params` shows what lost); `--min-class-cases`
+  [8] withholds a class override that has fewer selection cases; `--class-margin` [0.01]
+  withholds one that does not beat the overall winner by more than that. Withheld classes
+  are listed in `class_winners_skipped` with the reason (`too_few_cases` or `margin`). A
+  dataset too small for the split gives `validation.status` `skipped`, and `--holdout=0`
+  gives `disabled`: in both the block opens with a comment saying the profile is not
+  validated on held-out cases. Ties resolve to the first candidate, which is the L0
+  constants. These narrow the risk, they do not remove it: a few dozen cases remain noisy.
 - The report (`version`, `source`, `dataset`, `metric`, `case_count`,
-  `class_counts`, `committed`, `reranked`, `candidates` sorted by the metric with
-  `metrics`, `per_class_metrics` and `delta_vs_committed`, `winner`,
-  `class_winners`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
+  `class_counts`, `train_case_count`, `holdout_case_count`, `train_class_counts`,
+  `safeguards`, `committed`, `reranked`, `candidates` sorted by the metric with
+  `metrics`, `per_class_metrics` and `delta_vs_committed`, `winner`, `validation`,
+  `class_winners`, `class_winners_skipped`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
   never overwritten without `--force`. `committed` scores the currently committed
   profile the same way.
 - The command prints a ready-to-paste `default` / `classes` block and writes
@@ -403,10 +419,12 @@ same query analysis the runtime uses).
   candidate only if it wins both overall and on the class it targets, pastes it,
   bumps `version` and cites the report path in the profile.
 
-Real numbers need Elasticsearch and embeddings (a dev-seeded, indexed corpus); the
-CMS and SAO baseline gate tests also assert that the committed profile, switched
-on, does not score below their committed baselines on `ndcg_at_5` and
-`recall_at_5`.
+Real numbers need Elasticsearch and embeddings (a dev-seeded, indexed corpus). The
+CMS and SAO baseline gate tests assert that the committed profile, switched on, does
+not score below their committed baselines on `ndcg_at_5` and `recall_at_5`, but the
+suite runs Scout on the `collection` driver, where a profile change cannot move those
+numbers: that gate guards the wiring, not the quality of a profile. The quality check is
+the held-out validation above, run against a real engine.
 
 ## Documentation evaluation
 

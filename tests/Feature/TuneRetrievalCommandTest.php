@@ -164,3 +164,71 @@ it('writes only its report, prints a profile block and refuses to overwrite with
         tuneCommandCleanup($fixture['directory']);
     }
 });
+
+it('refuses safeguards outside their range before tuning anything', function (array $options): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            ...$options,
+        ])->assertFailed();
+
+        expect(file_exists($fixture['output']))->toBeFalse()
+            ->and($fixture['retriever']->calls)->toBe([]);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+})->with([
+    'held-out share above one half' => [['--holdout' => '0.9']],
+    'held-out share not a number' => [['--holdout' => 'lots']],
+    'no class cases' => [['--min-class-cases' => '0']],
+    'margin above one' => [['--class-margin' => '2']],
+]);
+
+it('applies the recommended safeguards by default and records them in the report', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+        ])
+            ->expectsOutputToContain('Validation')
+            ->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['safeguards'])->toBe(['holdout_fraction' => 0.3, 'min_class_cases' => 8, 'class_margin' => 0.01])
+            ->and($report['validation']['status'])->toBeIn(['skipped', 'passed', 'failed']);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('turns the held-out validation off with a zero share, and says the profile was not validated', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--holdout' => '0',
+            '--min-class-cases' => '1',
+            '--class-margin' => '0',
+        ])
+            ->expectsOutputToContain('not validated on held-out cases')
+            ->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['validation']['status'])->toBe('disabled')
+            ->and($report['safeguards'])->toBe(['holdout_fraction' => 0.0, 'min_class_cases' => 1, 'class_margin' => 0.0]);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});

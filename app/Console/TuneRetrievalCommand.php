@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationCase;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
+use Modules\AI\Services\ApplicationContent\Evaluation\RetrievalTuningSafeguards;
 use Modules\AI\Services\ApplicationContent\Evaluation\RetrievalTuningService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderRegistryInterface;
 use Modules\Core\ApplicationContent\Contracts\ProvidesPermissionModel;
@@ -35,6 +36,9 @@ final class TuneRetrievalCommand extends Command
                             {--dataset= : Path to a generated evaluation dataset}
                             {--grid=default : Built-in grid name, or a JSON file with a list of parameter sets}
                             {--metric=ndcg_at_5 : Metric that ranks the candidates}
+                            {--holdout=0.3 : Share of the cases kept out of the selection to validate the winner (0 to 0.5, 0 turns it off)}
+                            {--min-class-cases=8 : Selection cases a query class needs before it gets its own override}
+                            {--class-margin=0.01 : How much a class override must beat the overall winner by (0 to 1)}
                             {--output= : New JSON report path}
                             {--force : Replace an existing report}';
 
@@ -61,6 +65,14 @@ final class TuneRetrievalCommand extends Command
 
         if (! in_array($metric, RetrievalTuningService::metricNames(), true)) {
             $this->error('The requested metric is unknown.');
+
+            return self::FAILURE;
+        }
+
+        $safeguards = $this->safeguards();
+
+        if (! $safeguards instanceof RetrievalTuningSafeguards) {
+            $this->error('The --holdout, --min-class-cases or --class-margin option is out of range.');
 
             return self::FAILURE;
         }
@@ -132,6 +144,7 @@ final class TuneRetrievalCommand extends Command
 
                     return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id]);
                 },
+                $safeguards,
             );
             $encoded = json_encode(
                 $report,
@@ -150,6 +163,7 @@ final class TuneRetrievalCommand extends Command
 
             $this->info(sprintf('Ranked %d candidates by %s.', count($grid), $metric));
             $this->line('// ai:tune-retrieval report: ' . $output_path);
+            $this->line($this->validationSummary($report));
 
             foreach (explode(PHP_EOL, $tuning->profileBlock($report)) as $line) {
                 $this->line($line);
@@ -161,6 +175,59 @@ final class TuneRetrievalCommand extends Command
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * The recommended safeguards, overridden by the options; null when an option is out of range.
+     */
+    private function safeguards(): ?RetrievalTuningSafeguards
+    {
+        $recommended = RetrievalTuningSafeguards::recommended();
+        $holdout = $this->numericOption('holdout', $recommended->holdoutFraction);
+        $min_class_cases = $this->numericOption('min-class-cases', (float) $recommended->minClassCases);
+        $margin = $this->numericOption('class-margin', $recommended->classMargin);
+
+        if ($holdout === null || $min_class_cases === null || $margin === null || $min_class_cases !== floor($min_class_cases)) {
+            return null;
+        }
+
+        try {
+            return new RetrievalTuningSafeguards($holdout, (int) $min_class_cases, $margin);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    private function numericOption(string $name, float $default): ?float
+    {
+        $value = $this->option($name);
+
+        if ($value === null || (is_string($value) && mb_trim($value) === '')) {
+            return $default;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     */
+    private function validationSummary(array $report): string
+    {
+        $validation = is_array($report['validation'] ?? null) ? $report['validation'] : [];
+
+        return match ($validation['status'] ?? null) {
+            'passed', 'failed' => sprintf(
+                '// Validation on %d held-out cases: %s (winner %s, committed %s, delta %s).',
+                (int) ($validation['held_out_cases'] ?? 0),
+                (string) $validation['status'],
+                (string) ($validation['winner_metric'] ?? '?'),
+                (string) ($validation['committed_metric'] ?? '?'),
+                (string) ($validation['delta'] ?? '?'),
+            ),
+            'skipped' => '// Validation skipped: ' . (string) ($validation['reason'] ?? 'no held-out cases') . '. The profile below is not validated on held-out cases.',
+            default => '// Validation off (--holdout=0). The profile below is not validated on held-out cases.',
+        };
     }
 
     /**
