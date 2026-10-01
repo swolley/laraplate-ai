@@ -51,6 +51,8 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     public int $maxExceptions = 3;
 
+    private bool $throttled = true;
+
     public function __construct(
         private readonly Model $model,
         private readonly ?string $locale = null,
@@ -59,10 +61,27 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     }
 
     /**
+     * Drops the queue throttling, for a run the operator paces by hand (a sync
+     * repair). Both middleware work by releasing the job back to the queue, which a
+     * sync run does not have: the job would be lost without an error, either skipped
+     * by the rate limiter or swallowed after a failed embed.
+     */
+    public function unthrottled(): self
+    {
+        $this->throttled = false;
+
+        return $this;
+    }
+
+    /**
      * @return array<int, ThrottlesExceptions|RateLimited>
      */
     public function middleware(): array
     {
+        if (! $this->throttled) {
+            return [];
+        }
+
         return [
             new ThrottlesExceptions(10, 5),
             new RateLimited('embeddings'),

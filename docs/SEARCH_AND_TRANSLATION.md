@@ -190,9 +190,10 @@ A document degraded to keyword-only (permanent embed failure) has no embedding r
 php artisan ai:embeddings:repair "Modules\CMS\Models\Content" [--chunk=100] [--sync] [--stale]
 ```
 
-- Default: scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty).
+- Default: scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty). It scans the same population `scout:import` indexes (`makeAllSearchableQuery()`), not `query()`: content with no translation in the current locale, which `LocaleScope` hides, is repaired too.
 - `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after switching `AI_EMBEDDINGS_MODEL` to re-embed the backlog.
 - Either way, regeneration dispatches `GenerateEmbeddingsJob` per record with `locale = null` (or runs it inline with `--sync`), which performs a full per-locale regenerate — all locales, stamped with the active `model_key` — through the finalize flow. The command itself does not stamp `model_key`.
+- Queued runs are paced by the `embeddings` rate limiter (`EMBEDDINGS_QUEUE_RATE_PER_MINUTE`, default 10 jobs per minute): the jobs wait for their slot. A `--sync` run is not throttled, because a sync queue cannot release a job back, so the limiter would drop it silently. A record whose embedding fails under `--sync` is reported, the others still run, and the command exits with failure.
 - Preflight `/health` cross-check: before scanning, the command `GET`s `{SENTENCE_TRANSFORMERS_URL}/health` and compares the reported `model` against the active profile's `service_model`. A mismatch (or an unreachable service) only emits a warning — it never aborts the repair run.
 - Requires `core.search.vector.enabled` = true and a searchable, embeddable model (non-empty `$embed`).
 

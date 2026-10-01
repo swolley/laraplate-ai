@@ -5,11 +5,15 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Console\RepairMissingEmbeddingsCommand;
 use Modules\AI\Contracts\IEmbeddingService;
+use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Tests\Stubs\EmbeddableTestModel;
+use Modules\AI\Tests\Stubs\TranslatedEmbeddableTestModel;
+use Modules\Core\Helpers\LocaleContext;
 use NeuronAI\RAG\Document;
 
 /**
@@ -112,6 +116,102 @@ it('regenerates records missing an embedding and stamps the active model_key', f
     expect($rows)->toHaveCount(1)
         ->and($rows->first()->model_key)->toBe($expected_key)
         ->and($rows->first()->embedding)->toBe([0.1, 0.2]);
+});
+
+it('runs every record under --sync even when the embeddings rate limit is exhausted', function (): void {
+    fakeHealthyEmbeddingService();
+    // A released job is lost under the sync queue, so the limiter must not apply to a sync run.
+    Config::set('core.queue_rate_limits.embeddings', 1);
+
+    $models = [];
+
+    foreach (['Alpha', 'Beta', 'Gamma'] as $title) {
+        $model = new EmbeddableTestModel(['title' => $title]);
+        $model->saveQuietly();
+        $models[] = $model;
+    }
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedDocumentsBatch')
+        ->times(3)
+        ->andReturnUsing(static fn (array $texts): array => array_map(
+            static fn (string $text): array => [repairEmbeddingDocument([0.1, 0.2])],
+            $texts,
+        ));
+    app()->instance(IEmbeddingService::class, $embedding_service);
+
+    $this->artisan('ai:embeddings:repair', [
+        'model' => EmbeddableTestModel::class,
+        '--sync' => true,
+    ])->assertSuccessful();
+
+    foreach ($models as $model) {
+        expect($model->embeddings()->count())->toBe(1);
+    }
+});
+
+it('reports a record that fails under --sync, fails the command and still embeds the others', function (): void {
+    fakeHealthyEmbeddingService();
+
+    $alpha = new EmbeddableTestModel(['title' => 'Alpha']);
+    $alpha->saveQuietly();
+
+    $beta = new EmbeddableTestModel(['title' => 'Beta']);
+    $beta->saveQuietly();
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedDocumentsBatch')
+        ->twice()
+        ->andReturnUsing(static function (array $texts): array {
+            if (in_array('Alpha', $texts, true)) {
+                throw new RuntimeException('embedding service down');
+            }
+
+            return array_map(
+                static fn (string $text): array => [repairEmbeddingDocument([0.3, 0.3])],
+                $texts,
+            );
+        });
+    app()->instance(IEmbeddingService::class, $embedding_service);
+
+    [$exit_code, $output] = runRepairEmbeddingsCommand([
+        'model' => EmbeddableTestModel::class,
+        '--sync' => true,
+    ]);
+
+    expect($exit_code)->toBe(RepairMissingEmbeddingsCommand::FAILURE)
+        ->and($output)->toContain('embedding service down')
+        ->and($alpha->embeddings()->count())->toBe(0)
+        ->and($beta->embeddings()->count())->toBe(1);
+});
+
+it('also repairs records that LocaleScope hides because they have no translation in the current locale', function (): void {
+    Queue::fake();
+    fakeHealthyEmbeddingService();
+
+    config(['app.locale' => 'it']);
+    LocaleContext::set('it');
+
+    Schema::create('translated_embeddable_test_models', function ($table): void {
+        $table->id();
+    });
+
+    Schema::create('translated_embeddable_test_model_translations', function ($table): void {
+        $table->id();
+        $table->unsignedBigInteger('translated_embeddable_test_model_id');
+        $table->string('locale');
+        $table->string('title')->nullable();
+    });
+
+    $hidden = new TranslatedEmbeddableTestModel;
+    $hidden->saveQuietly();
+    $hidden->translations()->create(['locale' => 'en', 'title' => 'English only']);
+
+    expect(TranslatedEmbeddableTestModel::query()->count())->toBe(0);
+
+    $this->artisan('ai:embeddings:repair', ['model' => TranslatedEmbeddableTestModel::class])->assertSuccessful();
+
+    Queue::assertPushed(GenerateEmbeddingsJob::class, 1);
 });
 
 it('does not touch records that already carry an embedding when --stale is not set', function (): void {

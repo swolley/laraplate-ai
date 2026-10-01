@@ -15,6 +15,7 @@ use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\Core\Models\ModelEmbedding;
+use Modules\Core\Search\Traits\SearchableCommandUtils;
 use Override;
 use Throwable;
 
@@ -37,9 +38,11 @@ use Throwable;
  */
 final class RepairMissingEmbeddingsCommand extends Command
 {
+    use SearchableCommandUtils;
+
     #[Override]
     protected $signature = 'ai:embeddings:repair
-                            {model : Fully qualified class name of the searchable model to repair}
+                            {model? : Fully qualified class name of the searchable model to repair}
                             {--chunk=100 : Number of records to scan per batch}
                             {--sync : Generate embeddings synchronously instead of queuing}
                             {--stale : Also target records whose embeddings were produced by a different model_key than the active profile (full per-locale regenerate)}';
@@ -49,20 +52,10 @@ final class RepairMissingEmbeddingsCommand extends Command
 
     public function handle(EmbeddingModelRegistry $registry): int
     {
-        $model_class = $this->resolveModelClass((string) $this->argument('model'));
+        $model_class = $this->getModelClass();
 
-        if ($model_class === null) {
-            $this->error('Model class not found: ' . $this->argument('model'));
-
-            return self::FAILURE;
-        }
-
-        $instance = new $model_class();
-
-        if (! $this->isRepairable($instance)) {
-            $this->error("Model {$model_class} is not a searchable embeddable model with vector search enabled");
-
-            return self::FAILURE;
+        if (in_array($model_class, ['', '0', false], true)) {
+            return Command::INVALID;
         }
 
         $active = $registry->active();
@@ -73,7 +66,10 @@ final class RepairMissingEmbeddingsCommand extends Command
         $sync = (bool) $this->option('sync');
         $stale = (bool) $this->option('stale');
 
-        $query = $model_class::query();
+        // The population `scout:import` indexes, not `query()`: a global scope such as
+        // `LocaleScope` hides content with no translation in the current locale, which
+        // would then never get an embedding.
+        $query = $model_class::makeAllSearchableQuery();
 
         if ($stale) {
             $this->info("Scanning for records with embeddings stale against model_key \"{$active->key}\"...");
@@ -89,10 +85,11 @@ final class RepairMissingEmbeddingsCommand extends Command
         }
 
         $dispatched = 0;
+        $failures = [];
 
         $query
-            ->lazyById($chunk, $instance->getKeyName())
-            ->each(function (Model $model) use (&$dispatched, $sync): void {
+            ->lazyById($chunk, $model_class::query()->getModel()->getKeyName())
+            ->each(function (Model $model) use (&$dispatched, &$failures, $sync): void {
                 // Skip records that carry no embeddable text.
                 $data = $model->prepareDataToEmbed();
 
@@ -103,7 +100,14 @@ final class RepairMissingEmbeddingsCommand extends Command
                 // locale=null triggers a full per-locale regenerate stamping
                 // the active model_key (GenerateEmbeddingsJob::handle()).
                 if ($sync) {
-                    dispatch_sync(new GenerateEmbeddingsJob($model));
+                    try {
+                        dispatch_sync(new GenerateEmbeddingsJob($model)->unthrottled());
+                    } catch (Throwable $exception) {
+                        $failures[$model->getKey()] = $exception->getMessage();
+                        $this->warn('Embedding failed for ' . $model::class . " #{$model->getKey()}: {$exception->getMessage()}");
+
+                        return;
+                    }
                 } else {
                     dispatch(new GenerateEmbeddingsJob($model));
                 }
@@ -112,6 +116,12 @@ final class RepairMissingEmbeddingsCommand extends Command
             });
 
         $this->info("Embedding regeneration dispatched for {$dispatched} record(s) of {$model_class}");
+
+        if ($failures !== []) {
+            $this->error(count($failures) . ' record(s) failed, no embedding was stored for them.');
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }
