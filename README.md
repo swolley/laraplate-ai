@@ -238,7 +238,8 @@ The AI Module includes built-in features such as:
     - "Forget" functionality
 
 -   **Guardrails:**
-    - Prompt injection detection (Lakera Guard API)
+    - Prompt injection detection (Lakera Guard API, with an LLM classifier as fallback). Fail-closed: when
+      neither check can give a verdict, the input is refused
     - JSON format validation
     - Retry strategy for failed validations
     - Configurable per feature

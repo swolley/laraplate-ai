@@ -17,6 +17,7 @@ use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Exceptions\GuardrailViolationException;
 use NeuronAI\Chat\Messages\UserMessage;
+use UnexpectedValueException;
 
 /**
  * Service for applying guardrails to AI chat interactions.
@@ -107,7 +108,10 @@ PROMPT;
     }
 
     /**
-     * @throws GuardrailViolationException If prompt injection is detected
+     * Fails closed: when the classifier cannot be reached or answers with anything but
+     * "safe", the input is refused rather than let through unchecked.
+     *
+     * @throws GuardrailViolationException If prompt injection is detected or the check cannot run
      */
     private function checkViaLlmFallback(string $input): void
     {
@@ -116,22 +120,24 @@ PROMPT;
 
             $response = $agent->chat(new UserMessage($input));
             $result = mb_strtolower(mb_trim($response->getMessage()->getContent() ?? ''));
-
-            throw_if(str_contains($result, 'unsafe'), GuardrailViolationException::class, 'Prompt injection detected by LLM guardrail.');
-        } catch (GuardrailViolationException $e) {
-            throw $e;
         } catch (Exception $e) {
-            Log::warning('LLM guardrail check failed', ['error' => $e->getMessage()]);
+            Log::warning('LLM guardrail check failed; refusing the input', ['error' => $e->getMessage()]);
+
+            throw new GuardrailViolationException('Prompt injection check unavailable; input refused.', previous: $e);
         }
+
+        throw_if(str_contains($result, 'unsafe'), GuardrailViolationException::class, 'Prompt injection detected by LLM guardrail.');
+        throw_if(preg_replace('/[^a-z]/', '', $result) !== 'safe', GuardrailViolationException::class, 'Prompt injection check returned no verdict; input refused.');
     }
 
     /**
      * @throws GuardrailViolationException If prompt injection is detected
+     * @throws UnexpectedValueException If the response does not carry results, so the caller falls back to the LLM check
      */
     private function assertLakeraSafe(mixed $result): void
     {
         if (! is_array($result) || ! isset($result['results']) || ! is_array($result['results'])) {
-            return;
+            throw new UnexpectedValueException('Lakera Guard returned an unexpected response.');
         }
 
         foreach ($result['results'] as $check) {
