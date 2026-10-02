@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Exceptions\GuardrailViolationException;
 use Modules\AI\Exceptions\InvalidActionRequestStateException;
+use Modules\AI\Exceptions\MediaAnalysisException;
 use Modules\AI\Exceptions\TranslationException;
 use Modules\AI\Exceptions\UnknownToolException;
 use Modules\Core\Exceptions\ConfigurationException;
@@ -13,7 +14,8 @@ test('ai exceptions use the expected base types', function (): void {
     expect(UnknownToolException::class)->toExtend(InvalidArgumentException::class)
         ->and(InvalidActionRequestStateException::class)->toExtend(InvalidArgumentException::class)
         ->and(TranslationException::class)->toExtend(RuntimeException::class)
-        ->and(GuardrailViolationException::class)->toExtend(RuntimeException::class);
+        ->and(GuardrailViolationException::class)->toExtend(RuntimeException::class)
+        ->and(MediaAnalysisException::class)->toExtend(RuntimeException::class);
 });
 
 test('provider factory throws invalid argument for unsupported provider', function (): void {

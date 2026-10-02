@@ -47,8 +47,13 @@ vision model makes existing analyses stale, and they are redone on the next anal
 
 ## Failure
 
-`AnalyzeMediaJob::failed()` signals completion anyway, so the media is still indexed on its deterministic
-layer. A Whisper service that is unset or down yields no transcript; the rest of the analysis runs.
+A vision provider error, or a vision answer that is not the expected JSON (a Markdown code fence around it is
+accepted), fails the attempt, so `AnalyzeMediaJob` retries (3 tries, backoff 30/60/120 s) instead of storing an
+empty analysis as completed. Only an unreadable file yields an empty vision result. Once retries are spent,
+`AnalyzeMediaJob::failed()` marks the analysis row `failed` (a completed row is left as it is), so it is never
+reused as a result and the next upload of the same file analyses it again, and signals completion anyway, so
+the media is still indexed on its deterministic layer. A Whisper service that is unset or down yields no
+transcript; the rest of the analysis runs.
 
 ## Filament surface (M22)
 

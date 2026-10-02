@@ -107,3 +107,41 @@ it('transcribes audio through the transcriber contract', function (): void {
     expect($analysis->transcript)->toBe('hello world')
         ->and($analysis->analysis_status)->toBe(MediaAnalysisStatus::Completed);
 });
+
+it('lets a vision failure fail the attempt so the job retries instead of completing empty', function (): void {
+    // No result => the fake throws, standing in for a provider error.
+    app()->instance(MediaVisionAnalyzer::class, new FakeMediaVisionAnalyzer());
+
+    $hash = hash('sha256', 'vision-down');
+    $media = persistMedia('image/jpeg', $hash);
+
+    expect(fn () => runAnalyze($media))->toThrow(RuntimeException::class);
+
+    $analysis = MediaAnalysis::query()->firstWhere('content_hash', $hash);
+    expect($analysis->analysis_status)->toBe(MediaAnalysisStatus::Processing);
+    Event::assertNotDispatched(ModelPreProcessingCompleted::class);
+});
+
+it('marks the analysis failed and still signals completion once retries are spent', function (): void {
+    $hash = hash('sha256', 'vision-exhausted');
+    MediaAnalysis::factory()->create([
+        'content_hash' => $hash,
+        'analysis_status' => MediaAnalysisStatus::Processing->value,
+    ]);
+    $media = persistMedia('image/jpeg', $hash);
+
+    (new AnalyzeMediaJob($media))->failed(new RuntimeException('provider down'));
+
+    expect(MediaAnalysis::query()->firstWhere('content_hash', $hash)->analysis_status)->toBe(MediaAnalysisStatus::Failed);
+    Event::assertDispatched(ModelPreProcessingCompleted::class);
+});
+
+it('leaves a completed analysis completed when a later attempt fails', function (): void {
+    $hash = hash('sha256', 'already-done');
+    MediaAnalysis::factory()->create(['content_hash' => $hash]);
+    $media = persistMedia('image/jpeg', $hash);
+
+    (new AnalyzeMediaJob($media))->failed(new RuntimeException('late failure'));
+
+    expect(MediaAnalysis::query()->firstWhere('content_hash', $hash)->analysis_status)->toBe(MediaAnalysisStatus::Completed);
+});

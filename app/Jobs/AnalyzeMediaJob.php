@@ -28,8 +28,9 @@ use Throwable;
  * to the AI-owned {@see MediaAnalysis} row; empty Core display fields are filled
  * (M3c); embeddings are chained so the media vector includes the AI text (M11);
  * and {@see ModelPreProcessingCompleted} is emitted so Core finalizes indexing.
- * On failure it degrades (M12): still emits completion so the deterministic layer
- * indexes.
+ * An analyzer error fails the attempt so the job retries; once retries are spent
+ * it degrades (M12): the row is marked failed and completion is still emitted so
+ * the deterministic layer indexes.
  */
 final class AnalyzeMediaJob implements ShouldQueue
 {
@@ -134,10 +135,23 @@ final class AnalyzeMediaJob implements ShouldQueue
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
     }
 
+    /**
+     * Retries are spent. The analysis row is marked failed, so it is neither reused as a
+     * result nor left looking in progress, and the next upload of the same file analyses
+     * it again. Completion is still signalled (M12) so the media finalizes on the
+     * deterministic layer.
+     */
     public function failed(Throwable $exception): void
     {
-        // Degrade gracefully (M12): signal completion so the document still
-        // finalizes with the deterministic layer.
+        $hash = $this->contentHash($this->media->fresh() ?? $this->media);
+
+        if ($hash !== null) {
+            MediaAnalysis::query()
+                ->where('content_hash', $hash)
+                ->where('analysis_status', '!=', MediaAnalysisStatus::Completed->value)
+                ->update(['analysis_status' => MediaAnalysisStatus::Failed->value]);
+        }
+
         event(new ModelPreProcessingCompleted($this->media, 'media_analysis'));
     }
 
