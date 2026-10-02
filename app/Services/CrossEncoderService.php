@@ -22,7 +22,7 @@ final readonly class CrossEncoderService implements IReranker
 
     public function __construct(?string $endpoint = null)
     {
-        $this->endpoint = $endpoint ?? ai_config_string('ai.providers.cross_encoder.endpoint', 'http://127.0.0.1:8001/score');
+        $this->endpoint = $endpoint ?? ai_config_string('ai.providers.cross_encoder.url', 'http://127.0.0.1:8001/score');
     }
 
     /**

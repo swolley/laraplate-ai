@@ -214,7 +214,8 @@ return [
         ],
 
         'cross_encoder' => [
-            'endpoint' => env('CROSS_ENCODER_ENDPOINT', 'http://127.0.0.1:8001/score'),
+            'url' => env('CROSS_ENCODER_URL', env('SENTENCE_TRANSFORMERS_URL')),
+            'api_key' => env('CROSS_ENCODER_API_KEY', env('SENTENCE_TRANSFORMERS_API_KEY')),
         ],
 
         'deepl' => [
