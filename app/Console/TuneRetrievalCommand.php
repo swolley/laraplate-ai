@@ -13,6 +13,7 @@ use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationCase;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
+use Modules\AI\Services\ApplicationContent\Evaluation\RerankerRun;
 use Modules\AI\Services\ApplicationContent\Evaluation\RetrievalTuningSafeguards;
 use Modules\AI\Services\ApplicationContent\Evaluation\RetrievalTuningService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderRegistryInterface;
@@ -168,6 +169,12 @@ final class TuneRetrievalCommand extends Command
             $this->line('// ai:tune-retrieval report: ' . $output_path);
             $this->line($this->validationSummary($report));
             $this->line($this->noiseSummary($report));
+
+            $reranker_warning = RerankerRun::warning($report);
+
+            if ($reranker_warning !== null) {
+                $this->warn($reranker_warning);
+            }
 
             foreach (explode(PHP_EOL, $tuning->profileBlock($report)) as $line) {
                 $this->line($line);

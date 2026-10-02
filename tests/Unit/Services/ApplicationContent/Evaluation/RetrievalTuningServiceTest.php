@@ -396,3 +396,26 @@ it('lets a class override the winner once its gain clears the noise of its own c
         ->and($report['class_winners']['identifier']['keyword_weight'])->toBe(1.0)
         ->and($report['class_winners_skipped'])->toBe([]);
 });
+
+it('reports how many cases the reranker ran for, so a down service is not read as a reranker that adds nothing', function (bool $reranked, string $status, int $ran): void {
+    $cases = array_map(static fn (int $i): ApplicationContentEvaluationCase => retrievalTuningCase("rr-{$i}", 'Mario Rossi'), range(0, 3));
+
+    $report = app(RetrievalTuningService::class)->tune(
+        new ApplicationContentEvaluationDataset(version: '1', providerVersion: 'p', corpusRevision: 'c', cases: $cases),
+        'cms.contents',
+        [['keyword_weight' => 1.0, 'vector_weight' => 0.0, 'hybrid_weight' => 0.0]],
+        'ndcg_at_5',
+        static function (ApplicationContentEvaluationCase $case, bool $useReranker) use ($reranked): AdvancedSearchResult {
+            $result = retrievalTuningResult(['2', '1', '3'], ! $useReranker);
+
+            return $useReranker && $reranked
+                ? new AdvancedSearchResult(hits: $result->hits, total: $result->total, page: 1, perPage: 5, totalPages: 1, meta: ['reranked' => true])
+                : $result;
+        },
+    );
+
+    expect($report['reranker'])->toBe(['requested' => 4, 'ran' => $ran, 'status' => $status]);
+})->with([
+    'the reranker ran' => [true, 'ran', 4],
+    'the reranker did not run' => [false, 'not_run', 0],
+]);

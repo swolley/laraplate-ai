@@ -159,6 +159,7 @@ final readonly class RetrievalTuningService
                 ],
                 'planner' => $planner_parameters,
                 'reranked' => $this->namespaced($on->ids(), $source),
+                'reranker_ran' => RerankerRun::ranIn($on),
             ];
         }
 
@@ -203,6 +204,10 @@ final readonly class RetrievalTuningService
                 'profile_version' => $this->profile->profile()['version'] ?? null,
                 ...$committed,
             ],
+            'reranker' => RerankerRun::summary(
+                count($records),
+                count(array_filter($records, static fn (array $record): bool => $record['reranker_ran'])),
+            ),
             'reranked' => $this->rerankedMetrics($records),
             'candidates' => $candidates,
             'winner' => $rejected ? null : [

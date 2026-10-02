@@ -41,9 +41,10 @@ function tuneCommandResult(array $finalIds, array $meta = []): AdvancedSearchRes
 /**
  * Registers the fake source, retriever and embedder, and writes a one-case dataset.
  *
+ * @param  bool  $rerankerRan  whether the reranked retrieval carries `meta['reranked'] = true`, as it does when the service answered
  * @return array{directory: string, dataset: string, output: string, retriever: FakePerStrategyEngineRetriever}
  */
-function tuneCommandFixture(): array
+function tuneCommandFixture(bool $rerankerRan = false): array
 {
     $registry = new ApplicationContentRetrievalProviderRegistry;
     $registry->register(new RetrievalStrategyCommandContentProvider(User::class));
@@ -55,7 +56,7 @@ function tuneCommandFixture(): array
             'vector' => tuneCommandRanking(['2', '1']),
             'hybrid' => tuneCommandRanking(['2', '1']),
         ]]),
-        tuneCommandResult(['2', '1']),
+        tuneCommandResult(['2', '1'], $rerankerRan ? ['reranked' => true] : []),
     );
     app()->instance(PerStrategyEngineRetrieverInterface::class, $retriever);
 
@@ -327,6 +328,48 @@ it('records the context a profile was measured in: the embedding model, the corp
             ->and($report['corpus']['size'])->toBeInt()
             // Whoever holds the private dataset can check it is the one measured; nobody else sees it.
             ->and($report['dataset']['sha256'])->toBe(hash_file('sha256', $fixture['dataset']));
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('warns when the reranker did not run, and records it in the report', function (): void {
+    $fixture = tuneCommandFixture(rerankerRan: false);
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--noise-margin' => '0',
+        ])
+            ->expectsOutputToContain('Reranker did not run')
+            ->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run']);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('says nothing about the reranker when it ran', function (): void {
+    $fixture = tuneCommandFixture(rerankerRan: true);
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--noise-margin' => '0',
+        ])
+            ->doesntExpectOutputToContain('Reranker')
+            ->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran']);
     } finally {
         tuneCommandCleanup($fixture['directory']);
     }

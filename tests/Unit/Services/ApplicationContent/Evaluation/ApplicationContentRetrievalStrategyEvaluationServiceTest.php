@@ -353,3 +353,43 @@ it('rejects a driver or dataset source that does not match the requested source 
     ))->toThrow(InvalidArgumentException::class)
         ->and($calls)->toBe(0);
 });
+
+it('reports how many cases the reranker really ran for, not just the ordering it was asked for', function (array $flags, string $status, int $ran): void {
+    $cases = [];
+
+    foreach (array_keys($flags) as $index) {
+        $cases[] = retrievalStrategyEvaluationCase("case-{$index}", ['cms.contents:2']);
+    }
+
+    $dataset = new ApplicationContentEvaluationDataset(version: '1', providerVersion: 'p', corpusRevision: 'c', cases: $cases);
+    $report = (new ApplicationContentRetrievalStrategyEvaluationService)->evaluate(
+        $dataset,
+        'cms.contents',
+        'elasticsearch',
+        static function (ApplicationContentEvaluationCase $case, bool $useReranker) use ($flags): AdvancedSearchResult {
+            $result = retrievalStrategyResult(['2', '1'], ['keyword' => retrievalStrategyRanking(['2', '1'])]);
+
+            if (! $useReranker) {
+                return $result;
+            }
+
+            $flag = $flags[(int) mb_substr($case->id, 5)];
+
+            return new AdvancedSearchResult(
+                hits: $result->hits,
+                total: $result->total,
+                page: 1,
+                perPage: $result->perPage,
+                totalPages: 1,
+                meta: $flag === null ? [] : ['reranked' => $flag],
+            );
+        },
+    );
+
+    expect($report['reranker'])->toBe(['requested' => count($flags), 'ran' => $ran, 'status' => $status]);
+})->with([
+    'every case' => [[true, true, true], 'ran', 3],
+    'a service that failed for one case' => [[true, false, true], 'partial', 2],
+    'a service that is down' => [[false, false, false], 'not_run', 0],
+    'a result with no flag at all' => [[null, null], 'not_run', 0],
+]);

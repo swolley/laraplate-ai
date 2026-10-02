@@ -12,6 +12,7 @@ use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluati
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentRetrievalStrategyEvaluationService;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
+use Modules\AI\Services\ApplicationContent\Evaluation\RerankerRun;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderRegistryInterface;
 use Modules\Core\ApplicationContent\Contracts\ProvidesPermissionModel;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
@@ -127,6 +128,12 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
             }
 
             $this->info(sprintf('Evaluated %d generated cases.', $report['case_count']));
+
+            $reranker_warning = RerankerRun::warning($report);
+
+            if ($reranker_warning !== null) {
+                $this->warn($reranker_warning);
+            }
 
             return self::SUCCESS;
         } catch (Throwable) {

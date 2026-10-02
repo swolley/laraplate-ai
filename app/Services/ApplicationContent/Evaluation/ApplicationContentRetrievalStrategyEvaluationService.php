@@ -99,6 +99,7 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
                     'vector' => $this->strategyPresent($off, 'vector'),
                     'hybrid' => $this->strategyPresent($off, 'hybrid'),
                 ],
+                'reranker_ran' => RerankerRun::ranIn($on),
                 'latency_ms' => $elapsed,
             ];
         }
@@ -113,6 +114,10 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
             'data_classification' => $dataset->dataClassification,
             'case_count' => count($records),
             'pre_authorization' => true,
+            'reranker' => RerankerRun::summary(
+                count($records),
+                count(array_filter($records, static fn (array $record): bool => $record['reranker_ran'])),
+            ),
             'metrics' => $this->metrics($records),
             'latency_ms' => $this->latency($records),
             'slices' => $this->slices($records),

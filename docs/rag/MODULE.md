@@ -372,6 +372,15 @@ divide by every scored case. A strategy that never runs on any scored case
 is omitted from the report. Design:
 `docs/superpowers/specs/2026-09-10-r3-phase2-per-strategy-breakdown-design.md`.
 
+**Did the reranker run?** The second call only asks for the reranker: when the cross-encoder service is
+down or the reranker is disabled, `EnsembleSearchService` keeps the fused order and sets
+`meta['reranked'] = false`, and the `reranked` figures would be the `fused` ones under another name. The
+report therefore carries `reranker: {requested, ran, status}` (`ran` counts the cases whose result had
+`meta['reranked'] === true`; `status` is `ran`, `partial` or `not_run`), and both
+`ai:evaluate-retrieval-strategies` and `ai:tune-retrieval` print a warning when it is not `ran`. A
+`reranked` block next to a `not_run` status measures nothing: start the service (see
+`SENTENCE_TRANSFORMERS_INSTALLATION.md`) and run again. `RerankerRun` holds the summary and the wording.
+
 ### Evaluation datasets: `synthetic` and `private`
 
 A dataset of application content carries `data_classification`. `synthetic` is invented data, small

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Artisan;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
 use Modules\AI\Tests\Stubs\ApplicationContent\FakePerStrategyEngineRetriever;
 use Modules\AI\Tests\Stubs\ApplicationContent\RetrievalStrategyCommandContentProvider;
@@ -170,4 +171,89 @@ it('writes a per-strategy report using a fake engine retriever, with no Elastics
         @unlink($dataset_path);
         @rmdir($directory);
     }
+});
+
+/**
+ * Runs the command once over a one-case dataset whose reranked retrieval does or does not carry the
+ * flag `EnsembleSearchService` sets when the reranker answered.
+ *
+ * @return array{exit: int, output: string, report: array<string, mixed>}
+ */
+function strategyCommandRerankerRun(bool $rerankerRan): array
+{
+    $registry = new ApplicationContentRetrievalProviderRegistry;
+    $registry->register(new RetrievalStrategyCommandContentProvider(User::class));
+    app()->instance(ApplicationContentRetrievalProviderRegistryInterface::class, $registry);
+
+    $off = strategyCommandResult(['1', '2'], [
+        'keyword' => strategyCommandRanking(['1', '2']),
+        'vector' => strategyCommandRanking(['1', '2']),
+        'hybrid' => strategyCommandRanking(['1', '2']),
+    ]);
+    $on = new AdvancedSearchResult(hits: $off->hits, total: $off->total, page: 1, perPage: 2, totalPages: 1, meta: ['reranked' => $rerankerRan]);
+    app()->instance(PerStrategyEngineRetrieverInterface::class, new FakePerStrategyEngineRetriever($off, $on));
+
+    $embedder = Mockery::mock(ITextEmbedder::class);
+    $embedder->shouldReceive('embed')->andReturn([0.1, 0.2, 0.3]);
+    app()->instance(ITextEmbedder::class, $embedder);
+
+    $directory = sys_get_temp_dir() . '/laraplate-ai-strategy-reranker-' . bin2hex(random_bytes(5));
+    mkdir($directory, 0700, true);
+    $dataset_path = $directory . '/dataset.json';
+    $output_path = $directory . '/report.json';
+    file_put_contents($dataset_path, json_encode([
+        'source' => 'cms.strategy_records',
+        'data_classification' => 'synthetic',
+        'version' => '1',
+        'provider_version' => 'fake-v1',
+        'corpus_revision' => 'generated-1',
+        'cases' => [[
+            'id' => 'exact',
+            'query' => 'strategy query',
+            'locale' => 'en',
+            'limit' => 5,
+            'expected_hit_ids' => ['cms.strategy_records:1'],
+            'expected_citation_references' => [],
+            'expect_authorized_empty' => false,
+            'expect_supported_answer' => false,
+            'expect_abstention' => false,
+            'slices' => [],
+            'authorization' => ['permission' => 'evaluation.contents.select', 'filters' => null],
+        ]],
+    ], JSON_THROW_ON_ERROR));
+
+    try {
+        $exit = Artisan::call('ai:evaluate-retrieval-strategies', [
+            '--dataset' => $dataset_path,
+            '--source' => 'cms.strategy_records',
+            '--output' => $output_path,
+        ]);
+
+        return [
+            'exit' => $exit,
+            'output' => Artisan::output(),
+            'report' => json_decode((string) file_get_contents($output_path), true, flags: JSON_THROW_ON_ERROR),
+        ];
+    } finally {
+        @unlink($output_path);
+        @unlink($dataset_path);
+        @rmdir($directory);
+    }
+}
+
+it('warns when the reranker did not run, because the reranked figures are then the fused order', function (): void {
+    $run = strategyCommandRerankerRun(rerankerRan: false);
+
+    expect($run['exit'])->toBe(0)
+        ->and($run['output'])->toContain('Reranker did not run')
+        ->and($run['output'])->toContain('0 of 1')
+        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run']);
+});
+
+it('says nothing about the reranker when it ran', function (): void {
+    $run = strategyCommandRerankerRun(rerankerRan: true);
+
+    expect($run['exit'])->toBe(0)
+        ->and($run['output'])->not->toContain('Reranker')
+        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran']);
 });

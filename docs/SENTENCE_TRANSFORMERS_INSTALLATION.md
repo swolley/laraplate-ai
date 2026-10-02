@@ -293,7 +293,7 @@ After dimension or model changes for RAG, run `php artisan ai:index-rag-docs --f
 
 ## Optional: cross-encoder reranker
 
-Hybrid search can call a **separate** HTTP service for reranking (default `http://127.0.0.1:8001/score`, env `CROSS_ENCODER_ENDPOINT`). Not required for embeddings; if down, search returns unreranked results. Do not share a port with the embedding API.
+Hybrid search can call a **separate** HTTP service for reranking (default `http://127.0.0.1:8001/score`, env `CROSS_ENCODER_ENDPOINT`). Not required for embeddings; if down, or if it answers with anything but one numeric score per pair, search returns unreranked results (`meta.reranked = false`, a warning in the log). The evaluation commands (`ai:evaluate-retrieval-strategies`, `ai:tune-retrieval`) warn when it did not run, because their `reranked` figures are then the fused order. Do not share a port with the embedding API.
 
 ---
 
