@@ -28,6 +28,21 @@ final readonly class ApplicationContentSignalDeadline
     }
 
     /**
+     * Whether the process already has an alarm armed, such as a queue worker's job timeout.
+     * Reading it cancels it, so it is armed again with the seconds it had left.
+     */
+    public static function alarmPending(): bool
+    {
+        $remaining_seconds = pcntl_alarm(0);
+
+        if ($remaining_seconds > 0) {
+            pcntl_alarm($remaining_seconds);
+        }
+
+        return $remaining_seconds > 0;
+    }
+
+    /**
      * @template TReturn
      *
      * @param  callable(): TReturn  $operation

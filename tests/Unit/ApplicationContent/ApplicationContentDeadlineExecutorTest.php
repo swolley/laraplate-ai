@@ -41,3 +41,30 @@ it('still interrupts with a signal when signals are explicitly allowed', functio
 
     expect($executor->run(static fn (): string => 'fast', 5))->toBe('fast');
 });
+
+it('falls back to the soft deadline and keeps the alarm of a queue worker', function (): void {
+    if (! ApplicationContentSignalDeadline::supported()) {
+        $this->markTestSkipped('pcntl signals unavailable in this environment.');
+    }
+
+    $worker_handler = static function (): void {};
+    $previous_handler = pcntl_signal_get_handler(SIGALRM);
+    pcntl_signal(SIGALRM, $worker_handler);
+    pcntl_alarm(30);
+
+    try {
+        $executor = new ApplicationContentDeadlineExecutor(signalsAllowed: true);
+
+        expect($executor->run(static fn (): string => 'payload', 5))->toBe('payload')
+            ->and(fn (): mixed => $executor->run(static function (): string {
+                usleep(1_100_000);
+
+                return 'too slow';
+            }, 1))->toThrow(ApplicationContentDeadlineExceededException::class)
+            ->and(pcntl_signal_get_handler(SIGALRM))->toBe($worker_handler)
+            ->and(pcntl_alarm(0))->toBeGreaterThan(0);
+    } finally {
+        pcntl_alarm(0);
+        pcntl_signal(SIGALRM, $previous_handler);
+    }
+});

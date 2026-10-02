@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Modules\AI\Concurrency\ApplicationContentSignalDeadline;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
@@ -255,7 +256,7 @@ it('fails closed on provider denial and interrupts retrieval at the configured d
     ])->and($elapsed_milliseconds)->toBeLessThan(1500);
 });
 
-it('preserves signal state and refuses to replace an active process alarm', function (): void {
+it('preserves signal state and never replaces an active process alarm', function (): void {
     $executor = new ApplicationContentDeadlineExecutor;
     $previous_handler = pcntl_signal_get_handler(SIGALRM);
 
@@ -275,7 +276,8 @@ it('preserves signal state and refuses to replace an active process alarm', func
     pcntl_alarm(5);
 
     try {
-        expect(fn () => $executor->run(static fn (): string => 'unreachable', 1))
+        expect($executor->run(static fn (): string => 'soft deadline', 1))->toBe('soft deadline')
+            ->and(fn () => (new ApplicationContentSignalDeadline)->run(static fn (): string => 'unreachable', 1))
             ->toThrow(LogicException::class)
             ->and(pcntl_alarm(0))->toBeGreaterThan(0);
     } finally {

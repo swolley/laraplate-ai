@@ -46,7 +46,9 @@ final readonly class ApplicationContentDeadlineExecutor
             return false;
         }
 
-        return ApplicationContentSignalDeadline::supported();
+        // A queue worker arms SIGALRM for its job timeout: replacing it would drop that timeout.
+        return ApplicationContentSignalDeadline::supported()
+            && ! ApplicationContentSignalDeadline::alarmPending();
     }
 
     /**
