@@ -328,7 +328,9 @@ corpus (driver `database-generated-fixture`), exact-match gated in CI:
 | Module | Baseline artifact | Fixture dataset | Gate test |
 |---|---|---|---|
 | CMS | `Modules/CMS/docs/evaluations/application-content/2026-07-record-baseline.json` | `Modules/CMS/tests/Fixtures/application-content/cms-contents.json` | `Modules/CMS/tests/Feature/ApplicationContent/CmsApplicationContentEvaluationBaselineTest.php` |
-| SAO | `Modules/SAO/docs/evaluations/application-content/2026-09-record-baseline.json` | `Modules/SAO/tests/Fixtures/application-content/sao-tickets.json` (anchored to the deterministic `SAO-1..SAO-8` dev tickets) | `Modules/SAO/tests/Feature/ApplicationContent/SaoApplicationContentEvaluationBaselineTest.php` |
+| SAO | `Modules/SAO/docs/evaluations/application-content/2026-09-record-baseline.json` | `Modules/SAO/tests/Fixtures/application-content/sao-tickets.json` (anchored to the deterministic `SAO-1..SAO-8` dev tickets, seeded by `Modules\SAO\Tests\Support\ApplicationContent\EvaluationTicketCorpus`) | `tests/Integration/ApplicationContent/SaoApplicationContentEvaluationBaselineTest.php` in the application, skipped when AI or SAO is not installed |
+
+A gate that scores another module's provider needs both modules, which do not depend on each other, so it lives in the application's `tests/Integration` and skips itself when either module is missing; the module keeps its dataset, its corpus seeding and a test of its own provider over the dataset. The CMS gate still sits in CMS and is due to move the same way.
 
 Regenerate a baseline by running its gate test with
 `APP_CONTENT_BASELINE_REGEN=1` — this rewrites the artifact from the fresh
