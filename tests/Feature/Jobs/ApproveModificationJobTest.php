@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Auth;
 use Modules\AI\Data\ModerationResult;
 use Modules\AI\Enums\ModerationApprovalMode;
 use Modules\AI\Enums\ModerationVerdict;
@@ -276,4 +277,24 @@ it('does not vote when ai votes are disabled and the analysis fails', function (
 
     expect($modification->fresh()->disapprovals()->count())->toBe(0)
         ->and($modification->fresh()->disapprovers_required)->toBe(1);
+});
+
+it('votes as the system user without rotating its remember token or leaving it authenticated', function (): void {
+    $this->system_user->forceFill(['remember_token' => 'kept-token'])->save();
+    $modification = createCommentModification();
+
+    $service = Mockery::mock(ModerationService::class);
+    $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(
+        verdict: ModerationVerdict::Approve,
+        confidence: 0.99,
+        categories: [],
+        reason: 'Clearly acceptable.',
+        safeToAutoApprove: true,
+    ));
+
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry(testModerationRequest()), app(ModerationSystemUser::class));
+
+    expect($this->system_user->fresh()->remember_token)->toBe('kept-token')
+        ->and(Auth::user())->toBeNull()
+        ->and($modification->fresh()->approvals()->where('approver_id', $this->system_user->id)->exists())->toBeTrue();
 });

@@ -216,14 +216,24 @@ final class ApproveModificationJob implements ShouldQueue
         ], $extra);
     }
 
+    /**
+     * Act as the system user for the duration of the callback, then restore whoever was
+     * authenticated before. Sets the guard's user instead of logging in and out: a logout
+     * would rotate the system user's remember token on every vote.
+     */
     private function asSystemUser(User $system_user, callable $callback): void
     {
-        Auth::login($system_user);
+        $previous_user = Auth::user();
+        Auth::setUser($system_user);
 
         try {
             $callback();
         } finally {
-            Auth::logout();
+            if ($previous_user !== null) {
+                Auth::setUser($previous_user);
+            } else {
+                Auth::forgetUser();
+            }
         }
     }
 }

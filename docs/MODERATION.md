@@ -62,7 +62,7 @@ Actions:
 1. `ModerationContextBuilderRegistry::build($modification)`
 2. `ModerationService::analyze($context)` → `ModerationResult`. If the analysis fails, the uncertain fallback applies (only when AI votes are enabled).
 3. Apply policy (threshold / dual / uncertain fallback), which sets the quorum: auto approve/reject 1/1, dual 2/2, uncertain fallback 1 approver / 2 disapprovers
-4. Core `ModificationVoteService::castWithQuorum()` as system user: sets that quorum, records the vote with its `meta`, and applies the decision in one transaction. The quorum counts votes already cast (for example an author's approve credit), so a lowered quorum that existing votes reach is applied, never left pending. A failure while voting fails the job (it is retried); it does not fall back to a second vote.
+4. Core `ModificationVoteService::castWithQuorum()` as system user: sets that quorum, records the vote with its `meta`, and applies the decision in one transaction. The quorum counts votes already cast (for example an author's approve credit), so a lowered quorum that existing votes reach is applied, never left pending. A failure while voting fails the job (it is retried); it does not fall back to a second vote. The job acts as the system user by setting the guard's user and restoring the previous one afterwards, without logging in or out, so the system user's remember token is never rotated.
 5. `ModificationPreProcessingCompleted('ai_approval')`
 
 ### Service: `ModerationService`
