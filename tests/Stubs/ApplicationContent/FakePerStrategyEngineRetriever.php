@@ -18,7 +18,7 @@ use Modules\Core\Search\DTOs\AdvancedSearchResult;
 final class FakePerStrategyEngineRetriever implements PerStrategyEngineRetrieverInterface
 {
     /**
-     * @var list<array{model: class-string<Model>, query: string, useReranker: bool, limit: int, vector: ?list<float>}>
+     * @var list<array{model: class-string<Model>, query: string, useReranker: bool, limit: int, vector: ?list<float>, locale: ?string}>
      */
     public array $calls = [];
 
@@ -27,7 +27,7 @@ final class FakePerStrategyEngineRetriever implements PerStrategyEngineRetriever
         private readonly AdvancedSearchResult $on,
     ) {}
 
-    public function retrieve(Model $model, string $query, bool $useReranker, int $limit, ?array $vector): AdvancedSearchResult
+    public function retrieve(Model $model, string $query, bool $useReranker, int $limit, ?array $vector, ?string $locale = null): AdvancedSearchResult
     {
         $this->calls[] = [
             'model' => $model::class,
@@ -35,6 +35,7 @@ final class FakePerStrategyEngineRetriever implements PerStrategyEngineRetriever
             'useReranker' => $useReranker,
             'limit' => $limit,
             'vector' => $vector,
+            'locale' => $locale,
         ];
 
         return $useReranker ? $this->on : $this->off;

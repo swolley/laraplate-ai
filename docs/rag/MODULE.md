@@ -236,7 +236,7 @@ Their outputs feed committed baselines (CI regression gates) and human decisions
 configuration. Nothing in the request path consumes an evaluation artifact. The retrieval pipeline
 they exercise is documented in `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
 
-`php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` evaluates a registered provider without calling the chat model. Datasets must declare synthetic data, typed evaluation-only authorization filters, provider/corpus revisions, and expected safe references. Reports contain aggregate and locale/category-sliced hit@5, reciprocal rank, precision/recall/nDCG at k, citation precision, authorized-empty accuracy, supported-answer rate, abstention accuracy, unavailable rate, and latency; they omit queries, content, users, permissions, ACL expressions, and raw scores. Existing reports are not overwritten without `--force`. Ranking metrics and committed baselines: see "Application content evaluation" below.
+`php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` evaluates a registered provider without calling the chat model. Datasets must declare their classification (`synthetic`, or `private` and kept outside the project: see "Evaluation datasets" below), typed evaluation-only authorization filters, provider/corpus revisions, and expected safe references. Reports contain aggregate and locale/category-sliced hit@5, reciprocal rank, precision/recall/nDCG at k, citation precision, authorized-empty accuracy, supported-answer rate, abstention accuracy, unavailable rate, and latency; they omit queries, content, users, permissions, ACL expressions, and raw scores. Existing reports are not overwritten without `--force`. Ranking metrics and committed baselines: see "Application content evaluation" below.
 
 Phase 1 remains authenticated and non-guest only. Laraplate may attach the configured guest account to the session guard, but that principal cannot receive `InAppAssistance` or invoke application content retrieval. Session-based guest assistance is a Phase 2 decision requiring a dedicated `GuestAssistance` profile, session-subject conversation isolation in addition to the shared guest user ID, fixed source/field allowlists, a separate threat model and dataset, abuse/rate limits, and explicit approval. The provider contract is the extension point; it is not implicit permission to expose a provider to the guest.
 
@@ -370,6 +370,20 @@ divide by every scored case. A strategy that never runs on any scored case
 is omitted from the report. Design:
 `docs/superpowers/specs/2026-09-10-r3-phase2-per-strategy-breakdown-design.md`.
 
+### Evaluation datasets: `synthetic` and `private`
+
+A dataset of application content carries `data_classification`. `synthetic` is invented data, small
+enough to commit as a fixture (it gates the CI baselines). `private` is built from a real corpus:
+its queries are about content nobody may redistribute, so `ApplicationContentEvaluationDataset::fromFile()`
+refuses it inside the project directory (it resolves the real path, so a link from outside does not get
+around the rule) and it is kept in a folder outside the repository. What is committed from a private run
+is the report only: metrics, parameters and counts, no query text and no ids, plus the context it was
+measured in (`embedding`, `corpus.size`, `dataset.sha256`), so whoever holds the file can check it is
+the one measured. `ai:evaluate-retrieval-strategies` and `ai:tune-retrieval` run each case in the
+locale it declares (`PerStrategyEngineRetriever` sets it around the search and restores it): under
+another one a model's `LocaleScope` hides the rows with no translation in it, and the evaluation would
+never see them.
+
 ### Retrieval tuning (`ai:tune-retrieval`)
 
 `php artisan ai:tune-retrieval --source=<source> --dataset=<file> --output=<file>
@@ -420,7 +434,8 @@ same query analysis the runtime uses).
   `class_counts`, `train_case_count`, `holdout_case_count`, `train_class_counts`,
   `safeguards`, `committed`, `reranked`, `candidates` sorted by the metric with
   `metrics`, `per_class_metrics` and `delta_vs_committed`, `winner`, `validation`,
-  `noise`, `class_winners`, `class_winners_skipped`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
+  `noise`, `class_winners`, `class_winners_skipped`, plus the context it was measured in: `embedding`
+  (profile key, `service_model`, `dimensions`), `corpus.size` and `dataset.sha256`) is written atomically with `JSON_PRESERVE_ZERO_FRACTION` and
   never overwritten without `--force`. `committed` scores the currently committed
   profile the same way.
 - The command prints a ready-to-paste `default` / `classes` block and writes

@@ -6,6 +6,7 @@ namespace Modules\AI\Services\ApplicationContent\Evaluation;
 
 use Illuminate\Database\Eloquent\Model;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
+use Modules\Core\Helpers\LocaleContext;
 use Modules\Core\Search\DTOs\AdvancedSearchResult;
 use Modules\Core\Search\Services\EnsembleSearchService;
 use Override;
@@ -22,7 +23,7 @@ final readonly class PerStrategyEngineRetriever implements PerStrategyEngineRetr
     public function __construct(private EnsembleSearchService $ensemble) {}
 
     #[Override]
-    public function retrieve(Model $model, string $query, bool $useReranker, int $limit, ?array $vector): AdvancedSearchResult
+    public function retrieve(Model $model, string $query, bool $useReranker, int $limit, ?array $vector, ?string $locale = null): AdvancedSearchResult
     {
         $plan = [
             'retrieval' => ['use_fulltext' => true, 'use_vector' => true],
@@ -30,6 +31,16 @@ final readonly class PerStrategyEngineRetriever implements PerStrategyEngineRetr
             'ranking' => ['use_reranker' => $useReranker],
         ];
 
-        return $this->ensemble->search($model, $query, $plan, $vector, 1, $limit);
+        $previous = LocaleContext::get();
+
+        if ($locale !== null && $locale !== '') {
+            LocaleContext::set($locale);
+        }
+
+        try {
+            return $this->ensemble->search($model, $query, $plan, $vector, 1, $limit);
+        } finally {
+            LocaleContext::set($previous);
+        }
     }
 }

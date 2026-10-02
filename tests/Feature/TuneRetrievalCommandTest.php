@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
 use Modules\AI\Tests\Stubs\ApplicationContent\FakePerStrategyEngineRetriever;
 use Modules\AI\Tests\Stubs\ApplicationContent\RetrievalStrategyCommandContentProvider;
@@ -279,6 +280,53 @@ it('records a fixed noise margin given on the command line', function (): void {
 
         expect($report['safeguards']['noise_margin'])->toBe(0.05)
             ->and($report['noise']['margin'])->toBe(0.05);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('retrieves every case in the locale the case declares', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--noise-margin' => '0',
+        ])->assertSuccessful();
+
+        expect($fixture['retriever']->calls)->not->toBe([])
+            ->and(array_unique(array_column($fixture['retriever']->calls, 'locale')))->toBe(['en']);
+    } finally {
+        tuneCommandCleanup($fixture['directory']);
+    }
+});
+
+it('records the context a profile was measured in: the embedding model, the corpus size and the dataset fingerprint', function (): void {
+    $fixture = tuneCommandFixture();
+
+    try {
+        $this->artisan('ai:tune-retrieval', [
+            '--dataset' => $fixture['dataset'],
+            '--source' => 'cms.strategy_records',
+            '--output' => $fixture['output'],
+            '--noise-margin' => '0',
+        ])->assertSuccessful();
+
+        $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
+        $active = app(EmbeddingModelRegistry::class)->active();
+
+        // A profile only holds for the model whose vectors it was measured on, and a margin only for
+        // the corpus it was measured on: the report says which, so a stale profile can be told.
+        expect($report['embedding'])->toBe([
+            'profile' => $active->key,
+            'service_model' => $active->serviceModel,
+            'dimensions' => $active->dimensions,
+        ])
+            ->and($report['corpus']['size'])->toBeInt()
+            // Whoever holds the private dataset can check it is the one measured; nobody else sees it.
+            ->and($report['dataset']['sha256'])->toBe(hash_file('sha256', $fixture['dataset']));
     } finally {
         tuneCommandCleanup($fixture['directory']);
     }

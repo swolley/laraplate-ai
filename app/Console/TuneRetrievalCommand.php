@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationCase;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
@@ -143,10 +144,11 @@ final class TuneRetrievalCommand extends Command
                 static function (ApplicationContentEvaluationCase $case, bool $useReranker) use (&$vectors, $embedder, $retriever, $model): AdvancedSearchResult {
                     $vectors[$case->id] ??= $embedder->embed($case->query);
 
-                    return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id]);
+                    return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id], $case->locale);
                 },
                 $safeguards,
             );
+            $report = $this->withContext($report, $model, $dataset_path);
             $encoded = json_encode(
                 $report,
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR,
@@ -177,6 +179,34 @@ final class TuneRetrievalCommand extends Command
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * What the numbers were measured on. A profile holds for the embedding model whose vectors it was
+     * tuned on and for a corpus of that kind, so a report that does not say which cannot tell a stale
+     * profile from a current one. The fingerprint ties the report to a dataset that is never published:
+     * whoever holds the file can check it is the one measured, nobody else sees it.
+     *
+     * @param  array<string, mixed>  $report
+     * @return array<string, mixed>
+     */
+    private function withContext(array $report, Model $model, string $dataset_path): array
+    {
+        $active = app(EmbeddingModelRegistry::class)->active();
+
+        // The population the index holds, not query(): a global scope such as LocaleScope hides rows.
+        $corpus = method_exists($model, 'makeAllSearchableQuery') ? $model::makeAllSearchableQuery() : $model::query();
+
+        $dataset = is_array($report['dataset'] ?? null) ? $report['dataset'] : [];
+        $report['dataset'] = [...$dataset, 'sha256' => hash_file('sha256', $dataset_path)];
+        $report['embedding'] = [
+            'profile' => $active->key,
+            'service_model' => $active->serviceModel,
+            'dimensions' => $active->dimensions,
+        ];
+        $report['corpus'] = ['size' => $corpus->count()];
+
+        return $report;
     }
 
     /**
