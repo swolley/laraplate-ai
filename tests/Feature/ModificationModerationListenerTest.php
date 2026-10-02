@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Listeners\HandleModificationModerationListener;
 use Modules\AI\Services\ModerationEntitySettings;
-use Modules\CMS\Models\Comment;
-use Modules\CMS\Services\CommentModerationAdapter;
+use Modules\AI\Tests\Stubs\Moderation\ModeratedTestModel;
+use Modules\AI\Tests\Stubs\Moderation\ModeratedTestModelAdapter;
 use Modules\Core\Approvals\Operation;
 use Modules\Core\Events\ModificationRequiresModeration;
 use Modules\Core\Models\Modification;
@@ -16,8 +16,9 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 
 beforeEach(function (): void {
+    ModeratedTestModel::createTable();
     $registry = app(ModerationAdapterRegistry::class);
-    $registry->register(app(CommentModerationAdapter::class));
+    $registry->register(new ModeratedTestModelAdapter());
 
     $this->system_user = User::factory()->create(['username' => 'system']);
     config([
@@ -26,14 +27,18 @@ beforeEach(function (): void {
         'permission.users.system' => 'system',
     ]);
 
-    config([ModerationEntitySettings::configKeyFor(new Comment()) => true]);
+    config([ModerationEntitySettings::configKeyFor(new ModeratedTestModel()) => true]);
+});
+
+afterEach(function (): void {
+    ModeratedTestModel::dropTable();
 });
 
 it('dispatches approve modification job', function (): void {
     Queue::fake();
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -55,7 +60,7 @@ it('skips when feature is disabled', function (): void {
     config(['ai.features.moderation.enabled' => false]);
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'active' => true,
         'operation' => Operation::Create,
@@ -71,10 +76,10 @@ it('skips when feature is disabled', function (): void {
 it('skips when ai moderation is disabled for the modifiable model', function (): void {
     Queue::fake();
 
-    config([ModerationEntitySettings::configKeyFor(new Comment()) => false]);
+    config([ModerationEntitySettings::configKeyFor(new ModeratedTestModel()) => false]);
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -113,7 +118,7 @@ it('skips when the system user is not configured', function (): void {
     config(['permission.users.system' => '']);
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -135,7 +140,7 @@ it('skips when no user carries the configured system username', function (): voi
     config(['permission.users.system' => 'no-such-system-user']);
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -158,7 +163,7 @@ it('skips inactive modifications', function (): void {
     Queue::fake();
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -179,7 +184,7 @@ it('caches async moderation events for later correlation', function (): void {
     Queue::fake();
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -209,7 +214,7 @@ it('does not cache sync moderation events', function (): void {
     Queue::fake();
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
@@ -231,15 +236,11 @@ it('does not cache sync moderation events', function (): void {
 it('evaluates moderation support from a loaded modifiable model', function (): void {
     Queue::fake();
 
-    $content = createMinimalTestContentForComments();
-    $comment = Comment::factory()->approved()->create([
-        'content_id' => $content->id,
-        'user_id' => $this->system_user->id,
-    ]);
+    $moderated = ModeratedTestModel::query()->create(['body' => 'Hi']);
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
-        'modifiable_id' => $comment->id,
+        'modifiable_type' => ModeratedTestModel::class,
+        'modifiable_id' => $moderated->id,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,
         'active' => true,
@@ -249,7 +250,7 @@ it('evaluates moderation support from a loaded modifiable model', function (): v
         'md5' => md5('loaded-modifiable'),
         'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
     ]);
-    $modification->setRelation('modifiable', $comment);
+    $modification->setRelation('modifiable', $moderated);
 
     app(HandleModificationModerationListener::class)->handle(new ModificationRequiresModeration($modification));
 
@@ -318,14 +319,14 @@ it('skips when the modifiable model does not use approval workflows', function (
     Queue::assertNothingPushed();
 
     app()->forgetInstance(ModerationAdapterRegistry::class);
-    app(ModerationAdapterRegistry::class)->register(app(CommentModerationAdapter::class));
+    app(ModerationAdapterRegistry::class)->register(new ModeratedTestModelAdapter());
 });
 
 it('does not cache events when the modification has no cacheable key', function (): void {
     Queue::fake();
 
     $modification = Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $this->system_user->id,
         'modifier_type' => User::class,

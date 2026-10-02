@@ -9,7 +9,7 @@ use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationService;
 use Modules\AI\Services\ModerationSystemUser;
-use Modules\CMS\Models\Comment;
+use Modules\AI\Tests\Stubs\Moderation\ModeratedTestModel;
 use Modules\Core\Approvals\Operation;
 use Modules\Core\Data\ModerationInput;
 use Modules\Core\Data\ModerationRequest;
@@ -23,7 +23,7 @@ use Modules\Core\Services\ModerationAdapterRegistry;
 
 beforeEach(function (): void {
     LocaleContext::set('en');
-    $this->content = createMinimalTestContentForComments();
+    ModeratedTestModel::createTable();
 
     $user_class = user_class();
     $this->system_user = $user_class::factory()->create([
@@ -42,20 +42,20 @@ beforeEach(function (): void {
     ]);
 });
 
-function createCommentModification(array $changes = []): Modification
+afterEach(function (): void {
+    ModeratedTestModel::dropTable();
+});
+
+function createModeratedModification(array $changes = []): Modification
 {
-    $content_id = test()->content->id;
     $author = User::factory()->create();
 
     $defaults = [
-        'content_id' => ['original' => null, 'modified' => $content_id],
-        'user_id' => ['original' => null, 'modified' => $author->id],
-        'body' => ['original' => null, 'modified' => 'Test comment body'],
-        'locale' => ['original' => null, 'modified' => 'en'],
+        'body' => ['original' => null, 'modified' => 'Test body'],
     ];
 
     return Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => $author->id,
         'modifier_type' => User::class,
@@ -77,13 +77,13 @@ function mockModerationRegistry(ModerationRequest $request): ModerationAdapterRe
     return $registry;
 }
 
-function testModerationRequest(string $body = 'Test comment body'): ModerationRequest
+function testModerationRequest(string $body = 'Test body'): ModerationRequest
 {
     $input = new ModerationInput(
         subjectText: $body,
         locale: 'en',
-        contextSections: ['Article title' => 'Title'],
-        profile: 'cms.comment',
+        contextSections: ['Context' => 'Title'],
+        profile: 'test.moderated',
     );
 
     return new ModerationRequest(
@@ -94,7 +94,7 @@ function testModerationRequest(string $body = 'Test comment body'): ModerationRe
 }
 
 it('casts preliminary disapprove when uncertain and stores meta on disapproval', function (): void {
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
 
     $result = new ModerationResult(
         verdict: ModerationVerdict::Uncertain,
@@ -127,7 +127,7 @@ it('casts preliminary disapprove when uncertain and stores meta on disapproval',
 });
 
 it('auto approves when confidence is high and stores meta on approval', function (): void {
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
 
     $result = new ModerationResult(
         verdict: ModerationVerdict::Approve,
@@ -146,7 +146,7 @@ it('auto approves when confidence is high and stores meta on approval', function
 
     $approval = Approval::query()->where('modification_id', $modification->id)->first();
 
-    expect(Comment::withoutGlobalScopes()->count())->toBe(1)
+    expect(ModeratedTestModel::query()->count())->toBe(1)
         ->and($approval?->meta)->toMatchArray([
             'source' => 'ai',
             'status' => 'auto_approved',
@@ -156,7 +156,7 @@ it('auto approves when confidence is high and stores meta on approval', function
 });
 
 it('auto rejects when verdict is reject with high confidence and stores meta on disapproval', function (): void {
-    $modification = createCommentModification([
+    $modification = createModeratedModification([
         'body' => ['original' => null, 'modified' => 'Spam spam spam'],
     ]);
 
@@ -177,7 +177,7 @@ it('auto rejects when verdict is reject with high confidence and stores meta on 
 
     $disapproval = Disapproval::query()->where('modification_id', $modification->id)->first();
 
-    expect(Comment::withoutGlobalScopes()->count())->toBe(0)
+    expect(ModeratedTestModel::query()->count())->toBe(0)
         ->and($disapproval?->meta)->toMatchArray([
             'source' => 'ai',
             'status' => 'auto_rejected',
@@ -187,8 +187,8 @@ it('auto rejects when verdict is reject with high confidence and stores meta on 
         ]);
 });
 
-it('never publishes a comment a human rejects after the AI preliminary disapproval', function (): void {
-    $modification = createCommentModification();
+it('never applies a request a human rejects after the AI preliminary disapproval', function (): void {
+    $modification = createModeratedModification();
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(
         verdict: ModerationVerdict::Uncertain,
@@ -209,11 +209,11 @@ it('never publishes a comment a human rejects after the AI preliminary disapprov
 
     expect($modification->fresh()->active)->toBeFalse()
         ->and($modification->fresh()->disapprovals()->count())->toBe(2)
-        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(0);
+        ->and(ModeratedTestModel::query()->count())->toBe(0);
 });
 
 it('applies an auto approval when the existing votes already exceed the lowered quorum', function (): void {
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
     $modification->update(['approvers_required' => 2]);
     Approval::query()->create([
         'approver_id' => User::factory()->create()->id,
@@ -235,11 +235,11 @@ it('applies an auto approval when the existing votes already exceed the lowered 
 
     expect($modification->fresh()->active)->toBeFalse()
         ->and($modification->fresh()->approvals()->count())->toBe(2)
-        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(1);
+        ->and(ModeratedTestModel::query()->count())->toBe(1);
 });
 
 it('applies the approval quorum the existing votes reach when the uncertain fallback lowers it', function (): void {
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
     $modification->update(['approvers_required' => 2]);
     Approval::query()->create([
         'approver_id' => User::factory()->create()->id,
@@ -263,12 +263,12 @@ it('applies the approval quorum the existing votes reach when the uncertain fall
     expect($modification->active)->toBeFalse()
         ->and($modification->approvers_required)->toBe(1)
         ->and($modification->disapprovals()->count())->toBe(1)
-        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(1);
+        ->and(ModeratedTestModel::query()->count())->toBe(1);
 });
 
 it('does not vote when ai votes are disabled and the analysis fails', function (): void {
     config(['ai.features.moderation.votes' => false]);
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
 
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andThrow(new RuntimeException('provider down'));
@@ -281,7 +281,7 @@ it('does not vote when ai votes are disabled and the analysis fails', function (
 
 it('votes as the system user without rotating its remember token or leaving it authenticated', function (): void {
     $this->system_user->forceFill(['remember_token' => 'kept-token'])->save();
-    $modification = createCommentModification();
+    $modification = createModeratedModification();
 
     $service = Mockery::mock(ModerationService::class);
     $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(

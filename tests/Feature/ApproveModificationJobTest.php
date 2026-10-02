@@ -8,7 +8,7 @@ use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Jobs\ApproveModificationJob;
 use Modules\AI\Services\ModerationService;
 use Modules\AI\Services\ModerationSystemUser;
-use Modules\CMS\Models\Comment;
+use Modules\AI\Tests\Stubs\Moderation\ModeratedTestModel;
 use Modules\Core\Approvals\Operation;
 use Modules\Core\Data\ModerationInput;
 use Modules\Core\Data\ModerationRequest;
@@ -21,6 +21,7 @@ use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
 
 beforeEach(function (): void {
+    ModeratedTestModel::createTable();
     $user_class = user_class();
     $this->system_user = $user_class::factory()->create(['username' => 'ai-moderator']);
     $this->system_user->assignRole(Role::findOrCreate('superadmin', 'web'));
@@ -35,10 +36,14 @@ beforeEach(function (): void {
     ]);
 });
 
-function createCommentModerationModification(): Modification
+afterEach(function (): void {
+    ModeratedTestModel::dropTable();
+});
+
+function createPendingModeration(): Modification
 {
     return Modification::query()->create([
-        'modifiable_type' => Comment::class,
+        'modifiable_type' => ModeratedTestModel::class,
         'modifiable_id' => null,
         'modifier_id' => User::factory()->create()->id,
         'modifier_type' => User::class,
@@ -80,7 +85,7 @@ function bindModerationStack(ModerationResult $result, bool $supports = true): v
 it('skips inactive modifications', function (): void {
     Event::fake([ModificationPreProcessingCompleted::class]);
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
     $modification->update(['active' => false]);
 
     (new ApproveModificationJob($modification))->handle(
@@ -96,7 +101,7 @@ it('skips when the system user is not configured', function (): void {
     Event::fake([ModificationPreProcessingCompleted::class]);
     config(['permission.users.system' => '']);
 
-    (new ApproveModificationJob(createCommentModerationModification()))->handle(
+    (new ApproveModificationJob(createPendingModeration()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
         app(ModerationSystemUser::class),
@@ -109,7 +114,7 @@ it('skips when no user carries the configured system username', function (): voi
     Event::fake([ModificationPreProcessingCompleted::class]);
     config(['permission.users.system' => 'no-such-system-user']);
 
-    (new ApproveModificationJob(createCommentModerationModification()))->handle(
+    (new ApproveModificationJob(createPendingModeration()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
         app(ModerationSystemUser::class),
@@ -133,7 +138,7 @@ it('dispatches preprocessing completed without voting when adapter is unsupporte
         supports: false,
     );
 
-    (new ApproveModificationJob(createCommentModerationModification()))->handle(
+    (new ApproveModificationJob(createPendingModeration()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
         app(ModerationSystemUser::class),
@@ -155,7 +160,7 @@ it('skips voting when ai participation is disabled', function (): void {
         safeToAutoApprove: true,
     ));
 
-    (new ApproveModificationJob(createCommentModerationModification()))->handle(
+    (new ApproveModificationJob(createPendingModeration()))->handle(
         app(ModerationService::class),
         app(ModerationAdapterRegistry::class),
         app(ModerationSystemUser::class),
@@ -174,7 +179,7 @@ it('routes threshold mode to uncertain when auto approval is unsafe', function (
         safeToAutoApprove: false,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -188,16 +193,16 @@ it('routes threshold mode to uncertain when auto approval is unsafe', function (
 });
 
 it('ensures a modifiable placeholder exists before casting votes', function (): void {
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
     $job = new ApproveModificationJob($modification);
     $method = new ReflectionMethod($job, 'ensureModifiableRelation');
     $method->invoke($job, $modification);
 
-    expect($modification->modifiable)->toBeInstanceOf(Comment::class);
+    expect($modification->modifiable)->toBeInstanceOf(ModeratedTestModel::class);
 });
 
 it('builds structured vote metadata for ai moderation', function (): void {
-    $job = new ApproveModificationJob(createCommentModerationModification());
+    $job = new ApproveModificationJob(createPendingModeration());
     $method = new ReflectionMethod($job, 'buildVoteMeta');
     $result = new ModerationResult(
         verdict: ModerationVerdict::Reject,
@@ -229,7 +234,7 @@ it('auto rejects high-confidence rejections in threshold mode', function (): voi
         safeToAutoApprove: false,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -250,7 +255,7 @@ it('applies uncertain fallback when confidence is below threshold', function ():
         safeToAutoApprove: true,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -275,7 +280,7 @@ it('casts the first ai vote in dual approval mode', function (): void {
         safeToAutoApprove: true,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -301,7 +306,7 @@ it('casts preliminary disapproval in dual mode when ai rejects', function (): vo
         safeToAutoApprove: false,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -323,7 +328,7 @@ it('falls back to human review when moderation analysis fails', function (): voi
     $registry->shouldReceive('build')->andReturn(moderationRequestStub());
     app()->instance(ModerationAdapterRegistry::class, $registry);
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
@@ -346,7 +351,7 @@ it('always dispatches preprocessing completed event', function (): void {
         safeToAutoApprove: true,
     ));
 
-    $modification = createCommentModerationModification();
+    $modification = createPendingModeration();
 
     (new ApproveModificationJob($modification))->handle(
         app(ModerationService::class),
