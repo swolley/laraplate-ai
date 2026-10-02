@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Bus;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Listeners\HandleModificationApprovedTranslationListener;
-use Modules\CMS\Models\Comment;
+use Modules\AI\Tests\Stubs\TranslatableTestModel;
 use Modules\Core\Casts\SettingTypeEnum;
 use Modules\Core\Events\ModificationApproved;
 use Modules\Core\Helpers\LocaleContext;
@@ -16,16 +16,14 @@ use Modules\Core\Services\PerModelSettingResolver;
 beforeEach(function (): void {
     LocaleContext::set('en');
     app(PerModelSettingResolver::class)->flush();
-    $this->content = createMinimalTestContentForComments();
-    $this->user = Modules\Core\Models\User::factory()->create();
     config(['ai.features.translation.enabled' => true]);
 });
 
-it('dispatches translation job when auto translate is enabled for comments', function (): void {
+it('dispatches translation job when auto translate is enabled for the model', function (): void {
     Bus::fake();
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'translations.auto.' . (new Comment())->getTable(),
+        'name' => 'translations.auto.' . (new TranslatableTestModel())->getTable(),
         'value' => true,
         'type' => SettingTypeEnum::Boolean,
         'group_name' => 'translations',
@@ -34,18 +32,8 @@ it('dispatches translation job when auto translate is enabled for comments', fun
 
     app(PerModelSettingResolver::class)->flush();
 
-    $comment = Comment::factory()->approved()->create([
-        'content_id' => $this->content->id,
-        'user_id' => $this->user->id,
-    ]);
-
-    $modification = Modification::query()
-        ->where('modifiable_type', Comment::class)
-        ->where('modifiable_id', $comment->id)
-        ->first();
-
     (new HandleModificationApprovedTranslationListener())->handle(
-        new ModificationApproved($modification ?? new Modification(), $comment),
+        new ModificationApproved(new Modification(), new TranslatableTestModel()),
     );
 
     Bus::assertDispatched(TranslateModelJob::class);
@@ -54,13 +42,8 @@ it('dispatches translation job when auto translate is enabled for comments', fun
 it('does not dispatch when auto translate is disabled', function (): void {
     Bus::fake();
 
-    $comment = Comment::factory()->approved()->create([
-        'content_id' => $this->content->id,
-        'user_id' => $this->user->id,
-    ]);
-
     (new HandleModificationApprovedTranslationListener())->handle(
-        new ModificationApproved(new Modification(), $comment),
+        new ModificationApproved(new Modification(), new TranslatableTestModel()),
     );
 
     Bus::assertNothingDispatched();
@@ -83,7 +66,7 @@ it('does not dispatch when the translation feature is disabled', function (): vo
     config(['ai.features.translation.enabled' => false]);
 
     Setting::factory()->persistedWithoutApprovalCapture()->create([
-        'name' => 'translations.auto.' . (new Comment())->getTable(),
+        'name' => 'translations.auto.' . (new TranslatableTestModel())->getTable(),
         'value' => true,
         'type' => SettingTypeEnum::Boolean,
         'group_name' => 'translations',
@@ -92,13 +75,8 @@ it('does not dispatch when the translation feature is disabled', function (): vo
 
     app(PerModelSettingResolver::class)->flush();
 
-    $comment = Comment::factory()->approved()->create([
-        'content_id' => $this->content->id,
-        'user_id' => $this->user->id,
-    ]);
-
     (new HandleModificationApprovedTranslationListener())->handle(
-        new ModificationApproved(new Modification(), $comment),
+        new ModificationApproved(new Modification(), new TranslatableTestModel()),
     );
 
     Bus::assertNothingDispatched();
