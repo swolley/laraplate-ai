@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
-use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
@@ -32,9 +31,13 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     public int $tries = 3;
 
     /**
+     * Seconds the worker waits after each unhandled exception. Together with $maxExceptions it
+     * sets how long an embedding outage is tolerated before the job fails: four waits, 7.5 minutes,
+     * which stays inside the ten minutes the indexing coordination event lives in cache.
+     *
      * @var list<int>
      */
-    public array $backoff = [30, 60, 120];
+    public array $backoff = [30, 60, 120, 240];
 
     /**
      * Job timeout in seconds
@@ -49,7 +52,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      * Unhandled exceptions allowed before the job fails. Rate-limit releases are
      * not exceptions, so they do not consume this budget.
      */
-    public int $maxExceptions = 3;
+    public int $maxExceptions = 5;
 
     private bool $throttled = true;
 
@@ -61,10 +64,9 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     }
 
     /**
-     * Drops the queue throttling, for a run the operator paces by hand (a sync
-     * repair). Both middleware work by releasing the job back to the queue, which a
-     * sync run does not have: the job would be lost without an error, either skipped
-     * by the rate limiter or swallowed after a failed embed.
+     * Drops the rate limiter, for a run the operator paces by hand (a sync repair). It works by
+     * releasing the job back to the queue, which a sync run does not have: the job would be
+     * lost without an error, skipped once the limit is reached.
      */
     public function unthrottled(): self
     {
@@ -74,7 +76,13 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     }
 
     /**
-     * @return array<int, ThrottlesExceptions|RateLimited>
+     * Only the rate limiter, and no middleware that catches exceptions: an embedding error has to
+     * reach the worker, which counts it against $maxExceptions and fails the job once the budget is
+     * spent, so failed() can degrade the document to keyword-only. A catch-and-release middleware
+     * (ThrottlesExceptions) never let an error count, and the job waited out its whole retryUntil
+     * without failing or leaving a trace.
+     *
+     * @return array<int, RateLimited>
      */
     public function middleware(): array
     {
@@ -82,10 +90,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
             return [];
         }
 
-        return [
-            new ThrottlesExceptions(10, 5),
-            new RateLimited('embeddings'),
-        ];
+        return [new RateLimited('embeddings')];
     }
 
     /**

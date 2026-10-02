@@ -262,3 +262,48 @@ it('splits documents into requests according to the configured batch size', func
 
     expect($result)->toHaveCount(3);
 });
+
+/**
+ * @param  array<string, mixed>  $answer
+ */
+function sentenceTransformersProviderAnswering(array $answer, ?string $model, $client): SentenceTransformersEmbeddingsProvider
+{
+    $client->shouldReceive('post')->andReturn(new Response(200, [], json_encode($answer)));
+
+    $provider = new SentenceTransformersEmbeddingsProvider('http://localhost:8000', model: $model);
+    $property = (new ReflectionClass($provider))->getProperty('client');
+    $property->setValue($provider, $client);
+
+    return $provider;
+}
+
+it('rejects an answer from another model than the one requested, instead of storing its vectors', function (): void {
+    $provider = sentenceTransformersProviderAnswering([
+        'model' => 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+        'embeddings' => [array_fill(0, 384, 0.1)],
+    ], 'intfloat/multilingual-e5-small', $this->mockClient);
+
+    expect(fn () => $provider->embedText('hello'))
+        ->toThrow(EmbeddingsException::class, 'paraphrase-multilingual-MiniLM-L12-v2');
+});
+
+it('accepts an answer that names the requested model, whatever its organisation prefix', function (string $answered): void {
+    $provider = sentenceTransformersProviderAnswering([
+        'model' => $answered,
+        'embeddings' => [array_fill(0, 384, 0.1)],
+    ], 'intfloat/multilingual-e5-small', $this->mockClient);
+
+    expect($provider->embedText('hello'))->toHaveCount(384);
+})->with([
+    'the same name' => ['intfloat/multilingual-e5-small'],
+    'without the organisation' => ['multilingual-e5-small'],
+]);
+
+it('does not check the model when the service does not name it, or none was requested', function (?string $requested, array $answer): void {
+    $provider = sentenceTransformersProviderAnswering($answer, $requested, $this->mockClient);
+
+    expect($provider->embedText('hello'))->toHaveCount(384);
+})->with([
+    'an answer without a model' => ['intfloat/multilingual-e5-small', ['embeddings' => [array_fill(0, 384, 0.1)]]],
+    'no model requested' => [null, ['model' => 'any-model', 'embeddings' => [array_fill(0, 384, 0.1)]]],
+]);

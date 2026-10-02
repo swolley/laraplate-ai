@@ -5,9 +5,11 @@ declare(strict_types=1);
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\AI\Tests\Stubs\EmbeddableTestModel;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use NeuronAI\RAG\Document;
 
@@ -23,9 +25,25 @@ it('has correct properties', function (): void {
     $job = new GenerateEmbeddingsJob($model);
 
     expect($job->tries)->toBe(3)
-        ->and($job->backoff)->toBe([30, 60, 120])
+        ->and($job->backoff)->toBe([30, 60, 120, 240])
         ->and($job->timeout)->toBe(300)
-        ->and($job->maxExceptions)->toBe(3);
+        ->and($job->maxExceptions)->toBe(5);
+});
+
+it('spends its exception budget inside the ten minutes the indexing coordination event lives', function (): void {
+    $model = Mockery::mock(Model::class)->makePartial();
+    $model->id = 1;
+    $model->shouldReceive('getTable')->andReturn('test');
+
+    $job = new GenerateEmbeddingsJob($model);
+
+    // HandleModelIndexingListener keeps the event that FinalizeModelIndexingListener needs for ten
+    // minutes. A job that fails after the budget (maxExceptions - 1 backoffs between the attempts)
+    // must do so before that, or the document is indexed through the late fallback path.
+    $window = array_sum(array_slice($job->backoff, 0, $job->maxExceptions - 1));
+
+    expect($window)->toBeLessThan(10 * 60)
+        ->and(count($job->backoff))->toBeGreaterThanOrEqual($job->maxExceptions - 1);
 });
 
 it('uses a future time-based retryUntil so rate-limit releases do not kill the job', function (): void {
@@ -39,17 +57,44 @@ it('uses a future time-based retryUntil so rate-limit releases do not kill the j
         ->and($job->retryUntil()->getTimestamp())->toBeGreaterThan(now()->getTimestamp());
 });
 
-it('middleware returns ThrottlesExceptions and RateLimited', function (): void {
+it('middleware is the embeddings rate limiter alone: nothing catches an embedding error on the way', function (): void {
     $model = Mockery::mock(Model::class)->makePartial();
     $model->id = 1;
     $model->shouldReceive('getTable')->andReturn('test');
 
-    $job = new GenerateEmbeddingsJob($model);
-    $middleware = $job->middleware();
+    $middleware = (new GenerateEmbeddingsJob($model))->middleware();
 
-    expect($middleware)->toHaveCount(2)
-        ->and($middleware[0])->toBeInstanceOf(Illuminate\Queue\Middleware\ThrottlesExceptions::class)
-        ->and($middleware[1])->toBeInstanceOf(Illuminate\Queue\Middleware\RateLimited::class);
+    expect($middleware)->toHaveCount(1)
+        ->and($middleware[0])->toBeInstanceOf(Illuminate\Queue\Middleware\RateLimited::class);
+});
+
+it('has no middleware at all when unthrottled', function (): void {
+    $model = Mockery::mock(Model::class)->makePartial();
+    $model->id = 1;
+    $model->shouldReceive('getTable')->andReturn('test');
+
+    expect((new GenerateEmbeddingsJob($model))->unthrottled()->middleware())->toBe([]);
+});
+
+it('lets an embedding error reach the worker, so $maxExceptions can fail the job and failed() can degrade it', function (): void {
+    Event::fake([ModelPreProcessingCompleted::class]);
+
+    Schema::create('embeddable_test_models', function ($table): void {
+        $table->id();
+        $table->string('title')->nullable();
+    });
+
+    $model = new EmbeddableTestModel(['title' => 'Alpha']);
+    $model->saveQuietly();
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    $embedding_service->shouldReceive('embedDocumentsBatch')->andThrow(new RuntimeException('embedding service down'));
+    app()->instance(IEmbeddingService::class, $embedding_service);
+
+    // A catch-and-release middleware used to turn this into a silent retry that never counted as an
+    // exception, so the job waited out its 24 hour retryUntil without ever failing.
+    expect(fn () => dispatch_sync(new GenerateEmbeddingsJob($model)))
+        ->toThrow(RuntimeException::class, 'embedding service down');
 });
 
 it('returns early when prepareDataToEmbedByLocale returns an empty array', function (): void {

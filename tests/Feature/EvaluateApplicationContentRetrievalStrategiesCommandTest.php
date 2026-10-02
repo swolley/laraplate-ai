@@ -132,6 +132,10 @@ it('writes a per-strategy report using a fake engine retriever, with no Elastics
             '--output' => $output_path,
         ])->assertSuccessful();
 
+        // Each case runs in the locale it declares: under another one a model's LocaleScope hides
+        // the rows with no translation in it, and the evaluation would never see them.
+        expect(array_unique(array_column($retriever->calls, 'locale')))->toBe(['en']);
+
         $report = json_decode((string) file_get_contents($output_path), true, flags: JSON_THROW_ON_ERROR);
 
         expect($report['source'])->toBe('cms.strategy_records')

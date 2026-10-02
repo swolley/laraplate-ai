@@ -108,7 +108,7 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
                 static function (ApplicationContentEvaluationCase $case, bool $useReranker) use (&$vectors, $embedder, $retriever, $model): AdvancedSearchResult {
                     $vectors[$case->id] ??= $embedder->embed($case->query);
 
-                    return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id]);
+                    return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id], $case->locale);
                 },
             );
             $encoded = json_encode(

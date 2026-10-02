@@ -16,6 +16,15 @@ use Modules\Core\Casts\WhereClause;
 final readonly class ApplicationContentEvaluationDataset
 {
     /**
+     * `synthetic` is invented data, committed as a fixture. `private` is built from a real corpus,
+     * so it holds queries about content nobody may redistribute: {@see self::fromFile()} refuses it
+     * inside the project directory, where it could end up in a commit.
+     *
+     * @var list<string>
+     */
+    public const array CLASSIFICATIONS = ['synthetic', 'private'];
+
+    /**
      * @param  list<ApplicationContentEvaluationCase>  $cases
      */
     public function __construct(
@@ -39,7 +48,7 @@ final readonly class ApplicationContentEvaluationDataset
             || ! array_is_list($this->cases)
             || count(array_unique($ids)) !== count($ids)
             || $this->source !== ApplicationContentSourceDescriptor::normalizeSource($this->source)
-            || $this->dataClassification !== 'synthetic') {
+            || ! in_array($this->dataClassification, self::CLASSIFICATIONS, true)) {
             throw new InvalidArgumentException('Application content evaluation dataset is invalid.');
         }
     }
@@ -64,6 +73,10 @@ final readonly class ApplicationContentEvaluationDataset
 
         if (! is_array($data)) {
             throw new InvalidArgumentException('Application content evaluation dataset is invalid.');
+        }
+
+        if (($data['data_classification'] ?? null) === 'private') {
+            self::assertOutsideProject($path);
         }
 
         return self::fromArray($data);
@@ -105,6 +118,20 @@ final readonly class ApplicationContentEvaluationDataset
             source: self::string($data, 'source'),
             dataClassification: self::string($data, 'data_classification'),
         );
+    }
+
+    /**
+     * The real path is checked, so a link from outside the project to a file inside it does not
+     * get around the rule.
+     */
+    private static function assertOutsideProject(string $path): void
+    {
+        $real = realpath($path);
+        $project = realpath(base_path());
+
+        if ($real === false || ($project !== false && str_starts_with($real, $project . DIRECTORY_SEPARATOR))) {
+            throw new InvalidArgumentException('A private evaluation dataset must be kept outside the project directory, so it cannot be committed.');
+        }
     }
 
     /**

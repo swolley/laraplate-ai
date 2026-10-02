@@ -22,4 +22,18 @@ final readonly class EmbeddingModelProfile
         public string $similarity,
         public bool $normalize,
     ) {}
+
+    /**
+     * Whether two names designate the same service model: the last path segment, without case or
+     * spaces, so `sentence-transformers/all-MiniLM-L6-v2` is `all-MiniLM-L6-v2` and a name that only
+     * ends the same is not. A service reports a model with or without its organisation.
+     */
+    public static function sameServiceModel(string $first, string $second): bool
+    {
+        $normalize = static fn (string $name): string => mb_strtolower(basename(str_replace('\\', '/', mb_trim($name))));
+
+        $first = $normalize($first);
+
+        return $first !== '' && $first === $normalize($second);
+    }
 }

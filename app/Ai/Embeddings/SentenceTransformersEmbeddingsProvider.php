@@ -165,6 +165,15 @@ final class SentenceTransformersEmbeddingsProvider extends AbstractEmbeddingsPro
             throw new EmbeddingsException('SentenceTransformers returned unexpected format');
         }
 
+        // The embeddings are stored under the active profile, whatever model computed them. A service
+        // that names the model it ran lets a wrong one be refused here, instead of poisoning the index.
+        $answered = $payload['model'] ?? null;
+
+        if (is_string($answered) && $answered !== '' && is_string($this->model) && $this->model !== ''
+            && ! EmbeddingModelProfile::sameServiceModel($answered, $this->model)) {
+            throw new EmbeddingsException("SentenceTransformers served model \"{$answered}\" but \"{$this->model}\" was requested");
+        }
+
         $batch = [];
 
         foreach ($payload['embeddings'] as $embedding) {
