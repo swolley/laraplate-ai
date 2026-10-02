@@ -16,6 +16,7 @@ use Modules\AI\Tests\Stubs\MediaAnalysis\FakeMediaTranscriber;
 use Modules\AI\Tests\Stubs\MediaAnalysis\FakeMediaVisionAnalyzer;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Media;
+use Modules\Core\Models\User;
 
 function persistMedia(string $mime, string $hash): Media
 {
@@ -32,7 +33,7 @@ function persistMedia(string $mime, string $hash): Media
         'generated_conversions' => [],
         'responsive_images' => [],
         'order_column' => 1,
-        'model_type' => 'Modules\\CMS\\Models\\Content',
+        'model_type' => User::class,
         'model_id' => 1,
     ]);
     $media->save();

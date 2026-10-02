@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\AI\Models\MediaAnalysis;
 use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\Core\Models\Media;
+use Modules\Core\Models\User;
 
 function mediaWithHash(string $hash): Media
 {
@@ -22,7 +23,7 @@ function mediaWithHash(string $hash): Media
         'generated_conversions' => [],
         'responsive_images' => [],
         'order_column' => 1,
-        'model_type' => 'Modules\\CMS\\Models\\Content',
+        'model_type' => User::class,
         'model_id' => 1,
     ]);
 

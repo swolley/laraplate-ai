@@ -9,6 +9,7 @@ use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Models\Media;
 use Modules\Core\Models\MediaDraft;
 use Modules\Core\Models\Setting;
+use Modules\Core\Models\User;
 
 function claimedMedia(): Media
 {
@@ -21,7 +22,7 @@ function claimedMedia(): Media
         'mime_type' => 'image/jpeg',
         'disk' => 'public',
         'size' => 10,
-        'model_type' => 'Modules\\CMS\\Models\\Content',
+        'model_type' => User::class,
         'model_id' => 1,
         'custom_properties' => [],
     ]);

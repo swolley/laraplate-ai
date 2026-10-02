@@ -36,7 +36,7 @@ function claimedMediaWithAnalysis(string $hash = 'panel-hash'): Media
         'mime_type' => 'image/jpeg',
         'disk' => 'public',
         'size' => 1024,
-        'model_type' => 'Modules\\CMS\\Models\\Content',
+        'model_type' => User::class,
         'model_id' => 1,
         'custom_properties' => ['content_hash' => $hash],
         'manipulations' => [],
