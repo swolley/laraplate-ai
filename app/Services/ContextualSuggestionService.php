@@ -12,6 +12,7 @@ use DateTimeInterface;
 use Exception;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Date;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Models\ContextualSuggestion;
@@ -114,7 +115,7 @@ PROMPT;
 
         $cooldown_minutes = ai_config_int('ai.features.contextual_suggestions.cooldown_minutes', 5);
 
-        return $cooldown_minutes > now()->diffInMinutes($last_suggestion_at);
+        return $cooldown_minutes > Date::instance($last_suggestion_at)->diffInMinutes(now());
     }
 
     private function updateRateLimit(User $user): void

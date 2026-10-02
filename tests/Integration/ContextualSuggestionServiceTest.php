@@ -135,6 +135,19 @@ it('isRateLimited returns true when within cooldown', function (): void {
     expect($result)->toBeTrue();
 });
 
+it('isRateLimited returns false once the cooldown has passed, even while the entry is still cached', function (): void {
+    $service = new ContextualSuggestionService;
+    $method = new ReflectionMethod($service, 'isRateLimited');
+
+    $user = User::factory()->create();
+    config()->set('ai.features.contextual_suggestions.cooldown_minutes', 5);
+    Cache::put('ai:suggestion:rate:' . $user->id, now()->subMinutes(10), 3600);
+
+    $result = $method->invoke($service, $user);
+
+    expect($result)->toBeFalse();
+});
+
 it('updateRateLimit writes to cache', function (): void {
     $service = new ContextualSuggestionService;
     $method = new ReflectionMethod($service, 'updateRateLimit');
