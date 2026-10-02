@@ -210,3 +210,70 @@ it('never publishes a comment a human rejects after the AI preliminary disapprov
         ->and($modification->fresh()->disapprovals()->count())->toBe(2)
         ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(0);
 });
+
+it('applies an auto approval when the existing votes already exceed the lowered quorum', function (): void {
+    $modification = createCommentModification();
+    $modification->update(['approvers_required' => 2]);
+    Approval::query()->create([
+        'approver_id' => User::factory()->create()->id,
+        'approver_type' => User::class,
+        'modification_id' => $modification->id,
+        'meta' => ['source' => 'author_approve_permission'],
+    ]);
+
+    $service = Mockery::mock(ModerationService::class);
+    $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(
+        verdict: ModerationVerdict::Approve,
+        confidence: 0.99,
+        categories: [],
+        reason: 'Clearly acceptable.',
+        safeToAutoApprove: true,
+    ));
+
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry(testModerationRequest()), app(ModerationSystemUser::class));
+
+    expect($modification->fresh()->active)->toBeFalse()
+        ->and($modification->fresh()->approvals()->count())->toBe(2)
+        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(1);
+});
+
+it('applies the approval quorum the existing votes reach when the uncertain fallback lowers it', function (): void {
+    $modification = createCommentModification();
+    $modification->update(['approvers_required' => 2]);
+    Approval::query()->create([
+        'approver_id' => User::factory()->create()->id,
+        'approver_type' => User::class,
+        'modification_id' => $modification->id,
+    ]);
+
+    $service = Mockery::mock(ModerationService::class);
+    $service->shouldReceive('analyze')->once()->andReturn(new ModerationResult(
+        verdict: ModerationVerdict::Uncertain,
+        confidence: 0.4,
+        categories: [],
+        reason: 'Cannot determine safety.',
+        safeToAutoApprove: false,
+    ));
+
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry(testModerationRequest()), app(ModerationSystemUser::class));
+
+    $modification->refresh();
+
+    expect($modification->active)->toBeFalse()
+        ->and($modification->approvers_required)->toBe(1)
+        ->and($modification->disapprovals()->count())->toBe(1)
+        ->and(Comment::query()->withoutGlobalScopes()->count())->toBe(1);
+});
+
+it('does not vote when ai votes are disabled and the analysis fails', function (): void {
+    config(['ai.features.moderation.votes' => false]);
+    $modification = createCommentModification();
+
+    $service = Mockery::mock(ModerationService::class);
+    $service->shouldReceive('analyze')->once()->andThrow(new RuntimeException('provider down'));
+
+    (new ApproveModificationJob($modification))->handle($service, mockModerationRegistry(testModerationRequest()), app(ModerationSystemUser::class));
+
+    expect($modification->fresh()->disapprovals()->count())->toBe(0)
+        ->and($modification->fresh()->disapprovers_required)->toBe(1);
+});

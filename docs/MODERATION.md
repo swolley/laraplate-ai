@@ -60,11 +60,10 @@ Actions:
 ### Job: `ApproveModificationJob`
 
 1. `ModerationContextBuilderRegistry::build($modification)`
-2. `ModerationService::analyze($context)` → `ModerationResult`
-3. Apply policy (threshold / dual / uncertain fallback)
-4. `User::approve()` / `disapprove()` as system user (both go through Core's `ModificationVoteService`, which applies a completed decision and fires its event)
-5. Attach `meta` on latest vote row
-6. `ModificationPreProcessingCompleted('ai_approval')`
+2. `ModerationService::analyze($context)` → `ModerationResult`. If the analysis fails, the uncertain fallback applies (only when AI votes are enabled).
+3. Apply policy (threshold / dual / uncertain fallback), which sets the quorum: auto approve/reject 1/1, dual 2/2, uncertain fallback 1 approver / 2 disapprovers
+4. Core `ModificationVoteService::castWithQuorum()` as system user: sets that quorum, records the vote with its `meta`, and applies the decision in one transaction. The quorum counts votes already cast (for example an author's approve credit), so a lowered quorum that existing votes reach is applied, never left pending. A failure while voting fails the job (it is retried); it does not fall back to a second vote.
+5. `ModificationPreProcessingCompleted('ai_approval')`
 
 ### Service: `ModerationService`
 

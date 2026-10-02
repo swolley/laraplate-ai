@@ -13,17 +13,17 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Modules\AI\Data\ModerationResult;
 use Modules\AI\Enums\ModerationApprovalMode;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\AI\Services\ModerationService;
 use Modules\AI\Services\ModerationSystemUser;
 use Modules\Core\Events\ModificationPreProcessingCompleted;
-use Modules\Core\Models\Approval;
-use Modules\Core\Models\Disapproval;
 use Modules\Core\Models\Modification;
 use Modules\Core\Models\User;
 use Modules\Core\Services\ModerationAdapterRegistry;
+use Modules\Core\Services\ModificationVoteService;
 use Throwable;
 
 final class ApproveModificationJob implements ShouldQueue
@@ -59,26 +59,49 @@ final class ApproveModificationJob implements ShouldQueue
                 return;
             }
 
-            $request = $registry->build($modification);
-            $result = $service->analyze($request);
+            $result = $this->analyze($service, $registry, $modification);
 
             if (! ai_config_bool('ai.features.moderation.votes', true)) {
                 return;
             }
 
-            $approval_mode = ModerationApprovalMode::fromConfig();
+            if (! $result instanceof ModerationResult) {
+                $this->applyUncertainFallback($modification, $system_user);
 
-            if ($approval_mode === ModerationApprovalMode::Dual) {
+                return;
+            }
+
+            if (ModerationApprovalMode::fromConfig() === ModerationApprovalMode::Dual) {
                 $this->handleDualMode($modification, $system_user, $result);
 
                 return;
             }
 
             $this->handleThresholdMode($modification, $system_user, $result);
-        } catch (Throwable) {
-            $this->applyUncertainFallback($modification, $system_user);
         } finally {
             event(new ModificationPreProcessingCompleted($modification, 'ai_approval'));
+        }
+    }
+
+    /**
+     * The moderation verdict, or null when the analysis itself failed. Only the analysis falls
+     * back to human review: a failure while voting propagates, so the job is retried instead of
+     * replacing a vote already cast with the fallback one.
+     */
+    private function analyze(
+        ModerationService $service,
+        ModerationAdapterRegistry $registry,
+        Modification $modification,
+    ): ?ModerationResult {
+        try {
+            return $service->analyze($registry->build($modification));
+        } catch (Throwable $exception) {
+            Log::warning('AI moderation analysis failed; falling back to human review', [
+                'modification_id' => $modification->getKey(),
+                'error' => $exception->getMessage(),
+            ]);
+
+            return null;
         }
     }
 
@@ -91,21 +114,13 @@ final class ApproveModificationJob implements ShouldQueue
         $reject_threshold = ai_config_float('ai.features.moderation.threshold.reject', 0.85);
 
         if ($result->safeToAutoApprove && $result->confidence >= $approve_threshold) {
-            $modification->approvers_required = 1;
-            $modification->disapprovers_required = 1;
-            $modification->save();
-            $this->ensureModifiableRelation($modification);
-            $this->castApproval($system_user, $modification, $result->reason, $result, 'auto_approved');
+            $this->castVote($system_user, $modification, true, 1, 1, $result->reason, $this->buildVoteMeta($result, 'auto_approved'));
 
             return;
         }
 
         if ($result->verdict === ModerationVerdict::Reject && $result->confidence >= $reject_threshold) {
-            $modification->approvers_required = 1;
-            $modification->disapprovers_required = 1;
-            $modification->save();
-            $this->ensureModifiableRelation($modification);
-            $this->castDisapproval($system_user, $modification, $result->reason, $result, 'auto_rejected');
+            $this->castVote($system_user, $modification, false, 1, 1, $result->reason, $this->buildVoteMeta($result, 'auto_rejected'));
 
             return;
         }
@@ -118,30 +133,12 @@ final class ApproveModificationJob implements ShouldQueue
         User $system_user,
         ModerationResult $result,
     ): void {
-        $modification->approvers_required = 2;
-        $modification->disapprovers_required = 2;
-        $modification->save();
+        $approves = $result->verdict === ModerationVerdict::Approve;
 
-        $this->castAiFirstVote($system_user, $modification, $result);
-    }
-
-    private function castAiFirstVote(User $system_user, Modification $modification, ModerationResult $result): void
-    {
-        $this->ensureModifiableRelation($modification);
-
-        if ($result->verdict === ModerationVerdict::Approve) {
-            $this->castApproval($system_user, $modification, $result->reason, $result, 'requires_human_review', [
-                'requires_human_approval' => true,
-                'preliminary_disapproval' => false,
-            ]);
-
-            return;
-        }
-
-        $this->castDisapproval($system_user, $modification, $result->reason, $result, 'requires_human_review', [
+        $this->castVote($system_user, $modification, $approves, 2, 2, $result->reason, $this->buildVoteMeta($result, 'requires_human_review', [
             'requires_human_approval' => true,
-            'preliminary_disapproval' => true,
-        ]);
+            'preliminary_disapproval' => ! $approves,
+        ]));
     }
 
     private function ensureModifiableRelation(Modification $modification): void
@@ -159,90 +156,47 @@ final class ApproveModificationJob implements ShouldQueue
 
     private function applyUncertainFallback(
         Modification $modification,
-        ?User $system_user,
+        User $system_user,
         ?ModerationResult $result = null,
     ): void {
-        if ($system_user === null) {
-            return;
-        }
-
-        $modification->approvers_required = 1;
-        $modification->disapprovers_required = 2;
-        $modification->save();
-
         $reason = $result !== null
             ? 'AI preliminary reject (confidence ' . $result->confidence . '): ' . $result->reason
             : 'AI moderation failed; human review required.';
 
-        $this->ensureModifiableRelation($modification);
-        $this->castDisapproval($system_user, $modification, $reason, $result, 'requires_human_review', [
+        $this->castVote($system_user, $modification, false, 1, 2, $reason, $this->buildVoteMeta($result, 'requires_human_review', [
             'requires_human_approval' => true,
             'preliminary_disapproval' => true,
-        ]);
+        ]));
     }
 
     /**
-     * @param  array<string, mixed>  $extra
-     */
-    private function castApproval(
-        User $system_user,
-        Modification $modification,
-        string $reason,
-        ?ModerationResult $result,
-        string $status,
-        array $extra = [],
-    ): void {
-        $this->asSystemUser($system_user, function () use ($system_user, $modification, $reason): void {
-            $system_user->approve($modification, $reason);
-        });
-
-        $this->attachMetaToLatestApproval($modification, $system_user, $this->buildVoteMeta($result, $status, $extra));
-    }
-
-    /**
-     * @param  array<string, mixed>  $extra
-     */
-    private function castDisapproval(
-        User $system_user,
-        Modification $modification,
-        string $reason,
-        ?ModerationResult $result,
-        string $status,
-        array $extra = [],
-    ): void {
-        $this->asSystemUser($system_user, function () use ($system_user, $modification, $reason): void {
-            $system_user->disapprove($modification, $reason);
-        });
-
-        $this->attachMetaToLatestDisapproval($modification, $system_user, $this->buildVoteMeta($result, $status, $extra));
-    }
-
-    /**
+     * Cast the AI vote together with the quorum it implies, in one Core transaction, so a
+     * quorum the existing votes already reach is applied rather than left pending.
+     *
      * @param  array<string, mixed>  $meta
      */
-    private function attachMetaToLatestApproval(Modification $modification, User $system_user, array $meta): void
-    {
-        Approval::query()
-            ->where('modification_id', $modification->id)
-            ->where('approver_id', $system_user->getKey())
-            ->where('approver_type', $system_user->getMorphClass())
-            ->orderByDesc('id')
-            ->limit(1)
-            ->update(['meta' => $meta]);
-    }
+    private function castVote(
+        User $system_user,
+        Modification $modification,
+        bool $approval,
+        int $approvers_required,
+        int $disapprovers_required,
+        string $reason,
+        array $meta,
+    ): void {
+        $this->ensureModifiableRelation($modification);
 
-    /**
-     * @param  array<string, mixed>  $meta
-     */
-    private function attachMetaToLatestDisapproval(Modification $modification, User $system_user, array $meta): void
-    {
-        Disapproval::query()
-            ->where('modification_id', $modification->id)
-            ->where('disapprover_id', $system_user->getKey())
-            ->where('disapprover_type', $system_user->getMorphClass())
-            ->orderByDesc('id')
-            ->limit(1)
-            ->update(['meta' => $meta]);
+        $this->asSystemUser($system_user, static function () use ($system_user, $modification, $approval, $approvers_required, $disapprovers_required, $reason, $meta): void {
+            resolve(ModificationVoteService::class)->castWithQuorum(
+                $system_user,
+                $modification,
+                $approval,
+                $approvers_required,
+                $disapprovers_required,
+                $reason,
+                $meta,
+            );
+        });
     }
 
     /**
