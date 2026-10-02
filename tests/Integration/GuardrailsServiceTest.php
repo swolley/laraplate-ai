@@ -60,13 +60,12 @@ it('detects empty string as no lakera credentials', function (): void {
     expect($reflection->invoke($service))->toBeFalse();
 });
 
-it('ignores unexpected lakera payload shape', function (): void {
+it('rejects an unexpected lakera payload shape, so the caller falls back to the LLM check', function (): void {
     $service = new GuardrailsService;
     $reflection = new ReflectionMethod($service, 'assertLakeraSafe');
 
-    $reflection->invoke($service, ['unexpected' => true]);
-
-    expect(true)->toBeTrue();
+    expect(fn (): mixed => $reflection->invoke($service, ['unexpected' => true]))
+        ->toThrow(UnexpectedValueException::class, 'Lakera Guard returned an unexpected response.');
 });
 
 it('ignores non-array lakera result entries', function (): void {
