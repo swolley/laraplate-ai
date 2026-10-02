@@ -106,6 +106,8 @@ SENTENCE_TRANSFORMERS_URL=http://localhost:8000  # Sentence Transformers API URL
 SENTENCE_TRANSFORMERS_API_KEY=       # Sentence Transformers API key (optional)
 SENTENCE_TRANSFORMERS_TIMEOUT=30     # Per-request HTTP timeout in seconds (raise for slow CPU-bound services)
 SENTENCE_TRANSFORMERS_BATCH_SIZE=32  # Documents per /embed batch (lower it if one batch exceeds the timeout)
+CROSS_ENCODER_URL=                   # Base URL of the service exposing POST /score; falls back to SENTENCE_TRANSFORMERS_URL (no built-in address)
+CROSS_ENCODER_API_KEY=               # Key for that service; falls back to SENTENCE_TRANSFORMERS_API_KEY
 
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key

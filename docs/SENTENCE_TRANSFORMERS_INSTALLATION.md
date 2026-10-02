@@ -131,7 +131,7 @@ sudo lsof -iTCP:8003 -sTCP:LISTEN
 | Port | Typical use |
 |------|-------------|
 | 8000 | Documented default for `SENTENCE_TRANSFORMERS_URL`; often also used by `php artisan serve` |
-| 8001 | Cross-encoder reranker (`CROSS_ENCODER_URL`), separate optional service |
+| 8001 | Documented port of the Whisper service (`WHISPER_URL`); do not give it to the embedding service on the same host |
 | 8003+ | Example when 8000–8002 are taken; pick any free port |
 
 Use the same port in the Python process and in `SENTENCE_TRANSFORMERS_URL`.
@@ -293,7 +293,7 @@ After dimension or model changes for RAG, run `php artisan ai:index-rag-docs --f
 
 ## Optional: cross-encoder reranker
 
-Hybrid search can call a **separate** HTTP service for reranking (default `http://127.0.0.1:8001/score`, env `CROSS_ENCODER_URL`). Not required for embeddings; if down, or if it answers with anything but one numeric score per pair, search returns unreranked results (`meta.reranked = false`, a warning in the log). The evaluation commands (`ai:evaluate-retrieval-strategies`, `ai:tune-retrieval`) warn when it did not run, because their `reranked` figures are then the fused order. Do not share a port with the embedding API.
+Hybrid search can rerank its top results with a cross-encoder through `POST {url}/score`. `CROSS_ENCODER_URL` is the base URL of that service (the client adds `/score`) and, when it is not set, `SENTENCE_TRANSFORMERS_URL` is used: the `sentence-api` service (repository `laraplate-sentencetransformer`) serves `/score` next to `/embed` once `CROSS_ENCODER_MODEL` is set on its host. The key is `CROSS_ENCODER_API_KEY`, falling back to `SENTENCE_TRANSFORMERS_API_KEY`. There is no built-in address and no default model: with no URL, or a service with no model (it answers 503), nothing is reranked. Not required for embeddings; if the service is down, or answers with anything but one numeric score per pair, search returns unreranked results (`meta.reranked = false`, a warning in the log). The evaluation commands (`ai:evaluate-retrieval-strategies`, `ai:tune-retrieval`) warn when it did not run, because their `reranked` figures are then the fused order. Until the service has a model, `search.reranker.enabled` can be turned off so that each search does not spend a failed call and a warning on it.
 
 ---
 
