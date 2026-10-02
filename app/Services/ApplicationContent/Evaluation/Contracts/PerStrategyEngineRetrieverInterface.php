@@ -24,9 +24,10 @@ interface PerStrategyEngineRetrieverInterface
      * Run one ensemble search for a case query.
      *
      * @param  list<float>|null  $vector  Pre-computed query embedding, or null when no vector is available.
-     * @param  string|null  $locale  The locale of the person asking: the search runs in it, as a request in
-     *                               that locale would, so a model whose `LocaleScope` shows only the rows
-     *                               translated in the current locale finds the rows of that locale.
+     * @param  string|null  $locale  The language the results are requested in, by preference or explicitly. The
+     *                               search runs in it, so a model whose `LocaleScope` shows only the rows
+     *                               translated in the current locale returns the rows of that language. The
+     *                               query itself may be in any language.
      */
     public function retrieve(Model $model, string $query, bool $useReranker, int $limit, ?array $vector, ?string $locale = null): AdvancedSearchResult;
 }

@@ -9,9 +9,9 @@ use Modules\Core\Search\DTOs\AdvancedSearchResult;
 use Modules\Core\Search\Services\EnsembleSearchService;
 
 /**
- * An evaluation case names the language of the person asking. A model whose `LocaleScope` shows only
- * the rows with a translation in the current locale returns nothing for an English-only document when
- * the search runs as if the asker were Italian, so every case has to run in its own locale.
+ * An evaluation case names the language its results are requested in. A model whose `LocaleScope` shows
+ * only the rows translated in the current locale returns nothing for an English-only document when the
+ * search runs in another locale, so every case has to run in the locale it requests.
  */
 function per_strategy_retriever_with(callable $search): PerStrategyEngineRetriever
 {
