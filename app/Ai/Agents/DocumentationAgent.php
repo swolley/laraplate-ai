@@ -33,7 +33,11 @@ class DocumentationAgent extends RAG
         protected ?string $vectorStorePath = null,
         protected int $topK = 5,
         protected DocumentationIndexProfile $indexProfile = DocumentationIndexProfile::Developer,
-    ) {}
+    ) {
+        // RAG extends NeuronAI's Workflow, whose constructor initialises the workflow
+        // executor: without it, chat() fails before reaching the provider.
+        parent::__construct();
+    }
 
     public static function make(mixed ...$arguments): static
     {
