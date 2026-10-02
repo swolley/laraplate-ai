@@ -13,7 +13,9 @@ use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
 use Modules\AI\Console\RefreshAiModelsCommand;
+use Modules\AI\Console\RepairMissingEmbeddingsCommand;
 use Modules\AI\Contracts\IChatService;
+use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Filament\MediaAnalysisSchemaContributor;
@@ -37,6 +39,7 @@ use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
+use Modules\AI\Services\EmbeddableModels;
 use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
@@ -71,6 +74,7 @@ class AIServiceProvider extends ModuleServiceProvider
 
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
+        $this->app->singleton(IEmbeddableModels::class, EmbeddableModels::class);
         $this->app->singleton(EmbeddingModelRegistry::class);
 
         // Media analysis (M6, M21): the model registry plus the swappable analyzer
@@ -145,6 +149,16 @@ class AIServiceProvider extends ModuleServiceProvider
             $this->app->make(Schedule::class)
                 ->command(RefreshAiModelsCommand::class)
                 ->dailyAt('03:00')
+                ->onOneServer();
+
+            // Heals the records an embedding outage degraded to keyword-only: a job that spent its
+            // exception budget indexes the record without a vector and nothing else brings it back.
+            // The command probes the service first, so an outage costs nothing, and skips while
+            // jobs are queued, so a long backfill is not dispatched twice.
+            $this->app->make(Schedule::class)
+                ->command(RepairMissingEmbeddingsCommand::class, ['--all', '--if-idle'])
+                ->hourly()
+                ->withoutOverlapping()
                 ->onOneServer();
         });
     }

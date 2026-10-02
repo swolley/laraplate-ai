@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -82,7 +83,16 @@ function fakeHealthyEmbeddingService(): void
 
     Http::fake([
         '*/health' => Http::response(['model' => $active_service_model]),
+        '*/embed' => repairProbeAnswer(),
     ]);
+}
+
+/**
+ * The /embed answer to the command's preflight probe: one vector of the active profile's dimensions.
+ */
+function repairProbeAnswer(): GuzzleHttp\Promise\PromiseInterface
+{
+    return Http::response(['embeddings' => [array_fill(0, app(EmbeddingModelRegistry::class)->active()->dimensions, 0.1)]]);
 }
 
 beforeEach(function (): void {
@@ -268,16 +278,17 @@ it('--stale regenerates records whose embeddings carry a non-active model_key, l
         ->and($fresh_rows->first()->model_key)->toBe($active_key);
 });
 
-it('warns when the embedding service /health reports a different model than the active profile, but still succeeds', function (): void {
+it('refuses to repair when the embedding service /health reports a different model than the active profile', function (): void {
     Http::fake([
         '*/health' => Http::response(['model' => 'some-other-model']),
+        '*/embed' => repairProbeAnswer(),
     ]);
 
     $model = new EmbeddableTestModel(['title' => 'Gamma']);
     $model->saveQuietly();
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
-    stubRepairEmbedBatch($embedding_service, ['Gamma' => [0.3, 0.3]]);
+    $embedding_service->shouldNotReceive('embedDocumentsBatch');
     app()->instance(IEmbeddingService::class, $embedding_service);
 
     $active = app(EmbeddingModelRegistry::class)->active();
@@ -287,14 +298,16 @@ it('warns when the embedding service /health reports a different model than the 
         '--sync' => true,
     ]);
 
-    expect($exit_code)->toBe(RepairMissingEmbeddingsCommand::SUCCESS)
+    expect($exit_code)->toBe(RepairMissingEmbeddingsCommand::FAILURE)
         ->and($output)->toContain('some-other-model')
-        ->and($output)->toContain($active->serviceModel);
+        ->and($output)->toContain($active->serviceModel)
+        ->and($model->embeddings()->count())->toBe(0);
 });
 
 it('warns but still succeeds when the embedding service /health cannot be reached', function (): void {
     Http::fake([
         '*/health' => Http::response(null, 500),
+        '*/embed' => repairProbeAnswer(),
     ]);
 
     $model = new EmbeddableTestModel(['title' => 'Delta']);
@@ -311,4 +324,16 @@ it('warns but still succeeds when the embedding service /health cannot be reache
 
     expect($exit_code)->toBe(RepairMissingEmbeddingsCommand::SUCCESS)
         ->and($output)->toContain('Could not verify embedding service health');
+});
+
+it('is scheduled hourly for every embeddable model, once at a time and only when idle', function (): void {
+    $event = collect(app(Schedule::class)->events())
+        ->first(static fn ($event): bool => str_contains((string) $event->command, 'ai:embeddings:repair'));
+
+    expect($event)->not->toBeNull()
+        ->and($event->command)->toContain('--all')
+        ->and($event->command)->toContain('--if-idle')
+        ->and($event->expression)->toBe('0 * * * *')
+        ->and($event->withoutOverlapping)->toBeTrue()
+        ->and($event->onOneServer)->toBeTrue();
 });
