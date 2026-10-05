@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services;
 
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\Core\Models\ModelEmbedding;
 use Modules\Core\Search\Contracts\IVectorSearchAvailability;
@@ -31,7 +32,13 @@ final readonly class EmbeddingVectorSearchAvailability implements IVectorSearchA
             return $answer;
         }
 
-        $exists = ModelEmbedding::query()->where('model_key', $this->registry->active()->key)->exists();
+        try {
+            $key = $this->registry->active()->key;
+        } catch (InvalidArgumentException) {
+            return VectorAvailability::no('no_vectors');
+        }
+
+        $exists = ModelEmbedding::query()->where('model_key', $key)->exists();
 
         return $exists ? $answer : VectorAvailability::no('no_vectors');
     }

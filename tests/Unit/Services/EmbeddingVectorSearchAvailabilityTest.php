@@ -67,3 +67,20 @@ it('delegates to yes when a vector of the active profile exists', function (): v
 it('is bound over the Core guard', function (): void {
     expect(app(IVectorSearchAvailability::class))->toBeInstanceOf(EmbeddingVectorSearchAvailability::class);
 });
+
+it('answers no_vectors instead of throwing when no active profile resolves', function (?string $active): void {
+    config()->set('ai.features.embeddings.models', []);
+    config()->set('ai.features.embeddings.active', $active);
+
+    $answer = availabilityWith(VectorAvailability::yes())->check(new EmbeddableTestModel);
+
+    expect($answer->available)->toBeFalse()
+        ->and($answer->reason)->toBe('no_vectors');
+})->with(['unset' => [null], 'unknown key' => ['nope:missing']]);
+
+it('still lets the Core answer win when no active profile resolves', function (): void {
+    config()->set('ai.features.embeddings.models', []);
+    config()->set('ai.features.embeddings.active', null);
+
+    expect(availabilityWith(VectorAvailability::no('suspended'))->check(new EmbeddableTestModel)->reason)->toBe('suspended');
+});
