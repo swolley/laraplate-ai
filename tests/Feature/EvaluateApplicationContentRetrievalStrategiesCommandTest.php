@@ -247,7 +247,7 @@ it('warns when the reranker did not run, because the reranked figures are then t
     expect($run['exit'])->toBe(0)
         ->and($run['output'])->toContain('Reranker did not run')
         ->and($run['output'])->toContain('0 of 1')
-        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run']);
+        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run', 'model' => null]);
 });
 
 it('says nothing about the reranker when it ran', function (): void {
@@ -255,5 +255,5 @@ it('says nothing about the reranker when it ran', function (): void {
 
     expect($run['exit'])->toBe(0)
         ->and($run['output'])->not->toContain('Reranker')
-        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran']);
+        ->and($run['report']['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran', 'model' => null]);
 });

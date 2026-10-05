@@ -375,8 +375,9 @@ is omitted from the report. Design:
 **Did the reranker run?** The second call only asks for the reranker: when the cross-encoder service is
 down or the reranker is disabled, `EnsembleSearchService` keeps the fused order and sets
 `meta['reranked'] = false`, and the `reranked` figures would be the `fused` ones under another name. The
-report therefore carries `reranker: {requested, ran, status}` (`ran` counts the cases whose result had
-`meta['reranked'] === true`; `status` is `ran`, `partial` or `not_run`), and both
+report therefore carries `reranker: {requested, ran, status, model}` (`ran` counts the cases whose result had
+`meta['reranked'] === true`; `status` is `ran`, `partial` or `not_run`; `model` is the model the
+service named in `meta['reranker_model']`, or null when none did, so a report says which model it measured), and both
 `ai:evaluate-retrieval-strategies` and `ai:tune-retrieval` print a warning when it is not `ran`. A
 `reranked` block next to a `not_run` status measures nothing: start the service (see
 `SENTENCE_TRANSFORMERS_INSTALLATION.md`) and run again. `RerankerRun` holds the summary and the wording.

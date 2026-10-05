@@ -414,8 +414,28 @@ it('reports how many cases the reranker ran for, so a down service is not read a
         },
     );
 
-    expect($report['reranker'])->toBe(['requested' => 4, 'ran' => $ran, 'status' => $status]);
+    expect($report['reranker'])->toBe(['requested' => 4, 'ran' => $ran, 'status' => $status, 'model' => null]);
 })->with([
     'the reranker ran' => [true, 'ran', 4],
     'the reranker did not run' => [false, 'not_run', 0],
 ]);
+
+it('reports the model that scored the reranked cases', function (): void {
+    $cases = array_map(static fn (int $i): ApplicationContentEvaluationCase => retrievalTuningCase("rm-{$i}", 'Mario Rossi'), range(0, 3));
+
+    $report = app(RetrievalTuningService::class)->tune(
+        new ApplicationContentEvaluationDataset(version: '1', providerVersion: 'p', corpusRevision: 'c', cases: $cases),
+        'cms.contents',
+        [['keyword_weight' => 1.0, 'vector_weight' => 0.0, 'hybrid_weight' => 0.0]],
+        'ndcg_at_5',
+        static function (ApplicationContentEvaluationCase $case, bool $useReranker): AdvancedSearchResult {
+            $result = retrievalTuningResult(['2', '1', '3'], ! $useReranker);
+
+            return $useReranker
+                ? new AdvancedSearchResult(hits: $result->hits, total: $result->total, page: 1, perPage: 5, totalPages: 1, meta: ['reranked' => true, 'reranker_model' => 'org/reranker'])
+                : $result;
+        },
+    );
+
+    expect($report['reranker']['model'])->toBe('org/reranker');
+});

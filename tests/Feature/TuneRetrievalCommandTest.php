@@ -348,7 +348,7 @@ it('warns when the reranker did not run, and records it in the report', function
 
         $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
 
-        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run']);
+        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 0, 'status' => 'not_run', 'model' => null]);
     } finally {
         tuneCommandCleanup($fixture['directory']);
     }
@@ -369,7 +369,7 @@ it('says nothing about the reranker when it ran', function (): void {
 
         $report = json_decode((string) file_get_contents($fixture['output']), true, flags: JSON_THROW_ON_ERROR);
 
-        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran']);
+        expect($report['reranker'])->toBe(['requested' => 1, 'ran' => 1, 'status' => 'ran', 'model' => null]);
     } finally {
         tuneCommandCleanup($fixture['directory']);
     }

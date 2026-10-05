@@ -9,7 +9,8 @@ use function ai_config_string;
 
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
-use Modules\Core\Search\Contracts\IReranker;
+use Modules\Core\Search\Contracts\IRerankerWithModel;
+use Modules\Core\Search\DTOs\RerankResult;
 use RuntimeException;
 
 /**
@@ -20,7 +21,7 @@ use RuntimeException;
  * can serve `/score` next to `/embed`, and then shares its API key. There is no built-in address, so a
  * host with neither configured cannot rerank and says so instead of calling a guessed one.
  */
-final readonly class CrossEncoderService implements IReranker
+final readonly class CrossEncoderService implements IRerankerWithModel
 {
     /**
      * @param  string|null  $url  base URL of the service; the configured one when null
@@ -47,8 +48,22 @@ final readonly class CrossEncoderService implements IReranker
      */
     public function score(array $pairs): array
     {
+        return $this->scoreWithModel($pairs)->scores;
+    }
+
+    /**
+     * Same as {@see self::score()}, with the model the service answered with: it names the model that scored
+     * the pairs, so a report can say which one it measured. Null when the service does not name one.
+     *
+     * @param  list<array{query: string, text: string}>  $pairs
+     *
+     * @throws RequestException when the service is unreachable or keeps answering with an error status
+     * @throws RuntimeException when no service URL is configured, or the answer is not one numeric score per pair
+     */
+    public function scoreWithModel(array $pairs): RerankResult
+    {
         if ($pairs === []) {
-            return [];
+            return new RerankResult([]);
         }
 
         [$url, $api_key] = $this->target();
@@ -63,7 +78,10 @@ final readonly class CrossEncoderService implements IReranker
         // `retry()` rethrows the last failure once its attempts are spent, so a response that gets here is a success.
         $response = $request->post(mb_rtrim($url, '/') . '/score', ['pairs' => $pairs]);
 
-        return $this->parseScores($response->json(), count($pairs));
+        $payload = $response->json();
+        $model = is_array($payload) && is_string($payload['model'] ?? null) && $payload['model'] !== '' ? $payload['model'] : null;
+
+        return new RerankResult($this->parseScores($payload, count($pairs)), $model);
     }
 
     /**

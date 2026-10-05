@@ -23,7 +23,7 @@ function reranker_run_result(mixed $reranked): AdvancedSearchResult
 }
 
 it('summarises how many of the requested cases the reranker ran for', function (int $requested, int $ran, string $status): void {
-    expect(RerankerRun::summary($requested, $ran))->toBe(['requested' => $requested, 'ran' => $ran, 'status' => $status]);
+    expect(RerankerRun::summary($requested, $ran))->toBe(['requested' => $requested, 'ran' => $ran, 'status' => $status, 'model' => null]);
 })->with([
     'every case' => [5, 5, 'ran'],
     'some cases' => [5, 2, 'partial'],
@@ -63,3 +63,27 @@ it('warns with the count when the reranker ran only for some cases', function ()
     expect($message)->toContain('4 of 10')
         ->and($message)->toContain('only partly');
 });
+
+it('carries the model that scored the cases in the summary', function (): void {
+    expect(RerankerRun::summary(4, 4, 'org/reranker'))->toBe(['requested' => 4, 'ran' => 4, 'status' => 'ran', 'model' => 'org/reranker']);
+});
+
+it('reads the model that scored a result from its meta, when it named one', function (mixed $meta, ?string $model): void {
+    $result = new AdvancedSearchResult(hits: [], total: 0, page: 1, perPage: 5, totalPages: 0, meta: $meta);
+
+    expect(RerankerRun::modelIn($result))->toBe($model);
+})->with([
+    'a model' => [['reranked' => true, 'reranker_model' => 'org/reranker'], 'org/reranker'],
+    'an empty name' => [['reranked' => true, 'reranker_model' => ''], null],
+    'not a string' => [['reranked' => true, 'reranker_model' => 5], null],
+    'absent' => [['reranked' => true], null],
+]);
+
+it('names the one model that scored every case, and every model when they differ', function (array $models, ?string $expected): void {
+    expect(RerankerRun::modelOf($models))->toBe($expected);
+})->with([
+    'none named' => [[null, null], null],
+    'no cases' => [[], null],
+    'one model' => [['org/a', 'org/a', null], 'org/a'],
+    'two models' => [['org/b', 'org/a'], 'org/a, org/b'],
+]);

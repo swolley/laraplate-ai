@@ -146,3 +146,38 @@ it('needs no service url to score nothing', function (): void {
 
     expect((new CrossEncoderService)->score([]))->toBe([]);
 });
+
+/**
+ * The service says which model scored the pairs, so a report can say which model it measured.
+ */
+it('names the model the service answered with', function (): void {
+    Http::fake(['*/score' => Http::response(['model' => 'org/reranker', 'scores' => [0.25, 0.75]])]);
+
+    $result = (new CrossEncoderService('http://test:8001'))->scoreWithModel(cross_encoder_pairs(2));
+
+    expect($result->scores)->toBe([0.25, 0.75])
+        ->and($result->model)->toBe('org/reranker');
+});
+
+it('names no model when the service does not', function (mixed $model): void {
+    Http::fake(['*/score' => Http::response(['model' => $model, 'scores' => [0.5]])]);
+
+    expect((new CrossEncoderService('http://test:8001'))->scoreWithModel(cross_encoder_pairs(1))->model)->toBeNull();
+})->with([
+    'null' => [null],
+    'empty' => [''],
+    'not a string' => [5],
+]);
+
+it('still returns just the scores from score()', function (): void {
+    Http::fake(['*/score' => Http::response(['model' => 'org/reranker', 'scores' => [0.5]])]);
+
+    expect((new CrossEncoderService('http://test:8001'))->score(cross_encoder_pairs(1)))->toBe([0.5]);
+});
+
+it('scores nothing without naming a model', function (): void {
+    $result = (new CrossEncoderService('http://test:8001'))->scoreWithModel([]);
+
+    expect($result->scores)->toBe([])
+        ->and($result->model)->toBeNull();
+});

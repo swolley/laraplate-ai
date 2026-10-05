@@ -17,9 +17,9 @@ use Modules\Core\Search\DTOs\AdvancedSearchResult;
 final class RerankerRun
 {
     /**
-     * @return array{requested: int, ran: int, status: 'ran'|'partial'|'not_run'}
+     * @return array{requested: int, ran: int, status: 'ran'|'partial'|'not_run', model: string|null}
      */
-    public static function summary(int $requested, int $ran): array
+    public static function summary(int $requested, int $ran, ?string $model = null): array
     {
         return [
             'requested' => $requested,
@@ -29,7 +29,32 @@ final class RerankerRun
                 $ran < $requested => 'partial',
                 default => 'ran',
             },
+            'model' => $model,
         ];
+    }
+
+    /**
+     * The model the reranker named for a result, null when it named none.
+     */
+    public static function modelIn(AdvancedSearchResult $result): ?string
+    {
+        $model = $result->meta['reranker_model'] ?? null;
+
+        return is_string($model) && $model !== '' ? $model : null;
+    }
+
+    /**
+     * The model that scored a set of cases: the one model, every model joined when they differ (a report
+     * mixing models measures none of them), null when none was named.
+     *
+     * @param  list<string|null>  $models
+     */
+    public static function modelOf(array $models): ?string
+    {
+        $named = array_values(array_unique(array_filter($models, static fn (?string $model): bool => $model !== null)));
+        sort($named);
+
+        return $named === [] ? null : implode(', ', $named);
     }
 
     /**
