@@ -18,66 +18,77 @@ use NeuronAI\RAG\Embeddings\VoyageEmbeddingsProvider;
 
 /**
  * Factory for creating NeuronAI embeddings provider instances from application config.
+ *
+ * The model sent to the provider is the service model of the profile in force (the active one, or
+ * the one {@see EmbeddingModelRegistry::withActive()} sets while a switch embeds), so a switch to
+ * another model of the same provider embeds with that model. `ai.providers.*.model` is only the
+ * fallback when a provider other than the profile's is asked for explicitly.
  */
 final class EmbeddingsProviderFactory
 {
     public static function make(?string $provider = null): EmbeddingsProviderInterface
     {
-        $provider ??= self::registry()->active()->provider;
+        $profile = self::registry()->active();
+        $provider ??= $profile->provider;
+        $model = self::canonical($provider) === self::canonical($profile->provider) ? $profile->serviceModel : null;
 
         return match ($provider) {
-            'openai' => self::createOpenAI(),
-            'ollama' => self::createOllama(),
-            'mistral' => self::createMistral(),
-            'voyageai' => self::createVoyage(),
-            'sentence-transformers', 'sentence_transformers' => self::createSentenceTransformers(),
+            'openai' => self::createOpenAI($model),
+            'ollama' => self::createOllama($model),
+            'mistral' => self::createMistral($model),
+            'voyageai' => self::createVoyage($model),
+            'sentence-transformers', 'sentence_transformers' => self::createSentenceTransformers($model),
             default => throw new InvalidArgumentException("Unsupported embeddings provider: {$provider}"),
         };
     }
 
-    private static function createOpenAI(): OpenAIEmbeddingsProvider
+    private static function createOpenAI(?string $model): OpenAIEmbeddingsProvider
     {
         return new OpenAIEmbeddingsProvider(
             key: ai_config_string('ai.providers.openai.api_key'),
-            model: ai_config_string('ai.providers.openai.model', 'text-embedding-3-small'),
+            model: $model ?? ai_config_string('ai.providers.openai.model', 'text-embedding-3-small'),
         );
     }
 
-    private static function createOllama(): OllamaEmbeddingsProvider
+    private static function createOllama(?string $model): OllamaEmbeddingsProvider
     {
         $url = ai_config_string('ai.providers.ollama.api_url');
         throw_if($url === '', ConfigurationException::class, 'Ollama API URL is not configured');
 
         return new OllamaEmbeddingsProvider(
-            model: ai_config_string('ai.providers.ollama.model', 'nomic-embed-text'),
+            model: $model ?? ai_config_string('ai.providers.ollama.model', 'nomic-embed-text'),
             url: mb_rtrim($url, '/') . '/api',
         );
     }
 
-    private static function createMistral(): MistralEmbeddingsProvider
+    private static function createMistral(?string $model): MistralEmbeddingsProvider
     {
         return new MistralEmbeddingsProvider(
             key: ai_config_string('ai.providers.mistral.api_key'),
-            model: ai_config_string('ai.providers.mistral.model', 'mistral-embed'),
+            model: $model ?? ai_config_string('ai.providers.mistral.model', 'mistral-embed'),
         );
     }
 
-    private static function createVoyage(): VoyageEmbeddingsProvider
+    private static function createVoyage(?string $model): VoyageEmbeddingsProvider
     {
         return new VoyageEmbeddingsProvider(
             key: ai_config_string('ai.providers.voyageai.api_key'),
-            model: ai_config_string('ai.providers.voyageai.model', 'voyage-3-lite'),
+            model: $model ?? ai_config_string('ai.providers.voyageai.model', 'voyage-3-lite'),
         );
     }
 
-    private static function createSentenceTransformers(): SentenceTransformersEmbeddingsProvider
+    /**
+     * The service is multi-model: the model is sent per request, so it embeds with the model
+     * Laraplate expects.
+     */
+    private static function createSentenceTransformers(?string $model): SentenceTransformersEmbeddingsProvider
     {
         return new SentenceTransformersEmbeddingsProvider(
             url: ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'),
             api_key: ai_config_nullable_string('ai.providers.sentence_transformers.api_key'),
             timeout: ai_config_int('ai.providers.sentence_transformers.timeout', 30),
             batch_size: ai_config_int('ai.providers.sentence_transformers.batch_size', 32),
-            model: self::activeServiceModel(),
+            model: $model,
         );
     }
 
@@ -86,14 +97,8 @@ final class EmbeddingsProviderFactory
         return resolve(EmbeddingModelRegistry::class);
     }
 
-    /**
-     * The active embedding profile's service model, sent per request so the
-     * embedding service (which is multi-model) uses the model Laraplate expects.
-     */
-    private static function activeServiceModel(): ?string
+    private static function canonical(string $provider): string
     {
-        $model = self::registry()->active()->serviceModel;
-
-        return $model === '' ? null : $model;
+        return str_replace('-', '_', $provider);
     }
 }

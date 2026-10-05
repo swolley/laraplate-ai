@@ -376,7 +376,7 @@ even once approved: run `ai:embeddings:switch <profile>` afterwards.
 |---------|--------------|
 | `ai:embeddings:probe {profile}` | measures the vector length of a profile, fails when it differs from `dimensions` |
 | `ai:embeddings:switch {profile}` | checks the target and starts a switch (below) |
-| `ai:embeddings:switch --resume` | continues a failed switch, or a running one with no progress for 30 minutes, from its stored phase; a failed `verify` restarts at `indexes` |
+| `ai:embeddings:switch --resume` | continues a failed switch, or a running one with no progress for 30 minutes, from its stored phase; a failed `indexes` or `verify` restarts at `embeddings`, an interrupted `verify` at `indexes` |
 | `ai:embeddings:switch --abandon` | gives the switch up (below) |
 | `ai:embeddings:status` | prints the active model, status (flagged as interrupted after 30 minutes without progress), last progress, phase, target, previous, `done/total`, start time and error |
 | `ai:embeddings:prune --model-key=<key>` | deletes the rows of one model key, and on pgvector its index; refuses the active key and any key while a switch runs. Manual cleanup for rows nobody uses: activation already deletes the previous model's rows |
@@ -427,22 +427,31 @@ dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is
 **Failure.** A check that does not hold stores `failed` with the phase and the error. Any other error
 is retried by the job (3 tries, backoff 10 and 30 s) and recorded when they are spent, including a
 run killed by the 900-second timeout. `search.vector.model`, the previous model's rows and the suspension of vector
-search are left as they are. `--resume` continues; repeating the activation is harmless.
+search are left as they are. `--resume` continues; repeating the activation is harmless. A failed
+`indexes` or `verify` resumes at `embeddings`: a record edited while the switch was failed, or one
+whose `GenerateEmbeddingsJob` failed, is embedded again (when nothing is missing the phase moves
+straight on to `indexes`), so the verification cannot fail on it forever.
 
 **Abandon.** A start refused in its preflight is cleared: state `idle`, `features.embeddings.model`
 set back to the active model, suspension lifted, nothing re-embedded. After a later failure, or when a
 running switch stopped making progress, the same procedure runs with the previous model as target:
 its rows still exist, so only missing records are embedded, the indexes are rebuilt for its
-dimensions, verified and it is activated again. The return switch skips the start checks of the
-command (the previous model is assumed reachable).
+dimensions, verified and it is activated again. Before it stores the return switch, `--abandon`
+checks that the previous profile is still declared and, for `sentence_transformers`, that the service
+runs its model (the start's identity check); otherwise it refuses and changes nothing. The probe of
+the start is not repeated.
 
 ### Operating notes
 
-- `SwitchEmbeddingModelJob` and the command queued by the confirmation go to the connection's
-  default queue (`REDIS_QUEUE`, default `default`). A worker must consume that queue with a timeout of
-  at least 900 seconds (the Horizon supervisor `timeout`), and the connection's `retry_after` must be
-  larger than that, or a long `indexes` phase is handed out again. The shipped Horizon supervisors
-  watch only `embeddings` and `indexing`.
+- `SwitchEmbeddingModelJob` (`SwitchEmbeddingModelJob::QUEUE`) and the command queued by the
+  settings confirmation go to the `embeddings-switch` queue. The shipped Horizon supervisor
+  `supervisor-embeddings-switch` (`config/horizon.php`) watches it with 1 process and a timeout of
+  960 s, above the job's 900 s. Not the `embeddings` queue: the embeddings phase waits while that
+  queue holds jobs. Without a worker on `embeddings-switch` a started switch never advances.
+- The queue connection's `retry_after` must be at least 1000 s (above the 960 s supervisor timeout),
+  or a long `indexes` phase is handed out a second time. The shipped `redis` connection reads
+  `REDIS_QUEUE_RETRY_AFTER` with a default of 90: raise it where switches run. No dedicated
+  connection is shipped.
 - During the indexes phase an index is recreated or emptied before its documents are written again:
   for that window keyword search on the model returns fewer results or none.
 - RAG answers are inconsistent during a switch: the Elasticsearch documentation indexes are rebuilt
@@ -451,6 +460,9 @@ command (the previous model is assumed reachable).
   `php artisan ai:index-rag-docs --full` after it.
 - A record edited between the verify refresh and the activation (seconds) keeps a document with the
   previous model's vectors until it is saved again.
+- Embeddings from `openai`, `ollama`, `mistral` and `voyageai` use the service model of the profile
+  in force (the part after `provider:` in the key); `ai.providers.*.model` is only the fallback when a
+  provider other than the profile's is asked for explicitly.
 - With the embeddings feature off, or before anything is embedded, the AI guard answers `no_vectors`
   (Core: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`, vector availability guard).
 

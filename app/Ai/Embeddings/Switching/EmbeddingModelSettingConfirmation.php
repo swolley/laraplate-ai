@@ -7,6 +7,7 @@ namespace Modules\AI\Ai\Embeddings\Switching;
 use Illuminate\Support\Facades\Artisan;
 use InvalidArgumentException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Jobs\SwitchEmbeddingModelJob;
 use Modules\Core\Contracts\ISettingChangeConfirmation;
 use Modules\Core\Data\SettingChangeWarning;
 use Modules\Core\Models\Setting;
@@ -77,7 +78,8 @@ final readonly class EmbeddingModelSettingConfirmation implements ISettingChange
             return;
         }
 
-        Artisan::queue('ai:embeddings:switch', ['profile' => $newValue, '--report-failure' => true]);
+        Artisan::queue('ai:embeddings:switch', ['profile' => $newValue, '--report-failure' => true])
+            ->onQueue(SwitchEmbeddingModelJob::QUEUE);
     }
 
     #[Override]

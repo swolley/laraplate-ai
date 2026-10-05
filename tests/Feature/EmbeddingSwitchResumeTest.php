@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
@@ -12,6 +13,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Jobs\SwitchEmbeddingModelJob;
+use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\AI\Tests\Stubs\EmbeddableTestModel;
 use Modules\AI\Tests\Stubs\EmbeddingSwitchHarness as Harness;
 use Modules\Core\Events\ModelPreProcessingCompleted;
@@ -42,6 +44,17 @@ function resume_store(): EmbeddingSwitchStore
     return app(EmbeddingSwitchStore::class);
 }
 
+/**
+ * The sentence-transformers service reports $model on /health and in the /embed answer.
+ */
+function resume_service_reports(string $model, int $dimensions = 384): void
+{
+    Http::fake([
+        '*/health' => Http::response(['status' => 'healthy', 'model' => $model]),
+        '*/embed' => Http::response(['model' => $model, 'embeddings' => [array_fill(0, $dimensions, 0.1)]]),
+    ]);
+}
+
 it('resumes a switch failed in its verification once the cause is fixed, and completes it', function (): void {
     resume_fail_verification(Harness::TARGET, $this->records[1]);
     expect(resume_store()->get()->status)->toBe('failed');
@@ -49,7 +62,7 @@ it('resumes a switch failed in its verification once the cause is fixed, and com
     new GenerateEmbeddingsJob($this->records[1], null, Harness::TARGET)->handle(app(IEmbeddingService::class));
 
     $this->artisan('ai:embeddings:switch', ['--resume' => true])
-        ->expectsOutputToContain('resumed from phase indexes')
+        ->expectsOutputToContain('resumed from phase embeddings')
         ->assertSuccessful();
 
     expect(resume_store()->get()->status)->toBe('idle')
@@ -107,6 +120,7 @@ it('resumes a running switch that stopped making progress', function (): void {
     expect(resume_store()->get()->status)->toBe('running')
         ->and(resume_store()->get()->phase)->toBe('indexes');
     Queue::assertPushed(SwitchEmbeddingModelJob::class, 1);
+    Queue::assertPushedOn(SwitchEmbeddingModelJob::QUEUE, SwitchEmbeddingModelJob::class);
 });
 
 it('refuses to resume or abandon a switch that is running normally', function (string $option): void {
@@ -170,6 +184,7 @@ it('abandons a switch failed after it changed the index: rebuilds for the previo
     resume_fail_verification(Harness::WIDE, $this->records[1]);
     expect(resume_store()->get()->status)->toBe('failed')
         ->and(Harness::rowsOf(Harness::WIDE))->toBe(2);
+    resume_service_reports('intfloat/multilingual-e5-small');
 
     $this->artisan('ai:embeddings:switch', ['--abandon' => true])->assertSuccessful();
 
@@ -229,4 +244,37 @@ it('resumes a verification failed on a leftover document by rebuilding the index
     expect(resume_store()->get()->status)->toBe('idle')
         ->and($this->engine->documentsOf($this->index))->not->toHaveKey('999')
         ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET);
+});
+
+it('resumes a switch failed in its indexes or verification from the embeddings, so a record edited meanwhile is embedded again', function (string $phase): void {
+    Harness::start(Harness::TARGET);
+    Harness::advanceUntil($phase);
+    $edited = $this->records[1];
+    $edited->title = 'Two, edited while the switch was failed';
+    $edited->saveQuietly();
+    resume_store()->put(resume_store()->get()->with(status: 'failed', error: 'a record has no embedding of the target'));
+
+    $this->artisan('ai:embeddings:switch', ['--resume' => true])
+        ->expectsOutputToContain('resumed from phase embeddings')
+        ->assertSuccessful();
+
+    expect(resume_store()->get()->status)->toBe('idle')
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET)
+        ->and(ModelEmbedding::query()->forModel($edited)->where('model_key', Harness::TARGET)->value('content_hash'))
+        ->toBe(ModelEmbeddingSynchronizer::contentHash('Two, edited while the switch was failed'));
+})->with(['indexes', 'verify']);
+
+it('refuses to abandon, changing nothing, when the service does not run the previous model', function (): void {
+    Queue::fake();
+    resume_service_reports('sentence-transformers/all-MiniLM-L6-v2');
+    $failed = new EmbeddingSwitchState('failed', 'verify', Harness::TARGET, Harness::ACTIVE, error: 'a record has no embedding of the target');
+    resume_store()->put($failed);
+
+    $this->artisan('ai:embeddings:switch', ['--abandon' => true])
+        ->expectsOutputToContain('was not abandoned: the embedding service /embed reports model "sentence-transformers/all-MiniLM-L6-v2" but the profile expects "intfloat/multilingual-e5-small"')
+        ->assertFailed();
+
+    expect(resume_store()->get())->toEqual($failed)
+        ->and(Harness::setting('search.vector.suspended_reason'))->toBeNull();
+    Queue::assertNothingPushed();
 });

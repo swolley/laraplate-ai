@@ -25,12 +25,19 @@ use Throwable;
  * still working, a re-dispatch next to it) is dropped, and the run in progress carries the switch
  * on. On the sync connection the follow-up cannot be queued, so the run advances in place until the
  * switch stops running.
+ *
+ * Every run goes to its own queue, {@see self::QUEUE}, watched by the Horizon supervisor
+ * `supervisor-embeddings-switch` with a timeout above {@see self::TIMEOUT_SECONDS}. Not the
+ * `embeddings` queue: the embeddings phase waits while that queue holds jobs, so a run queued
+ * there would wait for itself.
  */
 final class SwitchEmbeddingModelJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
+
+    public const string QUEUE = 'embeddings-switch';
 
     public const int REDISPATCH_DELAY_SECONDS = 5;
 
@@ -62,6 +69,11 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
      * @var list<int>
      */
     public array $backoff = [10, 30];
+
+    public function __construct()
+    {
+        $this->onQueue(self::QUEUE);
+    }
 
     public static function overlapMiddleware(): WithoutOverlapping
     {

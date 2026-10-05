@@ -178,6 +178,7 @@ it('re-dispatches the switch job while the switch runs, and stops once it no lon
     (new SwitchEmbeddingModelJob)->handle(app(EmbeddingSwitchOrchestrator::class));
 
     Queue::assertPushed(SwitchEmbeddingModelJob::class, 1);
+    Queue::assertPushedOn(SwitchEmbeddingModelJob::QUEUE, SwitchEmbeddingModelJob::class);
 
     app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('failed', 'verify', Harness::TARGET, Harness::ACTIVE, error: 'x'));
 

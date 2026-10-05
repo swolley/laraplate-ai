@@ -15,6 +15,7 @@ use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
+use Modules\AI\Jobs\SwitchEmbeddingModelJob;
 use Modules\Core\Filament\Resources\Settings\Pages\EditSetting;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\Setting;
@@ -160,6 +161,7 @@ it('queues ai:embeddings:switch with the confirmed profile', function (): void {
     embedding_model_confirmation()->confirmed(embedding_model_setting(), CONFIRM_OTHER_DIMENSIONS);
 
     expect(embedding_switch_was_queued(CONFIRM_OTHER_DIMENSIONS))->toBeTrue();
+    Queue::assertPushedOn(SwitchEmbeddingModelJob::QUEUE, QueuedCommand::class);
 });
 
 it('changes nothing when the confirmation is cancelled', function (): void {

@@ -36,8 +36,9 @@ use Throwable;
  * running or failed records nothing. A start whose job cannot be queued is rolled back.
  *
  * `--resume` continues a failed switch, or a running one that stopped making progress
- * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase (a failed verification
- * from the indexes, which are rebuilt). `--abandon` clears a start
+ * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase (a failed index build or
+ * verification from the embeddings, which re-embed what changed; an interrupted verification from
+ * the indexes, which are rebuilt). `--abandon` clears a start
  * refused by its preflight, and after a later failure runs the same procedure back to the previous
  * model. Neither acts on a switch that is running normally.
  */
@@ -77,7 +78,7 @@ final class EmbeddingsSwitchCommand extends Command
         }
 
         if ($abandon) {
-            return $this->abandon($store, $registry);
+            return $this->abandon($store, $registry, $identity);
         }
 
         if ($profileKey === null) {
@@ -164,9 +165,7 @@ final class EmbeddingsSwitchCommand extends Command
                 return $this->refuse($refusal);
             }
 
-            // A failed verification restarts at the indexes: they are emptied and rebuilt, so whatever
-            // the check found (a document left over, one written with the wrong vectors) is gone.
-            $phase = $state->phase === 'verify' ? 'indexes' : $state->phase;
+            $phase = $this->resumePhase($state);
             $resumed = $state->with(status: 'running', phase: $phase, error: null, rounds: 0, updatedAt: now()->toIso8601String());
             $store->put($resumed);
         } finally {
@@ -183,13 +182,30 @@ final class EmbeddingsSwitchCommand extends Command
     }
 
     /**
+     * The phase a resumed switch restarts at. A failed index build or verification restarts at the
+     * embeddings: a record edited while the switch was failed (or whose embedding job failed) is
+     * embedded again, and the embeddings phase moves straight on to the indexes when nothing is
+     * pending. An interrupted verification restarts at the indexes. The indexes are emptied and
+     * rebuilt either way, so a leftover document or one with the wrong vectors is gone too.
+     */
+    private function resumePhase(EmbeddingSwitchState $state): string
+    {
+        if ($state->status === 'failed' && in_array($state->phase, ['indexes', 'verify'], true)) {
+            return 'embeddings';
+        }
+
+        return $state->phase === 'verify' ? 'indexes' : $state->phase;
+    }
+
+    /**
      * Gives the switch up. A start refused by its preflight changed nothing: the state is cleared and
      * the chosen model set back to the active one. After a later failure the indexes and the target's
-     * rows may already have changed, so the same procedure runs with the previous model as target:
+     * rows may already have changed, so the same procedure runs with the previous model as target,
+     * once the service is checked to run that model (otherwise nothing changes):
      * its rows still exist, so only records missing one are embedded, the indexes are rebuilt for its
      * dimensions, verified, and it is activated again.
      */
-    private function abandon(EmbeddingSwitchStore $store, EmbeddingModelRegistry $registry): int
+    private function abandon(EmbeddingSwitchStore $store, EmbeddingModelRegistry $registry, EmbeddingServiceIdentity $identity): int
     {
         $release = $store->lock();
 
@@ -221,6 +237,12 @@ final class EmbeddingsSwitchCommand extends Command
             }
 
             $previous = $state->previous ?? $active;
+            $refusal = $this->returnRefusal($registry, $identity, $previous);
+
+            if ($refusal !== null) {
+                return $this->refuse("The switch to \"{$state->target}\" was not abandoned: {$refusal}. Nothing was changed.");
+            }
+
             $return = new EmbeddingSwitchState(
                 status: 'running',
                 phase: 'preflight',
@@ -246,6 +268,26 @@ final class EmbeddingsSwitchCommand extends Command
         $this->info("Switch to \"{$state->target}\" abandoned: returning to \"{$previous}\" (vector search stays off until it ends). Follow it with ai:embeddings:status.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Why the switch back to the previous model cannot start, or null when it can: its profile is no
+     * longer declared, or the sentence-transformers service does not run its model (the same identity
+     * check as the start's preflight).
+     */
+    private function returnRefusal(EmbeddingModelRegistry $registry, EmbeddingServiceIdentity $identity, string $previous): ?string
+    {
+        try {
+            $profile = $registry->get($previous);
+        } catch (InvalidArgumentException $exception) {
+            return $exception->getMessage();
+        }
+
+        if ($profile->provider !== 'sentence_transformers') {
+            return null;
+        }
+
+        return $this->serviceRunsModel($profile, $identity);
     }
 
     /**

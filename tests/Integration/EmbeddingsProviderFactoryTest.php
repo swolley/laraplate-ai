@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
 use Modules\AI\Ai\Embeddings\SentenceTransformersEmbeddingsProvider;
+use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Embeddings\MistralEmbeddingsProvider;
 use NeuronAI\RAG\Embeddings\OllamaEmbeddingsProvider;
 use NeuronAI\RAG\Embeddings\OpenAIEmbeddingsProvider;
@@ -79,3 +81,21 @@ it('throws when the Ollama URL is missing for embeddings', function (): void {
 
     EmbeddingsProviderFactory::make('ollama');
 })->throws(Modules\Core\Exceptions\ConfigurationException::class, 'Ollama API URL is not configured');
+
+it('sends the model of the profile in force, not the provider\'s configured model', function (string $profileKey, string $configuredModelKey): void {
+    config()->set('ai.providers.openai.api_key', 'test-key');
+    config()->set('ai.providers.mistral.api_key', 'test-key');
+    config()->set('ai.providers.voyageai.api_key', 'test-key');
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+    config()->set($configuredModelKey, 'configured-default-model');
+    config()->set("ai.features.embeddings.models.{$profileKey}", ['dimensions' => 1024]);
+
+    $provider = app(EmbeddingModelRegistry::class)->withActive($profileKey, static fn (): EmbeddingsProviderInterface => EmbeddingsProviderFactory::make());
+
+    expect((fn (): string => $this->model)->call($provider))->toBe(explode(':', $profileKey, 2)[1]);
+})->with([
+    'openai' => ['openai:text-embedding-3-large', 'ai.providers.openai.model'],
+    'ollama' => ['ollama:mxbai-embed-large', 'ai.providers.ollama.model'],
+    'mistral' => ['mistral:mistral-embed-2312', 'ai.providers.mistral.model'],
+    'voyageai' => ['voyageai:voyage-3', 'ai.providers.voyageai.model'],
+]);

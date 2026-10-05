@@ -114,6 +114,7 @@ it('starts a switch: records the state, suspends vector search and dispatches th
         ->and(config('core.search.vector.suspended_reason'))->toBe('switching');
 
     Queue::assertPushed(SwitchEmbeddingModelJob::class, 1);
+    Queue::assertPushedOn(SwitchEmbeddingModelJob::QUEUE, SwitchEmbeddingModelJob::class);
 });
 
 it('does not start when the service is unreachable', function (): void {
@@ -402,7 +403,24 @@ it('completes the preflight, moves to the embeddings phase and only queues its o
         ->and($state->total)->toBe(2)
         ->and($state->done)->toBe(0);
     Queue::assertPushed(SwitchEmbeddingModelJob::class, 1);
+    Queue::assertPushedOn(SwitchEmbeddingModelJob::QUEUE, SwitchEmbeddingModelJob::class);
     Queue::assertNotPushed(GenerateEmbeddingsJob::class);
+});
+
+it('runs the switch job on its own queue, which a Horizon supervisor watches with a timeout above the job\'s', function (): void {
+    $supervisor = config('horizon.defaults.supervisor-embeddings-switch');
+
+    expect(SwitchEmbeddingModelJob::QUEUE)->toBe('embeddings-switch')
+        ->and(SwitchEmbeddingModelJob::QUEUE)->not->toBe(GenerateEmbeddingsJob::QUEUE)
+        ->and((new SwitchEmbeddingModelJob())->queue)->toBe(SwitchEmbeddingModelJob::QUEUE)
+        ->and($supervisor['queue'] ?? null)->toBe([SwitchEmbeddingModelJob::QUEUE])
+        ->and($supervisor['processes'] ?? null)->toBe(1)
+        ->and($supervisor['timeout'] ?? 0)->toBeGreaterThan(SwitchEmbeddingModelJob::TIMEOUT_SECONDS);
+
+    foreach (config('horizon.environments') as $environment => $supervisors) {
+        expect($supervisors)->toHaveKey('supervisor-embeddings-switch', message: "Horizon environment {$environment} has no switch supervisor")
+            ->and($supervisors['supervisor-embeddings-switch']['timeout'] ?? $supervisor['timeout'])->toBeGreaterThan(SwitchEmbeddingModelJob::TIMEOUT_SECONDS);
+    }
 });
 
 it('records the failure in the state when the job fails', function (): void {
