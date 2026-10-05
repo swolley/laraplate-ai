@@ -181,3 +181,21 @@ it('scores nothing without naming a model', function (): void {
     expect($result->scores)->toBe([])
         ->and($result->model)->toBeNull();
 });
+
+/**
+ * Laravel waits 10 seconds to connect by default, which is as long as the scoring itself may take: a host
+ * that drops packets then costs a search 10 seconds per attempt just to find out it is not there.
+ */
+it('gives up connecting long before the scoring timeout, and keeps the scoring timeout', function (): void {
+    $options = [];
+    Http::fake(function ($request, array $seen) use (&$options) {
+        $options = $seen;
+
+        return Http::response(['scores' => [0.5]]);
+    });
+
+    (new CrossEncoderService('http://test:8001'))->score(cross_encoder_pairs(1));
+
+    expect($options['connect_timeout'])->toBe(2)
+        ->and($options['timeout'])->toBe(10);
+});

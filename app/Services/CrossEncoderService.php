@@ -24,6 +24,17 @@ use RuntimeException;
 final readonly class CrossEncoderService implements IRerankerWithModel
 {
     /**
+     * Seconds to connect to the service: it answers at once or it is not there, and Laravel's own 10 would
+     * make every search wait that long, per attempt, on a host that drops packets.
+     */
+    private const int CONNECT_TIMEOUT = 2;
+
+    /**
+     * Seconds for the whole request, scoring included.
+     */
+    private const int TIMEOUT = 10;
+
+    /**
      * @param  string|null  $url  base URL of the service; the configured one when null
      * @param  string|null  $api_key  bearer token for `$url`; never taken from the configuration for a given URL,
      *                                so a key is not sent to a host it was not configured for
@@ -69,7 +80,7 @@ final readonly class CrossEncoderService implements IRerankerWithModel
         [$url, $api_key] = $this->target();
         $pairs = array_slice($pairs, 0, 64);
 
-        $request = Http::timeout(10)->retry(2, 200);
+        $request = Http::connectTimeout(self::CONNECT_TIMEOUT)->timeout(self::TIMEOUT)->retry(2, 200);
 
         if ($api_key !== null && $api_key !== '') {
             $request = $request->withToken($api_key);
