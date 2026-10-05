@@ -66,7 +66,7 @@ sequenceDiagram
 
 ### Configuration
 
-Embeddings use the model setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
+Embeddings use the profile chosen in the setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). The model that serves search is the managed setting `features.embeddings.active`; it changes only when `ai:embeddings:switch` activates the chosen model. Profiles, the switch, its commands and the vector length of each profile (`dimensions`, measured with `ai:embeddings:probe`): [rag/MODULE.md](rag/MODULE.md), section *Embedding model and model switch*. Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
 
 ```env
 AI_EMBEDDINGS_ENABLED=true
@@ -183,7 +183,7 @@ stateDiagram-v2
 
 ## 5. Repairing missing or stale embeddings
 
-A document degraded to keyword-only (permanent embed failure) has no embedding row. A document embedded under a since-retired model (`ai.features.embeddings.active` switched, e.g. after a model upgrade) carries a stale `model_key`. Repair both with:
+A document degraded to keyword-only (permanent embed failure) has no embedding row. A document that has embeddings but none of the active model (for example a model removed from config, or rows written before the `provider:model` keys) is stale. Repair both with (changing the model needs no repair: `ai:embeddings:switch` re-embeds the corpus itself and deletes the previous model's rows at activation):
 
 ```bash
 php artisan ai:embeddings:repair "Modules\CMS\Models\Content" [--chunk=100] [--sync] [--stale]
@@ -191,7 +191,7 @@ php artisan ai:embeddings:repair --all [--if-idle]
 ```
 
 - Default: scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty). It scans the same population `scout:import` indexes (`makeAllSearchableQuery()`), not `query()`: content with no translation in the current locale, which `LocaleScope` hides, is repaired too. Records the search index would not hold (`shouldBeSearchable()` false, such as media drafts) are skipped: an embedding nobody indexes is wasted.
-- `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after changing the embedding model to re-embed the backlog.
+- `--stale`: instead targets records that have embeddings but **no** row stamped with the active profile's key (`EmbeddingModelRegistry::active()->key`). Rows of other models are kept until a switch activation deletes them, so a record that has a row of the active key is not stale however many other rows it keeps.
 - `--all` repairs every embeddable model instead of one: searchable, `isEmbeddable()` (vector search on and an `$embed` list) and allowed by the `ai.features.embeddings.modules` allowlist, the predicates the indexing listener applies. It does nothing while `ai.features.embeddings.enabled` is off. `--if-idle` skips the run while embeddings jobs are still queued: a record keeps lacking its embedding until its job has run, so a backlog would otherwise be dispatched twice. The AI module schedules `ai:embeddings:repair --all --if-idle` hourly, one at a time and on one server: it brings back the records an outage degraded to keyword-only.
 - Either way, regeneration dispatches `GenerateEmbeddingsJob` per record with `locale = null` (or runs it inline with `--sync`), which performs a full per-locale regenerate — all locales, stamped with the active `model_key` — through the finalize flow. The command itself does not stamp `model_key`.
 - Queued runs are paced by the `embeddings` rate limiter (`EMBEDDINGS_QUEUE_RATE_PER_MINUTE`, default 10 jobs per minute): the jobs wait for their slot. A `--sync` run is not throttled, because a sync queue cannot release a job back, so the limiter would drop it silently. A record whose embedding fails under `--sync` is reported, the others still run, and the command exits with failure.

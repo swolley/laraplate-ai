@@ -270,6 +270,204 @@ flowchart LR
   SP --> Split
 ```
 
+## Embedding model and model switch
+
+The embedding model is chosen in Settings and changed by a guided procedure, `ai:embeddings:switch`,
+which re-embeds the corpus, rebuilds the indexes, verifies them and only then makes the new model
+serve search. Vector search is off while it runs; search continues by keywords. Design record:
+`docs/superpowers/specs/2026-10-05-embedding-model-switch-design.md`.
+
+### Profiles
+
+Profiles live in `ai.features.embeddings.models` (`Modules/AI/config/config.php`), keyed
+`provider:service_model` and split at the first colon (`sentence_transformers:intfloat/multilingual-e5-small`,
+`ollama:nomic-embed-text:latest`). The key is also the value of the settings below and the
+`model_key` stamped on every `core_model_embeddings` row. A profile block holds:
+
+| Key | Meaning |
+|-----|---------|
+| `dimensions` | required, at least 1: the length of the model's vectors. `EmbeddingModelRegistry::get()` throws without it |
+| `similarity` | optional, default `cosine`; copied into Core's `search.vector.similarity` at activation |
+| `query_prefix` / `passage_prefix` | text prepended to queries and documents (e5 models need `query: ` / `passage: `) |
+| `normalize` | whether the service normalizes the vectors |
+
+The two shipped profiles, `sentence_transformers:intfloat/multilingual-e5-small` and
+`sentence_transformers:all-MiniLM-L6-v2`, both declare 384. A profile is offered only when its
+provider is configured (`ProviderConfiguration::isConfigured()`: its API key or URL is set;
+`sentence_transformers` needs `SENTENCE_TRANSFORMERS_URL`). There is no environment variable for
+the provider or the model: `AI_EMBEDDINGS_MODEL` and `AI_EMBEDDINGS_PROVIDER` were removed, and the
+RAG index takes its vector length from the active profile, not from `AI_FAQ_ES_EMBEDDING_DIMS`.
+
+`similarity` is written as is into the engine's configuration, so it must be a value the engine in
+use accepts:
+
+| Engine | Accepted values |
+|--------|-----------------|
+| PostgreSQL with pgvector (database engine) | `cosine`, `l2`, `ip`; any other value throws when the index is created or a vector query runs |
+| Elasticsearch `dense_vector` | `cosine`, `l2_norm`, `dot_product`, `max_inner_product` |
+
+Only `cosine` is valid on both; keep it unless one engine is the only one in use.
+
+### Adding a profile
+
+1. Add the block to `ai.features.embeddings.models` with the key `provider:service_model` and a
+   provisional `dimensions`.
+2. Run `php artisan ai:embeddings:probe <key>`. It embeds the fixed text `embedding service probe`
+   with that profile's provider and service model and prints the profile, the model and the
+   measured dimensions. It fails with the mismatch message when the declared value differs, and
+   when the profile is unknown or the provider does not answer.
+3. Put the measured number in `dimensions` and run the probe again; it must succeed.
+4. Run the AI seeder again (`php artisan module:seed AI`): the choices of `features.embeddings.model`
+   are written at seed time from the configured profiles.
+
+The probe is the only way a length is trusted. A profile whose declared and measured lengths differ
+cannot be the target of a switch, and a vector of the wrong length is refused when it is stored
+(`ModelEmbeddingSynchronizer` throws `EmbeddingDimensionMismatch` and writes no row).
+
+### Settings
+
+| Setting | Module | Managed | Meaning |
+|---------|--------|---------|---------|
+| `features.embeddings.model` | AI | no | the profile the operator chose (the **target**), a dropdown of the configured profile keys. Changing it asks for confirmation and starts a switch |
+| `features.embeddings.active` | AI | yes | the profile whose vectors serve search. Written only at activation. The registry reads it as `ai.features.embeddings.active`, falling back to the first configured profile, then the first declared one |
+| `features.embeddings.switch` | AI | yes | the switch state as JSON: `status` (`idle`, `running`, `failed`), `phase`, `target`, `previous`, `total`, `done`, `error`, `startedAt`, `updatedAt` |
+| `search.vector.model` | Core | yes | the `model_key` Core queries and serializes into index documents; written at activation |
+| `search.vector.dimensions` | Core | yes | the vector length the index mappings and the pgvector query use; written at activation |
+| `search.vector.similarity` | Core | yes | the similarity of the mappings and the pgvector operator; written at activation |
+| `search.vector.suspended_reason` | Core | yes | `switching` while a switch runs or failed after its start, JSON `null` otherwise; read by the vector guard |
+
+A managed setting is read-only in the settings form and written by code through
+`Setting::writeManaged()`, which skips approval (see `Modules/Core/docs/rag/SETTING_ACTIONS_DEVELOPER.md`).
+A fresh installation seeds both AI profile settings with the first configured profile; Core seeds
+`search.vector.model` with `sentence_transformers:intfloat/multilingual-e5-small`, 384 and `cosine`.
+
+### Changing the model from Settings
+
+In Filament > Settings, edit `features.embeddings.model`, pick another profile and save. Nothing is
+saved yet: a confirmation lists
+
+- the current and the target model, each with its dimensions;
+- the class of change: **dimensions differ** (the index mapping is rebuilt and every record is
+  re-embedded) or **dimensions equal** (every record is re-embedded, the mapping is kept);
+- the number of texts to embed (searchable embeddable records times their translations) and a rough
+  time, marked as an estimate. The time is the probe latency times the batch count, measured only for
+  `sentence_transformers` with a 3-second timeout and cached (ten minutes, thirty seconds after a
+  failure); other providers show no estimate;
+- that vector search is off meanwhile and search uses keywords only;
+- that going back to the previous model is the same procedure and costs the same.
+
+Cancel leaves everything as it was. Confirm saves the value and queues
+`ai:embeddings:switch <profile> --report-failure`. Saving the active profile again shows no
+confirmation and starts nothing. A value that is not a configured profile shows a warning that the
+switch will refuse it.
+
+While a switch runs, or after it failed, the field is disabled and its helper text gives the phase
+and counts, or the error and what to do. This is a form-level lock: the real guard is that
+`ai:embeddings:switch` refuses to start while a switch is running or failed.
+
+A change saved by a user who needs approval becomes a pending modification and starts no switch,
+even once approved: run `ai:embeddings:switch <profile>` afterwards.
+
+### Commands
+
+| Command | What it does |
+|---------|--------------|
+| `ai:embeddings:probe {profile}` | measures the vector length of a profile, fails when it differs from `dimensions` |
+| `ai:embeddings:switch {profile}` | checks the target and starts a switch (below) |
+| `ai:embeddings:switch --resume` | continues a failed switch, or a running one with no progress for 30 minutes, from its stored phase; a failed `verify` restarts at `indexes` |
+| `ai:embeddings:switch --abandon` | gives the switch up (below) |
+| `ai:embeddings:status` | prints the active model, status (flagged as interrupted after 30 minutes without progress), last progress, phase, target, previous, `done/total`, start time and error |
+| `ai:embeddings:prune --model-key=<key>` | deletes the rows of one model key, and on pgvector its index; refuses the active key and any key while a switch runs. Manual cleanup for rows nobody uses: activation already deletes the previous model's rows |
+| `ai:embeddings:repair [--stale]` | backfills missing embeddings; `--stale` targets records that have embeddings but **no** row of the active key (rows of other models are kept until an activation removes them) |
+
+`--report-failure` is internal: the settings confirmation passes it so that a refusal is stored as a
+failed switch in phase `preflight`, which locks the field and shows why; vector search stays on.
+`--resume` and `--abandon` take no profile and never act on a switch that is running normally.
+
+### The switch procedure
+
+**Start.** `ai:embeddings:switch {profile}` refuses, changing nothing, when the profile is unknown or
+already active, another start holds the start lock (cache lock `embeddings:switch`, 120 s), a switch
+is already running or failed, the provider is not configured, the probe fails or measures other
+dimensions, or (for `sentence_transformers`) the service does not answer `/health`, names no model,
+or names another one (the `/embed` answer decides, `/health` is the fallback). Otherwise it stores
+`running`/`preflight`, sets `search.vector.suspended_reason = switching` in the same transaction and
+dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is rolled back.
+
+`SwitchEmbeddingModelJob` carries no data. It advances one phase, then dispatches itself again after
+5 seconds while the switch runs; runs never overlap (`WithoutOverlapping`). Phases, in order:
+
+1. **preflight**: the command already checked the target; the job counts the work.
+2. **embeddings**: dispatches `GenerateEmbeddingsJob` with the target for every record still missing
+   a row of the target with the hash of its current text, for each locale. It waits while the
+   `embeddings` queue is not empty and dispatches what is still missing again, up to 3 rounds, then
+   fails naming the records. Rows of the previous model are kept, so a failed switch leaves the
+   serving model intact. Records created or edited during the switch are embedded with the target.
+3. **indexes**: runs with the target as `VectorModelContext` and with the target's dimensions and
+   similarity in this process only, so every document carries only the target's vectors. On pgvector
+   the target's partial index is created. For each embeddable model, an index whose vectors have
+   other dimensions (as Elasticsearch reports them) is recreated; otherwise it is emptied; then every
+   searchable document is written again. The Elasticsearch documentation indexes are recreated
+   (`ai:create-rag-index --force`, `ai:index-rag-docs --full`) with the target in force, when FAQ is
+   on and `ai.features.faq.vector_store` is `elasticsearch`.
+4. **verify**: rewrites every document with the target's vectors first (records edited since the
+   indexes phase were indexed with the serving model's vectors), then checks per model: the index
+   holds one document per searchable record (engines with their own index; not the database
+   engine), every record has target rows, and with vector search on, the mapping reports the target's
+   dimensions and a vector query of the embedded text `test` runs.
+5. **activate**: in one transaction writes `features.embeddings.active`, `search.vector.dimensions`,
+   `search.vector.similarity`, `search.vector.model` and sets `features.embeddings.model` to the
+   target; then clears the suspension, sets the state `idle`, forgets the guard's cached dimension
+   checks, deletes the rows of every other model key (and rows with none) and, on pgvector, drops
+   their indexes. A failed drop is logged with the `ai:embeddings:prune` command that retries it and
+   does not fail the activation. This is the first moment the new model serves anything.
+
+**Failure.** A check that does not hold stores `failed` with the phase and the error. Any other error
+is retried by the job (3 tries, backoff 10 and 30 s) and recorded when they are spent, including a
+run killed by the 900-second timeout. `active`, the previous model's rows and the suspension of vector
+search are left as they are. `--resume` continues; repeating the activation is harmless.
+
+**Abandon.** A start refused in its preflight is cleared: state `idle`, `features.embeddings.model`
+set back to the active model, suspension lifted, nothing re-embedded. After a later failure, or when a
+running switch stopped making progress, the same procedure runs with the previous model as target:
+its rows still exist, so only missing records are embedded, the indexes are rebuilt for its
+dimensions, verified and it is activated again. The return switch skips the start checks of the
+command (the previous model is assumed reachable).
+
+### Operating notes
+
+- `SwitchEmbeddingModelJob` and the command queued by the confirmation go to the connection's
+  default queue (`REDIS_QUEUE`, default `default`). A worker must consume that queue with a timeout of
+  at least 900 seconds (the Horizon supervisor `timeout`), and the connection's `retry_after` must be
+  larger than that, or a long `indexes` phase is handed out again. The shipped Horizon supervisors
+  watch only `embeddings` and `indexing`.
+- During the indexes phase an index is recreated or emptied before its documents are written again:
+  for that window keyword search on the model returns fewer results or none.
+- RAG answers are inconsistent during a switch: the Elasticsearch documentation indexes are rebuilt
+  for the target while questions are still embedded with the serving model, until activation. A
+  `filesystem` or `memory` documentation store is not rebuilt by the switch: run
+  `php artisan ai:index-rag-docs --full` after it.
+- A record edited between the verify refresh and the activation (seconds) keeps a document with the
+  previous model's vectors until it is saved again.
+- With the embeddings feature off, or before anything is embedded, the AI guard answers `no_vectors`
+  (Core: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`, vector availability guard).
+
+### Developer reference
+
+| Component | Path |
+|-----------|------|
+| Registry, `withActive()` override | `Modules/AI/app/Ai/Embeddings/EmbeddingModelRegistry.php` |
+| Probe and mismatch exception | `Modules/AI/app/Ai/Embeddings/EmbeddingDimensionProbe.php`, `EmbeddingDimensionMismatch.php` |
+| State, store, lock | `Modules/AI/app/Ai/Embeddings/Switching/EmbeddingSwitchState.php`, `EmbeddingSwitchStore.php` |
+| Phases | `Switching/EmbeddingSwitchOrchestrator.php`, `EmbeddingSwitchCorpus.php`, `EmbeddingSwitchIndexes.php`, `EmbeddingSwitchVerifier.php`, `EmbeddingSwitchActivation.php` |
+| Confirmation and preview | `Switching/EmbeddingModelSettingConfirmation.php`, `EmbeddingSwitchPreview.php` |
+| Job and commands | `Modules/AI/app/Jobs/SwitchEmbeddingModelJob.php`, `Modules/AI/app/Console/Embeddings{Probe,Switch,Status,Prune}Command.php` |
+| AI side of the guard | `Modules/AI/app/Services/EmbeddingVectorSearchAvailability.php` |
+| RAG rebuild | `Modules/AI/app/Ai/Rag/RagIndexRebuilder.php` |
+
+`EmbeddingModelSettingConfirmation::warn()` is called twice by Core, before the modal and again
+after the save: it must stay cheap and write nothing.
+
 ## Operational guidance
 
 ### When to reindex
@@ -296,6 +494,10 @@ flowchart LR
 
 ## FAQ prompts for RAG
 
+- How do I change the embedding model, and what happens to search meanwhile?
+- How do I add an embedding profile and find its dimensions?
+- An embedding model switch failed: how do I resume or abandon it?
+- Which similarity values does an embedding profile accept on pgvector and on Elasticsearch?
 - How does `ai:index-rag-docs --full` differ from incremental indexing?
 - How does the system decide between direct answer and tool invocation?
 - What happens when a tool call requires approval?

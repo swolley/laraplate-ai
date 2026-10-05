@@ -106,7 +106,7 @@ hardcoding it:
 
 The `model` field is **optional**. Laraplate sends the active embedding profile's service model (the part of its `provider:service_model` key in `ai.features.embeddings.models`) on every request, so the **Laravel config is the single source of truth** and the service never drifts from what the application expects. When `model` is omitted, the service uses its own `EMBEDDING_MODEL` default.
 
-The service loads models **lazily** and keeps up to `EMBEDDING_MODEL_CACHE` of them resident (LRU), so switching the active model — or embedding with two models during a migration window — needs no service restart. `/health` reports the default and the currently loaded models. All models served concurrently must share the configured vector dimension (384); a model with a different output size needs its own index (see *Choose a model*).
+The service loads models **lazily** and keeps up to `EMBEDDING_MODEL_CACHE` of them resident (LRU), so switching the active model, or embedding with two models while a switch runs, needs no service restart. `/health` reports the default and the currently loaded models. Models of different output sizes can be served side by side: each Laraplate profile declares its own `dimensions`, and changing the model goes through `ai:embeddings:switch`, which rebuilds the indexes for the new length (see *Choose a model*).
 
 Optional authentication: if you configure an API key on the Python service, Laraplate sends `Authorization: Bearer {key}` (env `SENTENCE_TRANSFORMERS_API_KEY`).
 
@@ -138,23 +138,19 @@ Use the same port in the Python process and in `SENTENCE_TRANSFORMERS_URL`.
 
 ---
 
-## Choose a model (384 dimensions)
+## Choose a model
 
-Laraplate defaults assume **384-dimensional** vectors:
-
-- Core setting `core.search.vector.dimensions` (default `384`)
-- the active embedding profile's `dimensions` (`ai.features.embeddings.models`), which also sizes the RAG index
-- Elasticsearch `dense_vector` mappings for search and RAG
+The vector length is declared by each embedding profile (`dimensions` in `ai.features.embeddings.models`) and is the source of truth: the RAG index is sized from the active profile, and Core's managed settings `search.vector.dimensions`, `search.vector.similarity` and `search.vector.model` are written by the model switch when it activates a profile. Do not edit them by hand (they are read-only in Settings). The two shipped profiles produce **384-dimensional** vectors.
 
 Recommended models (384-d output):
 
 | Hugging Face model | Dims | Notes |
 |--------------------|------|-------|
-| `intfloat/multilingual-e5-small` | 384 | **Default** (`ai.features.embeddings.active`). Multilingual; requires the `query:` / `passage:` prefixes, which Laraplate adds from the model profile. |
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Alternative multilingual model; no prefixes. |
+| `intfloat/multilingual-e5-small` | 384 | **Default** (profile `sentence_transformers:intfloat/multilingual-e5-small`). Multilingual; requires the `query:` / `passage:` prefixes, which Laraplate adds from the model profile. |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Alternative multilingual model; no prefixes. Not shipped as a profile: add one (below). |
 | `sentence-transformers/all-MiniLM-L6-v2` | 384 | Lighter; English-centric; no prefixes. |
 
-The service is **multi-model**: `EMBEDDING_MODEL` is only the default served when a request omits `model`. Keep the default equal to the active profile's `service_model` so `/health` matches what `ai:embeddings:repair` expects. If you switch to a model with a different output size, realign Laraplate and Elasticsearch (new index mapping, update dimension settings, full re-embed).
+The service is **multi-model**: `EMBEDDING_MODEL` is only the default served when a request omits `model`. Keep the default equal to the active profile's `service_model` so `/health` matches what `ai:embeddings:repair` expects. To use another model, add a profile keyed `sentence_transformers:<hugging face model>`, run `php artisan ai:embeddings:probe <key>` and put the measured length in its `dimensions`, then choose it in the setting `features.embeddings.model`: the confirmation starts `ai:embeddings:switch`, which re-embeds everything, rebuilds the index mappings when the length differs, verifies and activates it. Vector search is off meanwhile. Steps and commands: [rag/MODULE.md](rag/MODULE.md), section *Embedding model and model switch*.
 
 `max_length: 512` in the API request is the **token truncation limit** for model input, not the embedding vector size.
 
@@ -258,14 +254,14 @@ SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
 ```
 
-The active embedding model is the setting `features.embeddings.model` (managed value `features.embeddings.active`, default the first configured profile, `sentence_transformers:intfloat/multilingual-e5-small`), not an env var; Laraplate sends that profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
+The embedding model is chosen in the setting `features.embeddings.model`; the one that serves search is the managed setting `features.embeddings.active` (default the first configured profile, `sentence_transformers:intfloat/multilingual-e5-small`), which only a model switch changes. Neither is an env var. Laraplate sends the profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to the active one.
 
 Notes:
 
 - The `sentence_transformers` profiles are offered only when `SENTENCE_TRANSFORMERS_URL` is set.
 - Chat, translation and every other AI feature choose their model in Filament > Settings (`features.*.model`), not in env; see `rag/AI_MODEL_SELECTION_USER.md`.
 
-Ensure Core search vector settings match (`core.search.vector.dimensions` = `384`). Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).
+Core's vector settings follow the active profile and need no edit. Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).
 
 ---
 
@@ -283,7 +279,7 @@ php artisan ai:embeddings:repair "Modules\\CMS\\Models\\Content"
 
 Replace the FQCN with each searchable model that defines `$embed`.
 
-After dimension or model changes for RAG, run `php artisan ai:index-rag-docs --full`.
+A model switch rebuilds the Elasticsearch documentation indexes itself. With a `filesystem` or `memory` documentation store, run `php artisan ai:index-rag-docs --full` after the switch.
 
 ---
 
@@ -299,7 +295,7 @@ Hybrid search can rerank its top results with a cross-encoder through `POST {url
 |---------|----------------|
 | Connection refused from Laravel | Wrong URL/port, firewall, or service not listening on `0.0.0.0` |
 | HTTP 401 | `SENTENCE_TRANSFORMERS_API_KEY` mismatch with Python `API_KEY` |
-| ES mapping / vector search errors | Embedding dimension ≠ index `dense_vector` dims |
+| Vector search off, `meta.vector_disabled` = `dimension_mismatch` | The index `dense_vector` dims differ from `search.vector.dimensions`; finish or resume the switch (`ai:embeddings:status`) |
 | Keyword-only search documents | Embeddings job failed; check Horizon; run `ai:embeddings:repair` |
 | `Embeddings count mismatch` | API returned fewer vectors than texts |
 
