@@ -14,6 +14,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Models\ModelEmbedding;
+use Modules\Core\Search\Contracts\IProfileVectorIndex;
 use NeuronAI\RAG\Document;
 
 /**
@@ -93,10 +94,35 @@ final readonly class ModelEmbeddingSynchronizer
         // Pass 2: one batched (adaptive) embedding call for all stale texts.
         $embedded = $texts === [] ? [] : $this->embeddingService->embedDocumentsBatch($texts);
 
+        $this->ensureProfileIndex($plans);
+
         // Pass 3: persist per model, from the shared batch result.
         foreach ($plans as $plan) {
             $this->writePlan($plan, $model_key, $embedded, $announceCompletion);
         }
+    }
+
+    /**
+     * On pgvector the rows of a profile are searched through its own partial index, so it exists
+     * before the first row of the profile is written (once per process and key).
+     *
+     * @param  list<array{stale: list<mixed>}>  $plans
+     */
+    private function ensureProfileIndex(array $plans): void
+    {
+        if (array_filter($plans, static fn (array $plan): bool => $plan['stale'] !== []) === []) {
+            return;
+        }
+
+        $indexes = app(IProfileVectorIndex::class);
+        $connection = new ModelEmbedding()->getConnection();
+
+        if (! $indexes->supports($connection)) {
+            return;
+        }
+
+        $profile = $this->registry->active();
+        $indexes->ensureOnce($connection, $profile->key, $profile->dimensions, $profile->similarity);
     }
 
     /**

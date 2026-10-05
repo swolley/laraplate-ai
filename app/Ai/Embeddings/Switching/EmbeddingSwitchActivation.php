@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\Core\Models\ModelEmbedding;
 use Modules\Core\Models\Setting;
+use Modules\Core\Search\Contracts\IProfileVectorIndex;
 use Modules\Core\Search\Services\VectorSearchAvailability;
 use Throwable;
 
@@ -45,13 +46,37 @@ final readonly class EmbeddingSwitchActivation
 
         app(VectorSearchAvailability::class)->forget();
 
-        ModelEmbedding::query()
+        $previous = ModelEmbedding::query()
             ->where(static function (Builder $query) use ($target): void {
                 $query->where('model_key', '!=', $target->key)->orWhereNull('model_key');
-            })
-            ->delete();
+            });
+
+        $previous_keys = (clone $previous)->whereNotNull('model_key')->distinct()->pluck('model_key')->all();
+
+        $previous->delete();
+
+        $this->dropIndexes($previous_keys);
 
         return $idle;
+    }
+
+    /**
+     * On pgvector the index of every model whose rows were just deleted goes with them.
+     *
+     * @param  list<string>  $modelKeys
+     */
+    private function dropIndexes(array $modelKeys): void
+    {
+        $indexes = app(IProfileVectorIndex::class);
+        $connection = new ModelEmbedding()->getConnection();
+
+        if (! $indexes->supports($connection)) {
+            return;
+        }
+
+        foreach ($modelKeys as $modelKey) {
+            $indexes->drop($connection, $modelKey);
+        }
     }
 
     /**

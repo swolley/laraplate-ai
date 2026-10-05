@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Laravel\Scout\Engines\Engine;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Contracts\IRagIndexRebuilder;
+use Modules\Core\Models\ModelEmbedding;
+use Modules\Core\Search\Contracts\IProfileVectorIndex;
 use Modules\Core\Search\Contracts\IReportsVectorDimensions;
 use Modules\Core\Search\Contracts\ISearchEngine;
 use Modules\Core\Search\Support\VectorModelContext;
@@ -39,6 +41,8 @@ final readonly class EmbeddingSwitchIndexes
      */
     public function rebuild(EmbeddingModelProfile $target, ?int $currentDimensions): void
     {
+        $this->ensureProfileIndex($target);
+
         $this->asTarget($target, function () use ($target, $currentDimensions): void {
             foreach ($this->corpus->models() as $modelClass) {
                 $this->rebuildModel($modelClass, $target, $currentDimensions);
@@ -63,6 +67,20 @@ final readonly class EmbeddingSwitchIndexes
                 $this->writeDocuments($modelClass, $instance, $instance->searchableUsing(), $target);
             }
         });
+    }
+
+    /**
+     * On pgvector the target's rows are searched through their own partial index: it is created
+     * (idempotently) here, ahead of the activation that makes the target serve search.
+     */
+    private function ensureProfileIndex(EmbeddingModelProfile $target): void
+    {
+        $indexes = app(IProfileVectorIndex::class);
+        $connection = new ModelEmbedding()->getConnection();
+
+        if ($indexes->supports($connection)) {
+            $indexes->ensure($connection, $target->key, $target->dimensions, $target->similarity);
+        }
     }
 
     /**

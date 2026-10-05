@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Modules\Core\Models\ModelEmbedding;
+use Modules\Core\Search\Contracts\IProfileVectorIndex;
 use Override;
 
 /**
@@ -50,6 +51,13 @@ final class EmbeddingsPruneCommand extends Command
         }
 
         $deleted = ModelEmbedding::query()->producedBy($modelKey)->delete();
+
+        $indexes = app(IProfileVectorIndex::class);
+        $connection = new ModelEmbedding()->getConnection();
+
+        if ($indexes->supports($connection)) {
+            $indexes->drop($connection, $modelKey);
+        }
 
         $this->info("Deleted {$deleted} embedding row(s) of \"{$modelKey}\".");
 
