@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
@@ -106,6 +108,7 @@ it('counts the searchable records times their translations', function (): void {
     (new EmbeddableTestModel(['title' => 'One']))->saveQuietly();
     (new EmbeddableTestModel(['title' => 'Two']))->saveQuietly();
 
+    Http::fake(['*/embed' => Http::response(['model' => 'all-MiniLM-L6-v2', 'embeddings' => [array_fill(0, 384, 0.1)]])]);
     $registry = app(EmbeddingModelRegistry::class);
     $preview = switch_preview([TranslatedEmbeddableTestModel::class, EmbeddableTestModel::class])
         ->for($registry->get('sentence_transformers:all-MiniLM-L6-v2'));
@@ -114,10 +117,39 @@ it('counts the searchable records times their translations', function (): void {
         ->and($preview->estimatedSeconds)->toBeInt();
 });
 
-it('gives no estimate when the probe cannot measure the latency', function (): void {
+it('gives no estimate, after a short timeout, when the service cannot be measured', function (): void {
+    $timeouts = [];
+    Http::fake(['*/embed' => static function ($request, array $options) use (&$timeouts): never {
+        $timeouts[] = $options['timeout'] ?? null;
+
+        throw new ConnectionException('timed out');
+    }]);
     $registry = app(EmbeddingModelRegistry::class);
 
     $preview = switch_preview(dimensions: null)->for($registry->get('sentence_transformers:all-MiniLM-L6-v2'));
 
-    expect($preview->estimatedSeconds)->toBeNull();
+    expect($preview->estimatedSeconds)->toBeNull()
+        ->and($timeouts)->toBe([EmbeddingSwitchPreview::LATENCY_TIMEOUT_SECONDS])
+        ->and(config('ai.providers.sentence_transformers.timeout'))->not->toBe(EmbeddingSwitchPreview::LATENCY_TIMEOUT_SECONDS);
+});
+
+it('measures again once a failed measurement has expired from the cache', function (): void {
+    $reachable = false;
+    Http::fake(['*/embed' => static function () use (&$reachable) {
+        if (! $reachable) {
+            throw new ConnectionException('timed out');
+        }
+
+        return Http::response(['model' => 'all-MiniLM-L6-v2', 'embeddings' => [array_fill(0, 384, 0.1)]]);
+    }]);
+    $target = app(EmbeddingModelRegistry::class)->get('sentence_transformers:all-MiniLM-L6-v2');
+    $preview = switch_preview();
+
+    expect($preview->for($target)->estimatedSeconds)->toBeNull();
+
+    $reachable = true;
+    expect($preview->for($target)->estimatedSeconds)->toBeNull();
+
+    $this->travel(31)->seconds();
+    expect($preview->for($target)->estimatedSeconds)->toBeInt();
 });

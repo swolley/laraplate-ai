@@ -58,18 +58,18 @@ final readonly class EmbeddingServiceIdentity
 
     /**
      * Embeds the probe text with the payload the jobs send and checks the vector against the
-     * profile's dimensions.
-     *
+     * profile's dimensions. `$timeout` overrides the configured request timeout for this call only
+     * (a quick latency measurement must not wait as long as a job would).
      *
      * @throws EmbeddingDimensionMismatch when the answer carries no vector or one of another length
      * @throws Throwable when the service cannot be reached or answers an error
      *
      * @return string|null the model the answer names, or null when it names none
      */
-    public function probeModel(EmbeddingModelProfile $profile): ?string
+    public function probeModel(EmbeddingModelProfile $profile, ?int $timeout = null): ?string
     {
         $api_key = ai_config_nullable_string('ai.providers.sentence_transformers.api_key');
-        $request = Http::timeout(ai_config_int('ai.providers.sentence_transformers.timeout', 30))->acceptJson();
+        $request = Http::timeout($timeout ?? ai_config_int('ai.providers.sentence_transformers.timeout', 30))->acceptJson();
 
         if ($api_key !== null && $api_key !== '') {
             $request = $request->withToken($api_key);

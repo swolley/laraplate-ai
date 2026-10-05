@@ -12,18 +12,26 @@ use InvalidArgumentException;
 use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\EmbeddingServiceIdentity;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Throwable;
 
 /**
  * Computes what a switch to a target profile would cost: the two models and their dimensions, the
- * records to embed and a rough time. It only counts rows and probes the target once (the latency is
- * cached for a few minutes), so the settings page can call it on every confirmation.
+ * records to embed and a rough time. It only counts rows and probes the target once, with a short
+ * timeout (the latency is cached), so the settings page can call it on every confirmation.
  */
 final readonly class EmbeddingSwitchPreview
 {
+    /**
+     * Request timeout of the latency measurement: the settings page waits for it.
+     */
+    public const int LATENCY_TIMEOUT_SECONDS = 3;
+
     private const int LATENCY_CACHE_SECONDS = 600;
+
+    private const int FAILED_LATENCY_CACHE_SECONDS = 30;
 
     private const int DEFAULT_BATCH_SIZE = 32;
 
@@ -31,6 +39,7 @@ final readonly class EmbeddingSwitchPreview
         private EmbeddingModelRegistry $registry,
         private IEmbeddableModels $embeddableModels,
         private EmbeddingDimensionProbe $probe,
+        private EmbeddingServiceIdentity $identity = new EmbeddingServiceIdentity(),
     ) {}
 
     public function for(EmbeddingModelProfile $target): SwitchPreview
@@ -109,8 +118,10 @@ final readonly class EmbeddingSwitchPreview
     }
 
     /**
-     * Seconds one probe call takes, measured once and cached briefly (a failure too), so a
-     * confirmation shown twice does not call the service twice.
+     * Seconds one probe call takes, measured once and cached (a success for ten minutes, a failure
+     * for thirty seconds), so a confirmation shown twice does not call the service twice. The
+     * sentence-transformers service is measured with a short timeout of its own; a hosted provider
+     * is measured through its client.
      */
     private function latency(EmbeddingModelProfile $target): ?float
     {
@@ -126,13 +137,18 @@ final readonly class EmbeddingSwitchPreview
         $started = hrtime(true);
 
         try {
-            $this->probe->measure($target);
+            if ($target->provider === 'sentence_transformers') {
+                $this->identity->probeModel($target, self::LATENCY_TIMEOUT_SECONDS);
+            } else {
+                $this->probe->measure($target);
+            }
+
             $seconds = (hrtime(true) - $started) / 1e9;
         } catch (Throwable) {
             $seconds = null;
         }
 
-        Cache::put($cacheKey, ['seconds' => $seconds], self::LATENCY_CACHE_SECONDS);
+        Cache::put($cacheKey, ['seconds' => $seconds], $seconds === null ? self::FAILED_LATENCY_CACHE_SECONDS : self::LATENCY_CACHE_SECONDS);
 
         return $seconds;
     }

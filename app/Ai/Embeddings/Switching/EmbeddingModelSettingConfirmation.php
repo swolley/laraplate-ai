@@ -14,8 +14,9 @@ use Override;
 
 /**
  * The confirmation shown when `features.embeddings.model` is changed on the settings page: what the
- * switch costs and what happens meanwhile. Confirming queues `ai:embeddings:switch`, which runs the
- * preflight and refuses to start when a switch is already running. The field is locked while a
+ * switch costs and what happens meanwhile. Confirming queues `ai:embeddings:switch --report-failure`,
+ * which runs the preflight and, when it refuses, stores the refusal as a failed switch so the field
+ * locks and shows why. The field is locked while a
  * switch runs or failed.
  *
  * Registered once at boot, it resolves the preview when it needs it, so the probe and the
@@ -76,7 +77,7 @@ final readonly class EmbeddingModelSettingConfirmation implements ISettingChange
             return;
         }
 
-        Artisan::queue('ai:embeddings:switch', ['profile' => $newValue]);
+        Artisan::queue('ai:embeddings:switch', ['profile' => $newValue, '--report-failure' => true]);
     }
 
     #[Override]

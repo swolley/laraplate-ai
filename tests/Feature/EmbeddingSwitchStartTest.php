@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Queue\Factory as QueueFactory;
+use Illuminate\Contracts\Queue\Queue as QueueConnection;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -244,6 +246,85 @@ it('refuses to start while a switch is running or failed', function (string $sta
         ->and(switch_suspended_reason())->toBeNull();
     Queue::assertNothingPushed();
 })->with(['running', 'failed']);
+
+it('records a refused start as a failed preflight when asked to report it', function (): void {
+    Queue::fake();
+    switch_probe_measures(768);
+    switch_service_reports('all-MiniLM-L6-v2');
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET, '--report-failure' => true])
+        ->expectsOutputToContain('declares 384')
+        ->assertFailed();
+
+    $state = app(EmbeddingSwitchStore::class)->get();
+
+    expect($state->status)->toBe('failed')
+        ->and($state->phase)->toBe('preflight')
+        ->and($state->target)->toBe(SWITCH_TARGET)
+        ->and($state->previous)->toBe(SWITCH_ACTIVE)
+        ->and($state->error)->toContain('declares 384')
+        ->and(switch_suspended_reason())->toBeNull();
+    Queue::assertNothingPushed();
+});
+
+it('records nothing when a refused start is not asked to report it', function (): void {
+    Queue::fake();
+    switch_probe_measures(768);
+    switch_service_reports('all-MiniLM-L6-v2');
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET])
+        ->expectsOutputToContain('declares 384')
+        ->assertFailed();
+
+    switch_expect_nothing_changed();
+});
+
+it('records a start refused by a held lock as a failed preflight when asked to report it', function (): void {
+    Queue::fake();
+    $release = app(EmbeddingSwitchStore::class)->lock();
+
+    try {
+        $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET, '--report-failure' => true])->assertFailed();
+    } finally {
+        $release();
+    }
+
+    expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('failed')
+        ->and(app(EmbeddingSwitchStore::class)->get()->error)->toContain('Another embedding model switch is starting')
+        ->and(switch_suspended_reason())->toBeNull();
+    Queue::assertNothingPushed();
+});
+
+it('never replaces a running switch with a reported refusal', function (): void {
+    Queue::fake();
+    $running = new EmbeddingSwitchState('running', 'embeddings', SWITCH_TARGET, SWITCH_ACTIVE, 10, 3);
+    app(EmbeddingSwitchStore::class)->put($running);
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET, '--report-failure' => true])
+        ->expectsOutputToContain('already running')
+        ->assertFailed();
+
+    expect(app(EmbeddingSwitchStore::class)->get())->toEqual($running);
+    Queue::assertNothingPushed();
+});
+
+it('rolls the start back when the job cannot be queued', function (): void {
+    switch_probe_measures(384);
+    switch_service_reports('all-MiniLM-L6-v2');
+    $queue = Mockery::mock(QueueConnection::class);
+    $queue->shouldReceive('push', 'pushOn', 'later', 'laterOn')->andThrow(new RuntimeException('queue down'));
+    $queues = Mockery::mock(QueueFactory::class);
+    $queues->shouldReceive('connection')->andReturn($queue);
+    app()->instance(QueueFactory::class, $queues);
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET])
+        ->expectsOutputToContain('could not queue the switch; nothing was changed (queue down)')
+        ->assertFailed();
+
+    expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('idle')
+        ->and(switch_suspended_reason())->toBeNull()
+        ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+});
 
 it('completes the preflight, moves to the embeddings phase and dispatches nothing more', function (): void {
     $resolver = Mockery::mock(IEmbeddableModels::class);

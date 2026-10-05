@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Console\QueuedCommand;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
@@ -41,6 +43,8 @@ beforeEach(function (): void {
         static fn (): EmbeddingsProviderInterface => $provider,
     ));
 
+    Http::fake(['*/embed' => Http::response(['model' => 'bge-m3', 'embeddings' => [array_fill(0, 1024, 0.1)]])]);
+
     $embeddable = Mockery::mock(IEmbeddableModels::class);
     $embeddable->shouldReceive('all')->andReturn([]);
     app()->instance(IEmbeddableModels::class, $embeddable);
@@ -75,7 +79,9 @@ function embedding_switch_was_queued(?string $profile = null): bool
     return Queue::pushed(QueuedCommand::class)->contains(static function (QueuedCommand $job) use ($profile): bool {
         $data = (fn (): array => $this->data)->call($job);
 
-        return $data[0] === 'ai:embeddings:switch' && ($profile === null || ($data[1]['profile'] ?? null) === $profile);
+        return $data[0] === 'ai:embeddings:switch'
+            && ($data[1]['--report-failure'] ?? false) === true
+            && ($profile === null || ($data[1]['profile'] ?? null) === $profile);
     });
 }
 
@@ -124,6 +130,28 @@ it('locks the field with the phase while a switch runs or failed', function (): 
 
     $store->put(new EmbeddingSwitchState('failed', 'indexes', CONFIRM_OTHER_DIMENSIONS, CONFIRM_ACTIVE, 40, 40, 'mapping refused'));
     expect($confirmation->lockedReason(embedding_model_setting()))->toContain('indexes')->toContain('mapping refused');
+});
+
+it('still warns, with no estimate and after a short timeout, when the service hangs', function (): void {
+    $timeouts = [];
+    Http::fake(['*/embed' => static function ($request, array $options) use (&$timeouts): never {
+        $timeouts[] = $options['timeout'] ?? null;
+
+        throw new ConnectionException('timed out');
+    }]);
+
+    $warning = embedding_model_confirmation()->warn(embedding_model_setting(), CONFIRM_OTHER_DIMENSIONS);
+
+    expect(implode("\n", $warning->lines))->toContain('no time estimate')
+        ->and($timeouts)->toBe([3]);
+});
+
+it('shows the refusal of a start reported by the queued command in the lock text', function (): void {
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('failed', 'preflight', CONFIRM_OTHER_DIMENSIONS, CONFIRM_ACTIVE, error: 'the embedding service does not answer'));
+
+    expect(embedding_model_confirmation()->lockedReason(embedding_model_setting()))
+        ->toContain('preflight')
+        ->toContain('the embedding service does not answer');
 });
 
 it('queues ai:embeddings:switch with the confirmed profile', function (): void {

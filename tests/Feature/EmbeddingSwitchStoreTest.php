@@ -36,3 +36,44 @@ it('refuses a second lock holder and accepts one after release', function (): vo
     expect($again)->toBeInstanceOf(Closure::class);
     $again();
 });
+
+it('lets the start lock expire after two minutes', function (): void {
+    $store = new EmbeddingSwitchStore;
+
+    expect($store->lock())->toBeInstanceOf(Closure::class);
+
+    $this->travel(119)->seconds();
+    expect($store->lock())->toBeNull();
+
+    $this->travel(2)->seconds();
+    $again = $store->lock();
+    expect($again)->toBeInstanceOf(Closure::class);
+    $again();
+});
+
+it('suspends vector search and clears the suspension through the real settings row', function (): void {
+    $row = Setting::factory()->persistedWithoutApprovalCapture()->create([
+        'name' => 'search.vector.suspended_reason',
+        'module' => 'Core',
+        'type' => 'string',
+        'value' => 'unset',
+        'choices' => null,
+        'group_name' => 'search',
+    ]);
+    // Seeded as the seeder does it: a JSON null, since core_settings.value is NOT NULL.
+    Setting::query()->withoutGlobalScopes()->whereKey($row->getKey())->toBase()->update(['value' => 'null', 'managed' => true]);
+    config()->set('core.search.vector.suspended_reason', null);
+    $store = new EmbeddingSwitchStore;
+    $stored = static fn (): Setting => Setting::query()->withoutGlobalScopes()->whereKey($row->getKey())->sole();
+
+    $store->suspend();
+
+    expect($stored()->value)->toBe(EmbeddingSwitchStore::SUSPENDED_REASON)
+        ->and(config('core.search.vector.suspended_reason'))->toBe('switching');
+
+    $store->clearSuspension();
+
+    expect($stored()->value)->toBeNull()
+        ->and($stored()->getRawOriginal('value'))->toBe('null')
+        ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+});
