@@ -23,7 +23,7 @@ final class EmbeddingsProviderFactory
 {
     public static function make(?string $provider = null): EmbeddingsProviderInterface
     {
-        $provider ??= ai_config_string('ai.features.embeddings.default_provider', 'sentence_transformers');
+        $provider ??= self::registry()->active()->provider;
 
         return match ($provider) {
             'openai' => self::createOpenAI(),
@@ -81,15 +81,19 @@ final class EmbeddingsProviderFactory
         );
     }
 
+    private static function registry(): EmbeddingModelRegistry
+    {
+        return resolve(EmbeddingModelRegistry::class);
+    }
+
     /**
-     * The active embedding profile's `service_model`, sent per request so the
+     * The active embedding profile's service model, sent per request so the
      * embedding service (which is multi-model) uses the model Laraplate expects.
-     * Null when unresolved, letting the service fall back to its own default.
      */
     private static function activeServiceModel(): ?string
     {
-        $active = ai_config_string('ai.features.embeddings.active', 'multilingual-e5-small');
+        $model = self::registry()->active()->serviceModel;
 
-        return ai_config_nullable_string("ai.features.embeddings.models.{$active}.service_model");
+        return $model === '' ? null : $model;
     }
 }

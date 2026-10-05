@@ -104,7 +104,7 @@ hardcoding it:
 
 ### Model selection (multi-model, request-driven)
 
-The `model` field is **optional**. Laraplate sends the active embedding profile's `service_model` (`ai.features.embeddings.models.<active>.service_model`) on every request, so the **Laravel config is the single source of truth** and the service never drifts from what the application expects. When `model` is omitted, the service uses its own `EMBEDDING_MODEL` default.
+The `model` field is **optional**. Laraplate sends the active embedding profile's service model (the part of its `provider:service_model` key in `ai.features.embeddings.models`) on every request, so the **Laravel config is the single source of truth** and the service never drifts from what the application expects. When `model` is omitted, the service uses its own `EMBEDDING_MODEL` default.
 
 The service loads models **lazily** and keeps up to `EMBEDDING_MODEL_CACHE` of them resident (LRU), so switching the active model — or embedding with two models during a migration window — needs no service restart. `/health` reports the default and the currently loaded models. All models served concurrently must share the configured vector dimension (384); a model with a different output size needs its own index (see *Choose a model*).
 
@@ -261,7 +261,7 @@ SENTENCE_TRANSFORMERS_API_KEY=
 AI_FAQ_ES_EMBEDDING_DIMS=384
 ```
 
-The active embedding model is chosen in `config/` (`ai.features.embeddings.active`, default `multilingual-e5-small`), not in `.env`; Laraplate sends that profile's `service_model` to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
+The active embedding model is chosen in `config/` (`ai.features.embeddings.active`, default `sentence_transformers:intfloat/multilingual-e5-small`), not in `.env`; Laraplate sends that profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
 
 Notes:
 

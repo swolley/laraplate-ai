@@ -31,20 +31,19 @@ return [
             'modules' => [],
 
             // Active embedding-model profile key (see `models` below). Resolved by
-            // EmbeddingModelRegistry; dimensions/similarity are derived from Core's
-            // `core.search.vector.*` config, never hardcoded here, to avoid drift.
-            'active' => env('AI_EMBEDDINGS_MODEL', 'multilingual-e5-small'),
+            // EmbeddingModelRegistry.
+            'active' => env('AI_EMBEDDINGS_MODEL', 'sentence_transformers:intfloat/multilingual-e5-small'),
+            // Profiles are keyed `provider:service_model`, split at the first colon. Each
+            // declares the dimensions of its vectors; Core's `core.search.vector.*` follows.
             'models' => [
-                'multilingual-e5-small' => [
-                    'provider' => 'sentence_transformers',
-                    'service_model' => 'intfloat/multilingual-e5-small',
+                'sentence_transformers:intfloat/multilingual-e5-small' => [
+                    'dimensions' => 384,
                     'query_prefix' => 'query: ',
                     'passage_prefix' => 'passage: ',
                     'normalize' => true,
                 ],
-                'all-MiniLM-L6-v2' => [
-                    'provider' => 'sentence_transformers',
-                    'service_model' => 'all-MiniLM-L6-v2',
+                'sentence_transformers:all-MiniLM-L6-v2' => [
+                    'dimensions' => 384,
                     'query_prefix' => '',
                     'passage_prefix' => '',
                     'normalize' => true,

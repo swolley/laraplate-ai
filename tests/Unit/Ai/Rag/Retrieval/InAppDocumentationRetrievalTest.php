@@ -135,8 +135,8 @@ it('uses a global-only tenant filter for globally scoped assistance', function (
 });
 
 it('returns only safe citations from authorized scoped hits', function (): void {
-    config()->set('ai.features.embeddings.active', 'multilingual-e5-small');
-    config()->set('ai.features.embeddings.models.multilingual-e5-small.query_prefix', 'query: ');
+    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.query_prefix', 'query: ');
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldReceive('embedText')->once()->with('query: Come modifico un contenuto?')->andReturn([0.1, 0.2, 0.3]);
@@ -166,8 +166,8 @@ it('returns only safe citations from authorized scoped hits', function (): void 
 
 it('drops documents scoring below the configured minimum similarity', function (): void {
     config()->set('ai.features.faq.min_similarity', 0.95);
-    config()->set('ai.features.embeddings.active', 'multilingual-e5-small');
-    config()->set('ai.features.embeddings.models.multilingual-e5-small.query_prefix', 'query: ');
+    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.query_prefix', 'query: ');
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);
     $embedding_service->shouldReceive('embedText')->once()->andReturn([0.1, 0.2, 0.3]);
