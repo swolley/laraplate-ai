@@ -6,6 +6,7 @@ namespace Modules\AI\Tests\Stubs;
 
 use Illuminate\Database\Connection;
 use Modules\Core\Search\Contracts\IProfileVectorIndex;
+use RuntimeException;
 
 /**
  * Records the calls of the per-profile vector index; `$supported` stands for a pgvector connection.
@@ -16,6 +17,8 @@ final class RecordingProfileVectorIndex implements IProfileVectorIndex
      * @var list<array{0: string, 1: string, 2?: int, 3?: string}>
      */
     public array $calls = [];
+
+    public bool $failOnDrop = false;
 
     public function __construct(public bool $supported) {}
 
@@ -37,5 +40,9 @@ final class RecordingProfileVectorIndex implements IProfileVectorIndex
     public function drop(Connection $connection, string $modelKey): void
     {
         $this->calls[] = ['drop', $modelKey];
+
+        if ($this->failOnDrop) {
+            throw new RuntimeException('drop failed');
+        }
     }
 }

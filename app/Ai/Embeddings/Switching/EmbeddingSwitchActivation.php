@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Embeddings\Switching;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\Core\Models\ModelEmbedding;
 use Modules\Core\Models\Setting;
@@ -75,7 +76,12 @@ final readonly class EmbeddingSwitchActivation
         }
 
         foreach ($modelKeys as $modelKey) {
-            $indexes->drop($connection, $modelKey);
+            try {
+                $indexes->drop($connection, $modelKey);
+            } catch (Throwable $exception) {
+                // The activation is done: a failed drop leaves an unused index, never a failed switch.
+                Log::warning("Could not drop the vector index of \"{$modelKey}\" after the embedding model switch; run ai:embeddings:prune --model-key={$modelKey} to retry: {$exception->getMessage()}");
+            }
         }
     }
 

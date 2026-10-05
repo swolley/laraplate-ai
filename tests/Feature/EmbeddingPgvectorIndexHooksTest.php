@@ -67,3 +67,19 @@ it('ensures the index of the active key before writing, on pgvector only', funct
 
     expect($fake->calls)->toBe($supported ? [['ensureOnce', $active->key, $active->dimensions, $active->similarity]] : []);
 })->with([true, false]);
+
+it('does not fail the activation when dropping an index fails, and logs the recovery command', function (): void {
+    $fake = pgvector_hooks_fake(true);
+    $fake->failOnDrop = true;
+    Illuminate\Support\Facades\Log::spy();
+    $target = app(EmbeddingModelRegistry::class)->get(Harness::TARGET);
+
+    $state = app(EmbeddingSwitchActivation::class)->activate($target);
+
+    expect($state->status)->toBe('idle')
+        ->and($fake->calls)->toBe([['drop', Harness::ACTIVE]]);
+
+    Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $message): bool => str_contains($message, 'ai:embeddings:prune --model-key=' . Harness::ACTIVE))
+        ->once();
+});
