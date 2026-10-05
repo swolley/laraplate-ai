@@ -32,6 +32,24 @@ final readonly class ModelEmbeddingSynchronizer
     ) {}
 
     /**
+     * The `content_hash` stored with the rows of an embedded text: a row whose hash and model key
+     * match the current text is fresh.
+     */
+    public static function contentHash(string $text): string
+    {
+        return hash('sha256', $text);
+    }
+
+    /**
+     * The `locale` stored with the rows of a locale's text: null for the default locale of a model
+     * that is not translated, the locale otherwise.
+     */
+    public static function rowLocale(string $locale, string $defaultLocale, bool $isTranslated): ?string
+    {
+        return ($locale === $defaultLocale && ! $isTranslated) ? null : $locale;
+    }
+
+    /**
      * @param  iterable<Model>  $models
      * @param  bool  $announceCompletion  When true (per-model path) each stored
      *                                    model emits {@see ModelPreProcessingCompleted}
@@ -121,9 +139,9 @@ final readonly class ModelEmbeddingSynchronizer
         $processed_locales = [];
 
         foreach ($by_locale as $loc => $text) {
-            $row_locale = ($loc === $default_locale && ! $is_translated) ? null : $loc;
+            $row_locale = self::rowLocale((string) $loc, $default_locale, $is_translated);
             $processed_locales[] = $row_locale;
-            $content_hash = hash('sha256', $text);
+            $content_hash = self::contentHash($text);
 
             $is_fresh = $existing->first(static fn (ModelEmbedding $row): bool => $row->locale === $row_locale
                 && $row->model_key === $model_key

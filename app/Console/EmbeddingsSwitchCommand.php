@@ -36,7 +36,8 @@ use Throwable;
  * running or failed records nothing. A start whose job cannot be queued is rolled back.
  *
  * `--resume` continues a failed switch, or a running one that stopped making progress
- * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase. `--abandon` clears a start
+ * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase (a failed verification
+ * from the indexes, which are rebuilt). `--abandon` clears a start
  * refused by its preflight, and after a later failure runs the same procedure back to the previous
  * model. Neither acts on a switch that is running normally.
  */
@@ -163,7 +164,10 @@ final class EmbeddingsSwitchCommand extends Command
                 return $this->refuse($refusal);
             }
 
-            $resumed = $state->with(status: 'running', error: null, rounds: 0, updatedAt: now()->toIso8601String());
+            // A failed verification restarts at the indexes: they are emptied and rebuilt, so whatever
+            // the check found (a document left over, one written with the wrong vectors) is gone.
+            $phase = $state->phase === 'verify' ? 'indexes' : $state->phase;
+            $resumed = $state->with(status: 'running', phase: $phase, error: null, rounds: 0, updatedAt: now()->toIso8601String());
             $store->put($resumed);
         } finally {
             $release();
@@ -173,7 +177,7 @@ final class EmbeddingsSwitchCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Switch to \"{$state->target}\" resumed from phase {$state->phase}. Follow it with ai:embeddings:status.");
+        $this->info("Switch to \"{$state->target}\" resumed from phase {$resumed->phase}. Follow it with ai:embeddings:status.");
 
         return self::SUCCESS;
     }
@@ -204,9 +208,11 @@ final class EmbeddingsSwitchCommand extends Command
             $active = $registry->activeKey();
 
             if ($state->status === 'failed' && $state->phase === 'preflight') {
+                // The job may have failed its preflight after the start suspended vector search.
                 new Setting()->getConnection()->transaction(static function () use ($store, $active): void {
                     $store->put(EmbeddingSwitchState::idle()->with(updatedAt: now()->toIso8601String()));
                     $store->recordTarget($active);
+                    $store->clearSuspension();
                 });
 
                 $this->info("The refused switch to \"{$state->target}\" was cleared: the embedding model stays \"{$active}\".");

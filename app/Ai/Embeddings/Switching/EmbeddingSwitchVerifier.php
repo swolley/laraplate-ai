@@ -57,7 +57,7 @@ final readonly class EmbeddingSwitchVerifier
         $documents = $this->inspector->documentCount($instance);
 
         if ($documents !== null && $documents !== $records) {
-            throw new EmbeddingSwitchPhaseFailed("index {$index} holds {$documents} document(s) for {$records} searchable record(s) of {$modelClass}");
+            throw new EmbeddingSwitchPhaseFailed("index {$index} holds {$documents} document(s) for {$records} searchable record(s) of {$modelClass}. Resuming empties and rebuilds the index: run ai:embeddings:switch --resume");
         }
 
         $pending = $this->corpus->progress($target->key, $modelClass)['pending'];

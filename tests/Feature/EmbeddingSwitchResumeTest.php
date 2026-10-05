@@ -47,7 +47,9 @@ it('resumes a switch failed in its verification once the cause is fixed, and com
 
     new GenerateEmbeddingsJob($this->records[1], null, Harness::TARGET)->handle(app(IEmbeddingService::class));
 
-    $this->artisan('ai:embeddings:switch', ['--resume' => true])->assertSuccessful();
+    $this->artisan('ai:embeddings:switch', ['--resume' => true])
+        ->expectsOutputToContain('resumed from phase indexes')
+        ->assertSuccessful();
 
     expect(resume_store()->get()->status)->toBe('idle')
         ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET)
@@ -183,4 +185,48 @@ it('abandons a switch failed after it changed the index: rebuilds for the previo
         ->and(end($forced)['model_key'])->toBe(Harness::ACTIVE)
         ->and(Harness::storedModelKeys())->toBe([Harness::ACTIVE])
         ->and(Harness::rowsOf(Harness::ACTIVE))->toBe(3);
+});
+
+it('lifts the suspension when it abandons a switch whose job failed its preflight', function (): void {
+    Queue::fake();
+    resume_store()->suspend();
+    resume_store()->put(new EmbeddingSwitchState('failed', 'preflight', Harness::TARGET, Harness::ACTIVE, error: 'worker lost'));
+    expect(Harness::setting('search.vector.suspended_reason'))->toBe('switching');
+
+    $this->artisan('ai:embeddings:switch', ['--abandon' => true])->assertSuccessful();
+
+    expect(resume_store()->get()->status)->toBe('idle')
+        ->and(Harness::setting('search.vector.suspended_reason'))->toBeNull()
+        ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+    Queue::assertNothingPushed();
+});
+
+it('shows a running switch without progress as interrupted', function (): void {
+    resume_store()->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE, updatedAt: now()->subHours(2)->toIso8601String()));
+
+    $this->artisan('ai:embeddings:status')
+        ->expectsOutputToContain('interrupted: no progress for over 30 minutes; run ai:embeddings:switch --resume or --abandon')
+        ->assertSuccessful();
+});
+
+it('does not show a running switch that makes progress as interrupted', function (): void {
+    resume_store()->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE, updatedAt: now()->toIso8601String()));
+
+    $this->artisan('ai:embeddings:status')
+        ->doesntExpectOutputToContain('interrupted')
+        ->assertSuccessful();
+});
+
+it('resumes a verification failed on a leftover document by rebuilding the index, as its message says', function (): void {
+    Harness::start(Harness::TARGET);
+    Harness::advanceUntil('verify');
+    $this->engine->documents[$this->index]['999'] = ['id' => '999'];
+    Harness::advanceUntil();
+    expect(resume_store()->get()->status)->toBe('failed');
+
+    $this->artisan('ai:embeddings:switch', ['--resume' => true])->assertSuccessful();
+
+    expect(resume_store()->get()->status)->toBe('idle')
+        ->and($this->engine->documentsOf($this->index))->not->toHaveKey('999')
+        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET);
 });

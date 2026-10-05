@@ -2,15 +2,18 @@
 
 declare(strict_types=1);
 
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
+use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Jobs\SwitchEmbeddingModelJob;
+use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\AI\Tests\Stubs\EmbeddableTestModel;
 use Modules\AI\Tests\Stubs\EmbeddingSwitchHarness as Harness;
 use Modules\Core\Events\ModelPreProcessingCompleted;
@@ -94,17 +97,19 @@ it('fails the verification when a record has no row of the target, leaving the p
         ->and(app(IVectorSearchAvailability::class)->check(new EmbeddableTestModel)->reason)->toBe('suspended');
 });
 
-it('fails the verification when the index does not hold one document per searchable record', function (): void {
+it('fails the verification when the index does not hold one document per searchable record, pointing to --resume', function (): void {
     Harness::start(Harness::TARGET);
     Harness::advanceUntil('verify');
-    unset($this->engine->documents[$this->index][(string) $this->records[0]->getKey()]);
+    $this->engine->documents[$this->index]['999'] = ['id' => '999'];
 
     $state = Harness::advanceUntil();
 
     expect($state->status)->toBe('failed')
         ->and($state->phase)->toBe('verify')
-        ->and($state->error)->toContain('2 document(s)')
-        ->and($state->error)->toContain('3 searchable record(s)');
+        ->and($state->error)->toContain('4 document(s)')
+        ->and($state->error)->toContain('3 searchable record(s)')
+        ->and($state->error)->toContain('ai:embeddings:switch --resume')
+        ->and($state->error)->not->toContain('scout:import');
 });
 
 it('fails the verification when the index mapping reports other dimensions', function (): void {
@@ -193,4 +198,71 @@ it('does not advance while another run of the switch job holds its lock', functi
     SwitchEmbeddingModelJob::dispatch();
 
     expect(app(EmbeddingSwitchStore::class)->get()->phase)->not->toBe('preflight');
+});
+
+it('empties an index of equal dimensions before writing it, so a document of a record no longer searchable is gone', function (): void {
+    $this->engine->documents[$this->index]['999'] = ['id' => '999', 'embeddings' => [['vector' => [0.2]]]];
+    Harness::start(Harness::TARGET);
+
+    $state = Harness::advanceUntil();
+
+    expect($state->status)->toBe('idle')
+        ->and($this->engine->forcedIndexes())->toBe([])
+        ->and($this->engine->documentsOf($this->index))->not->toHaveKey('999')
+        ->and($this->engine->documentsOf($this->index))->toHaveCount(3);
+});
+
+it('rewrites at the start of the verification the documents written meanwhile with the previous model\'s vectors', function (): void {
+    Harness::start(Harness::TARGET);
+    Harness::advanceUntil('verify');
+    $record = $this->records[0];
+    $key = (string) $record->getKey();
+
+    // What the normal pipeline writes for a record edited now: the serving (previous) model's rows.
+    $this->engine->update(collect([$record->fresh()]));
+    expect($this->engine->documentsOf($this->index)[$key]['embeddings'][0]['vector'][0])->toBe(Harness::vectorValue(Harness::ACTIVE));
+
+    app(EmbeddingSwitchOrchestrator::class)->advance();
+
+    $vectors = collect($this->engine->documentsOf($this->index)[$key]['embeddings'])->pluck('vector');
+
+    expect(app(EmbeddingSwitchStore::class)->get()->phase)->toBe('activate')
+        ->and($vectors)->toHaveCount(1)
+        ->and($vectors->flatten()->unique()->values()->all())->toBe([Harness::vectorValue(Harness::TARGET)]);
+});
+
+it('does not count a target row written before the record was edited, and embeds the record again', function (): void {
+    foreach ($this->records as $record) {
+        new GenerateEmbeddingsJob($record, null, Harness::TARGET)->handle(app(IEmbeddingService::class));
+    }
+
+    $edited = $this->records[1];
+    $edited->title = 'Two, edited while the switch was failed';
+    $edited->saveQuietly();
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'embeddings', Harness::TARGET, Harness::ACTIVE));
+    Harness::$embeddedWith = [];
+
+    $state = app(EmbeddingSwitchOrchestrator::class)->advance();
+
+    expect($state->phase)->toBe('embeddings')
+        ->and($state->done)->toBe(2)
+        ->and($state->total)->toBe(3)
+        ->and(Harness::$embeddedWith)->toBe([Harness::TARGET])
+        ->and(ModelEmbedding::query()->forModel($edited)->where('model_key', Harness::TARGET)->value('content_hash'))
+        ->toBe(ModelEmbeddingSynchronizer::contentHash('Two, edited while the switch was failed'));
+
+    expect(app(EmbeddingSwitchOrchestrator::class)->advance()->phase)->toBe('indexes');
+});
+
+it('fails the switch when its job times out, naming the timeout', function (): void {
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE));
+
+    (new SwitchEmbeddingModelJob)->failed(new TimeoutExceededException('SwitchEmbeddingModelJob has timed out.'));
+
+    $state = app(EmbeddingSwitchStore::class)->get();
+
+    expect((new SwitchEmbeddingModelJob)->failOnTimeout)->toBeTrue()
+        ->and($state->status)->toBe('failed')
+        ->and($state->phase)->toBe('indexes')
+        ->and($state->error)->toContain('timed out after 900 s');
 });

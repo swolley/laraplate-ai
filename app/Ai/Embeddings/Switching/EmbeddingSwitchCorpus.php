@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Modules\AI\Contracts\IEmbeddableModels;
+use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Models\ModelEmbedding;
 
@@ -16,8 +17,8 @@ use Modules\Core\Models\ModelEmbedding;
  * The records an embedding model switch works on: for each embeddable model, the population
  * `scout:import` indexes (`makeAllSearchableQuery()`) less the records the index would skip
  * (`shouldBeSearchable()`). A record is embedded when it has a row stamped with the target
- * `model_key` for each locale it has embeddable text in; a record with no embeddable text has no
- * row to wait for.
+ * `model_key` and the hash of its current text for each locale it has embeddable text in; a record
+ * with no embeddable text has no row to wait for.
  */
 final readonly class EmbeddingSwitchCorpus
 {
@@ -86,7 +87,9 @@ final readonly class EmbeddingSwitchCorpus
 
     /**
      * How far the corpus (or one model of it) is embedded with `$modelKey`: the (record, locale)
-     * pairs expected and those with a row of the key, and the records still missing one.
+     * pairs expected and those with a fresh row of the key (its `content_hash` is the hash of the
+     * record's current text for that locale), and the records still missing one. A row written
+     * before the record was edited does not count.
      *
      * @param  class-string<Model>|null  $modelClass
      * @return array{total: int, done: int, pending: list<Model>}
@@ -108,22 +111,24 @@ final readonly class EmbeddingSwitchCorpus
 
             $this->eachSearchableChunk($class, function (Collection $chunk) use (&$total, &$done, &$pending, $modelKey): void {
                 foreach ($chunk as $model) {
-                    $locales = $this->expectedLocales($model);
+                    $expected = $this->expectedRows($model);
 
-                    if ($locales === []) {
+                    if ($expected === []) {
                         continue;
                     }
 
                     /** @var \Illuminate\Support\Collection<int, ModelEmbedding> $rows */
                     $rows = $model->getRelation('embeddings');
-                    $embedded = array_filter($locales, static fn (?string $locale): bool => $rows->contains(
-                        static fn (ModelEmbedding $row): bool => $row->model_key === $modelKey && $row->locale === $locale,
+                    $embedded = array_filter($expected, static fn (array $row): bool => $rows->contains(
+                        static fn (ModelEmbedding $stored): bool => $stored->model_key === $modelKey
+                            && $stored->locale === $row['locale']
+                            && $stored->content_hash === $row['content_hash'],
                     ));
 
-                    $total += count($locales);
+                    $total += count($expected);
                     $done += count($embedded);
 
-                    if (count($embedded) < count($locales)) {
+                    if (count($embedded) < count($expected)) {
                         $pending[] = $model;
                     }
                 }
@@ -134,12 +139,12 @@ final readonly class EmbeddingSwitchCorpus
     }
 
     /**
-     * The `locale` values of the rows the record must have: one per locale with embeddable text, the
-     * default locale of a non-translated model stored as null, as the embedding synchronizer does.
+     * The rows the record must have: one per locale with embeddable text, with the `locale` and
+     * `content_hash` the embedding synchronizer stores for it.
      *
-     * @return list<string|null>
+     * @return list<array{locale: string|null, content_hash: string}>
      */
-    private function expectedLocales(Model $model): array
+    private function expectedRows(Model $model): array
     {
         if (! is_callable([$model, 'prepareDataToEmbedByLocale']) || ! is_callable([$model, 'embeddings'])) {
             return [];
@@ -147,13 +152,15 @@ final readonly class EmbeddingSwitchCorpus
 
         $translated = class_uses_trait($model, HasTranslations::class);
         $default = (string) (config('app.locale') ?: 'en');
-        $locales = [];
+        $rows = [];
 
-        foreach (array_keys($model->prepareDataToEmbedByLocale()) as $locale) {
-            $locale = (string) $locale;
-            $locales[] = ($locale === $default && ! $translated) ? null : $locale;
+        foreach ($model->prepareDataToEmbedByLocale() as $locale => $text) {
+            $rows[] = [
+                'locale' => ModelEmbeddingSynchronizer::rowLocale((string) $locale, $default, $translated),
+                'content_hash' => ModelEmbeddingSynchronizer::contentHash((string) $text),
+            ];
         }
 
-        return $locales;
+        return $rows;
     }
 }

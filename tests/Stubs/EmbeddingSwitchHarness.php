@@ -157,6 +157,20 @@ final class EmbeddingSwitchHarness
         return $state;
     }
 
+    /**
+     * The component value of every vector the fake provider produces for a profile, so a document
+     * shows which model's vectors it carries.
+     */
+    public static function vectorValue(string $modelKey): float
+    {
+        return match ($modelKey) {
+            self::ACTIVE => 0.2,
+            self::TARGET => 0.4,
+            self::WIDE => 0.6,
+            default => 0.1,
+        };
+    }
+
     public static function setting(string $name): mixed
     {
         return Setting::query()->withoutGlobalScopes()->where('name', $name)->value('value');
@@ -241,7 +255,7 @@ final class EmbeddingSwitchHarness
                 }
 
                 $document = new Document($text);
-                $document->embedding = array_fill(0, $profile->dimensions, 0.2);
+                $document->embedding = array_fill(0, $profile->dimensions, self::vectorValue($profile->key));
 
                 return [$document];
             }, $texts);

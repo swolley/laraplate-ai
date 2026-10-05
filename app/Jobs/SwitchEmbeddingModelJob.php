@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
@@ -50,6 +51,12 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
     public int $tries = 3;
 
     public int $timeout = self::TIMEOUT_SECONDS;
+
+    /**
+     * A run killed by the timeout fails at once: its retry would find the overlap lock still held
+     * and be dropped, and the switch would stay `running` with nothing recorded.
+     */
+    public bool $failOnTimeout = true;
 
     /**
      * @var list<int>
@@ -110,6 +117,10 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
     {
         Log::error('SwitchEmbeddingModelJob failed', ['error' => $exception->getMessage()]);
 
-        app(EmbeddingSwitchOrchestrator::class)->fail($exception->getMessage());
+        $error = $exception instanceof TimeoutExceededException
+            ? 'the switch job timed out after ' . self::TIMEOUT_SECONDS . " s; run ai:embeddings:switch --resume ({$exception->getMessage()})"
+            : $exception->getMessage();
+
+        app(EmbeddingSwitchOrchestrator::class)->fail($error);
     }
 }

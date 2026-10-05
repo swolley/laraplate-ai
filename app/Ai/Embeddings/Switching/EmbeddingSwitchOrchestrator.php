@@ -173,9 +173,20 @@ final readonly class EmbeddingSwitchOrchestrator
         return $state->with(phase: 'verify', rounds: 0);
     }
 
+    /**
+     * Rewrites every document with the target's vectors first, then checks. A record edited after
+     * the `indexes` phase is embedded with the target (the switch runs), but the normal pipeline
+     * writes its document with the rows of the serving model, which is still the previous one; the
+     * refresh replaces those documents, also when a switch left failed in `verify` is resumed days
+     * later. A record edited between this refresh and the activation (the checks and the settings
+     * write, seconds) keeps such a document until it is saved again.
+     */
     private function verify(EmbeddingSwitchState $state): EmbeddingSwitchState
     {
-        $this->verifier->verify($this->target($state));
+        $target = $this->target($state);
+
+        $this->indexes->refresh($target);
+        $this->verifier->verify($target);
 
         return $state->with(phase: 'activate');
     }

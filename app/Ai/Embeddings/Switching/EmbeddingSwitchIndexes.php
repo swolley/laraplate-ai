@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Embeddings\Switching;
 
+use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Laravel\Scout\Engines\Engine;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Contracts\IRagIndexRebuilder;
 use Modules\Core\Search\Contracts\IReportsVectorDimensions;
@@ -21,8 +23,9 @@ use Modules\Core\Search\Support\VectorModelContext;
  * only the target's vectors. The engines size the vector mapping from `core.search.vector.dimensions`
  * (and `similarity`) when they create an index, so both are set to the target's for the duration of
  * the phase, in this process only, and restored afterwards. An index whose vectors already have the
- * target's dimensions keeps its mapping and only has its documents written again; any other index is
- * recreated first.
+ * target's dimensions keeps its mapping but is emptied before its documents are written again, so
+ * documents of records that are no longer searchable cannot survive; any other index is recreated.
+ * {@see self::refresh()} rewrites the documents only, for the `verify` phase.
  */
 final readonly class EmbeddingSwitchIndexes
 {
@@ -36,7 +39,41 @@ final readonly class EmbeddingSwitchIndexes
      */
     public function rebuild(EmbeddingModelProfile $target, ?int $currentDimensions): void
     {
-        VectorModelContext::using($target->key, function () use ($target, $currentDimensions): void {
+        $this->asTarget($target, function () use ($target, $currentDimensions): void {
+            foreach ($this->corpus->models() as $modelClass) {
+                $this->rebuildModel($modelClass, $target, $currentDimensions);
+            }
+
+            $this->rag->rebuild($target);
+        });
+    }
+
+    /**
+     * Writes every searchable document again with the target's vectors, without touching the index
+     * or its mapping: the documents of records edited since the `indexes` phase were written by the
+     * normal pipeline with the serving model's vectors.
+     */
+    public function refresh(EmbeddingModelProfile $target): void
+    {
+        $this->asTarget($target, function () use ($target): void {
+            foreach ($this->corpus->models() as $modelClass) {
+                /** @var Model $instance */
+                $instance = new $modelClass();
+
+                $this->writeDocuments($modelClass, $instance, $instance->searchableUsing(), $target);
+            }
+        });
+    }
+
+    /**
+     * Runs the callback with the target as the vector model of the documents and its dimensions and
+     * similarity as the ones new mappings take, restoring both settings afterwards.
+     *
+     * @param  Closure(): void  $callback
+     */
+    private function asTarget(EmbeddingModelProfile $target, Closure $callback): void
+    {
+        VectorModelContext::using($target->key, static function () use ($target, $callback): void {
             $previous = [
                 'core.search.vector.dimensions' => config('core.search.vector.dimensions'),
                 'core.search.vector.similarity' => config('core.search.vector.similarity'),
@@ -48,11 +85,7 @@ final readonly class EmbeddingSwitchIndexes
             ]);
 
             try {
-                foreach ($this->corpus->models() as $modelClass) {
-                    $this->rebuildModel($modelClass, $target, $currentDimensions);
-                }
-
-                $this->rag->rebuild($target);
+                $callback();
             } finally {
                 config($previous);
             }
@@ -60,6 +93,9 @@ final readonly class EmbeddingSwitchIndexes
     }
 
     /**
+     * Recreates the index when its vectors have other dimensions, empties it otherwise (documents of
+     * records that are no longer searchable must not survive), then writes every searchable document.
+     *
      * @param  class-string<Model>  $modelClass
      */
     private function rebuildModel(string $modelClass, EmbeddingModelProfile $target, ?int $currentDimensions): void
@@ -74,8 +110,18 @@ final readonly class EmbeddingSwitchIndexes
 
         if ($engine instanceof ISearchEngine && $indexed !== $target->dimensions) {
             $engine->createIndex($instance, [], true);
+        } else {
+            $engine->flush($instance);
         }
 
+        $this->writeDocuments($modelClass, $instance, $engine, $target);
+    }
+
+    /**
+     * @param  class-string<Model>  $modelClass
+     */
+    private function writeDocuments(string $modelClass, Model $instance, Engine $engine, EmbeddingModelProfile $target): void
+    {
         $this->corpus->eachSearchableChunk($modelClass, static function (Collection $chunk) use ($engine, $instance): void {
             $engine->update($instance->makeSearchableUsing($chunk));
         }, ['embeddings' => static function (Relation $query) use ($target): void {
