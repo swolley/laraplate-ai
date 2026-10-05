@@ -41,6 +41,7 @@ use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
 use Modules\AI\Services\EmbeddableModels;
 use Modules\AI\Services\EmbeddingService;
+use Modules\AI\Services\EmbeddingVectorSearchAvailability;
 use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Services\SearchOrchestratorAgent;
@@ -55,7 +56,9 @@ use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
 use Modules\Core\Search\Contracts\ISearchPlanner;
 use Modules\Core\Search\Contracts\ITextEmbedder;
+use Modules\Core\Search\Contracts\IVectorSearchAvailability;
 use Modules\Core\Search\SearchableContributorRegistry;
+use Modules\Core\Search\Services\VectorSearchAvailability;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 use Override;
 
@@ -76,6 +79,13 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(IEmbeddableModels::class, EmbeddableModels::class);
         $this->app->singleton(EmbeddingModelRegistry::class);
+        $this->app->singleton(
+            IVectorSearchAvailability::class,
+            static fn ($app): IVectorSearchAvailability => new EmbeddingVectorSearchAvailability(
+                $app->make(VectorSearchAvailability::class),
+                $app->make(EmbeddingModelRegistry::class),
+            ),
+        );
 
         // Media analysis (M6, M21): the model registry plus the swappable analyzer
         // contracts. Vision is neuron-ai-backed; transcription posts to the self

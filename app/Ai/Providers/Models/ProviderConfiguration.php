@@ -8,16 +8,17 @@ use function ai_config_string;
 
 /**
  * Whether a provider is configured, and how to list its models. A provider is configured
- * when its API key (openai, anthropic, mistral, deepl) or its URL (ollama, whisper) is set.
+ * when its API key (openai, anthropic, mistral, voyageai, deepl) or its URL (ollama, sentence_transformers, whisper) is set.
  */
 final readonly class ProviderConfiguration
 {
     public function isConfigured(string $provider): bool
     {
         return match ($provider) {
-            'openai', 'anthropic', 'mistral' => ai_config_string("ai.providers.{$provider}.api_key") !== '',
+            'openai', 'anthropic', 'mistral', 'voyageai' => ai_config_string("ai.providers.{$provider}.api_key") !== '',
             'deepl' => ai_config_string('core.deepl_api_key') !== '',
             'ollama' => ai_config_string('ai.providers.ollama.api_url') !== '',
+            'sentence_transformers' => ai_config_string('ai.providers.sentence_transformers.url') !== '',
             'whisper' => ai_config_string('ai.providers.whisper.url') !== '',
             default => false,
         };

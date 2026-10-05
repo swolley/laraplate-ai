@@ -15,7 +15,7 @@ it('allows any module when the allowlist is empty', function (): void {
 });
 
 it('allows any module when the allowlist key is missing', function (): void {
-    Config::set('ai.features.embeddings', ['default_provider' => 'x']);
+    Config::set('ai.features.embeddings', ['models' => []]);
 
     expect(FeatureModuleGate::allows('embeddings', new SearchableModelStub))->toBeTrue();
 });

@@ -106,3 +106,46 @@ it('resolves the provider and service model of the overridden profile in the fac
 
     expect($sent)->toBe('all-MiniLM-L6-v2');
 });
+
+it('rejects a malformed key with an empty provider or service model', function (string $key): void {
+    config(['ai.features.embeddings.models' => [$key => ['dimensions' => 384]]]);
+
+    expect(fn () => app(EmbeddingModelRegistry::class)->get($key))
+        ->toThrow(InvalidArgumentException::class);
+})->with(['no colon' => ['foo'], 'empty provider' => [':x'], 'empty model' => ['x:']]);
+
+it('resolves a dotted profile key when the whole models array is replaced', function (): void {
+    config(['ai.features.embeddings.models' => ['ollama:nomic-embed-text:v1.5' => ['dimensions' => 768]]]);
+
+    $profile = app(EmbeddingModelRegistry::class)->get('ollama:nomic-embed-text:v1.5');
+
+    expect($profile->provider)->toBe('ollama')
+        ->and($profile->serviceModel)->toBe('nomic-embed-text:v1.5')
+        ->and($profile->dimensions)->toBe(768);
+});
+
+it('defaults the active profile to the first configured one when none is set', function (): void {
+    config()->set('ai.features.embeddings.active', null);
+    config()->set('ai.providers.sentence_transformers.url', '');
+    config()->set('ai.providers.voyageai.api_key', 'k');
+    config()->set('ai.features.embeddings.models', [
+        'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
+        'voyageai:voyage-3-lite' => ['dimensions' => 512],
+    ]);
+
+    expect(app(EmbeddingModelRegistry::class)->active()->key)->toBe('voyageai:voyage-3-lite');
+});
+
+it('knows voyageai and sentence_transformers configuration', function (): void {
+    $providers = new Modules\AI\Ai\Providers\Models\ProviderConfiguration;
+
+    config()->set('ai.providers.voyageai.api_key', '');
+    config()->set('ai.providers.sentence_transformers.url', '');
+    expect($providers->isConfigured('voyageai'))->toBeFalse()
+        ->and($providers->isConfigured('sentence_transformers'))->toBeFalse();
+
+    config()->set('ai.providers.voyageai.api_key', 'k');
+    config()->set('ai.providers.sentence_transformers.url', 'http://x');
+    expect($providers->isConfigured('voyageai'))->toBeTrue()
+        ->and($providers->isConfigured('sentence_transformers'))->toBeTrue();
+});

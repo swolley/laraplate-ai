@@ -66,11 +66,10 @@ sequenceDiagram
 
 ### Configuration
 
-Embeddings use `AI_EMBEDDINGS_PROVIDER` (not `AI_PROVIDER`). Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
+Embeddings use the model setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
 
 ```env
 AI_EMBEDDINGS_ENABLED=true
-AI_EMBEDDINGS_PROVIDER=sentence_transformers
 SENTENCE_TRANSFORMERS_URL=http://embedding-host:8003
 SENTENCE_TRANSFORMERS_API_KEY=
 ```
@@ -78,7 +77,7 @@ SENTENCE_TRANSFORMERS_API_KEY=
 Other providers (example: Ollama embeddings):
 
 ```env
-AI_EMBEDDINGS_PROVIDER=ollama
+# select the `ollama:...` profile in the setting `features.embeddings.model`
 OLLAMA_API_URL=http://localhost:11434
 OLLAMA_MODEL=nomic-embed-text
 ```
@@ -192,7 +191,7 @@ php artisan ai:embeddings:repair --all [--if-idle]
 ```
 
 - Default: scans the model for records that have **no** `ModelEmbedding` and carry embeddable text (`prepareDataToEmbed()` non-empty). It scans the same population `scout:import` indexes (`makeAllSearchableQuery()`), not `query()`: content with no translation in the current locale, which `LocaleScope` hides, is repaired too. Records the search index would not hold (`shouldBeSearchable()` false, such as media drafts) are skipped: an embedding nobody indexes is wasted.
-- `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after switching `AI_EMBEDDINGS_MODEL` to re-embed the backlog.
+- `--stale`: instead targets records whose embeddings were produced by a `model_key` **different** from the currently active profile (`EmbeddingModelRegistry::active()->key`) — use this after changing the embedding model to re-embed the backlog.
 - `--all` repairs every embeddable model instead of one: searchable, `isEmbeddable()` (vector search on and an `$embed` list) and allowed by the `ai.features.embeddings.modules` allowlist, the predicates the indexing listener applies. It does nothing while `ai.features.embeddings.enabled` is off. `--if-idle` skips the run while embeddings jobs are still queued: a record keeps lacking its embedding until its job has run, so a backlog would otherwise be dispatched twice. The AI module schedules `ai:embeddings:repair --all --if-idle` hourly, one at a time and on one server: it brings back the records an outage degraded to keyword-only.
 - Either way, regeneration dispatches `GenerateEmbeddingsJob` per record with `locale = null` (or runs it inline with `--sync`), which performs a full per-locale regenerate — all locales, stamped with the active `model_key` — through the finalize flow. The command itself does not stamp `model_key`.
 - Queued runs are paced by the `embeddings` rate limiter (`EMBEDDINGS_QUEUE_RATE_PER_MINUTE`, default 10 jobs per minute): the jobs wait for their slot. A `--sync` run is not throttled, because a sync queue cannot release a job back, so the limiter would drop it silently. A record whose embedding fails under `--sync` is reported, the others still run, and the command exits with failure.

@@ -6,6 +6,7 @@ namespace Modules\AI\Ai\Embeddings;
 
 use Closure;
 use InvalidArgumentException;
+use Modules\AI\Ai\Providers\Models\ProviderConfiguration;
 
 /**
  * Resolves embedding-model profiles from `ai.features.embeddings.models`.
@@ -15,13 +16,41 @@ use InvalidArgumentException;
  */
 final class EmbeddingModelRegistry
 {
-    private const string DEFAULT_KEY = 'sentence_transformers:intfloat/multilingual-e5-small';
-
     private ?string $override = null;
+
+    public function __construct(private readonly ProviderConfiguration $providers = new ProviderConfiguration) {}
 
     public function active(): EmbeddingModelProfile
     {
-        return $this->get($this->override ?? (string) config('ai.features.embeddings.active', self::DEFAULT_KEY));
+        return $this->get($this->override ?? $this->activeKey());
+    }
+
+    /**
+     * The profile keys whose provider is configured, in declaration order.
+     *
+     * @return list<string>
+     */
+    public function configuredKeys(): array
+    {
+        return array_values(array_filter(
+            $this->keys(),
+            fn (string $key): bool => $this->providers->isConfigured(explode(':', $key, 2)[0]),
+        ));
+    }
+
+    /**
+     * The active key: the setting `features.embeddings.active`, else the first configured profile,
+     * else the first declared one.
+     */
+    public function activeKey(): string
+    {
+        $configured = config('ai.features.embeddings.active');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return $this->configuredKeys()[0] ?? $this->keys()[0] ?? '';
     }
 
     /**
@@ -69,6 +98,10 @@ final class EmbeddingModelRegistry
         }
 
         [$provider, $serviceModel] = array_pad(explode(':', $key, 2), 2, '');
+
+        if ($provider === '' || $serviceModel === '') {
+            throw new InvalidArgumentException("Malformed embedding model profile key: {$key}");
+        }
 
         return new EmbeddingModelProfile(
             key: $key,

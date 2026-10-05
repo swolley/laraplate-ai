@@ -10,7 +10,7 @@ Embeddings are selected **per feature**, not by a global `AI_PROVIDER` variable 
 
 | Config key (`ai.*`) | Purpose | Default provider id |
 |---------------------|---------|---------------------|
-| `features.embeddings.default_provider` | Search indexing (`GenerateEmbeddingsJob`), vector search, RAG chunk vectors | `sentence_transformers` |
+| `features.embeddings.model` (provider of the active profile) | Search indexing (`GenerateEmbeddingsJob`), vector search, RAG chunk vectors | `sentence_transformers` |
 
 For Sentence Transformers you only need the **embeddings** provider and its URL.
 
@@ -253,7 +253,6 @@ Add or update `.env` on the Laravel host:
 
 ```env
 AI_EMBEDDINGS_ENABLED=true
-AI_EMBEDDINGS_PROVIDER=sentence_transformers
 
 SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
@@ -261,12 +260,11 @@ SENTENCE_TRANSFORMERS_API_KEY=
 AI_FAQ_ES_EMBEDDING_DIMS=384
 ```
 
-The active embedding model is chosen in `config/` (`ai.features.embeddings.active`, default `sentence_transformers:intfloat/multilingual-e5-small`), not in `.env`; Laraplate sends that profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
+The active embedding model is the setting `features.embeddings.model` (managed value `features.embeddings.active`, default the first configured profile, `sentence_transformers:intfloat/multilingual-e5-small`), not an env var; Laraplate sends that profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.
 
 Notes:
 
-- `AI_EMBEDDINGS_PROVIDER` accepts `sentence_transformers` or `sentence-transformers`.
-- If omitted, the default is already `sentence_transformers`; the URL must still be reachable.
+- The `sentence_transformers` profiles are offered only when `SENTENCE_TRANSFORMERS_URL` is set.
 - Chat, translation and every other AI feature choose their model in Filament > Settings (`features.*.model`), not in env; see `rag/AI_MODEL_SELECTION_USER.md`.
 
 Ensure Core search vector settings match (`core.search.vector.dimensions` = `384`). Enable Scout/vector search as in [SEARCH_AND_TRANSLATION.md](SEARCH_AND_TRANSLATION.md).

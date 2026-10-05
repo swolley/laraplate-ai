@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\AI\Database\Seeders;
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Services\ModerationEntitySettings;
 use Modules\Core\Casts\SettingTypeEnum;
@@ -19,6 +21,7 @@ class AIDatabaseSeeder extends Seeder
     {
         return [
             self::setting('features.embeddings.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable embeddings generation'),
+            ...self::embeddingModelSettings(),
             self::setting('features.translation.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable automatic translation'),
             self::setting('features.media_analysis.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable media LLM analysis (caption, OCR, transcription)'),
             self::setting('features.chat.summary.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable chat summarization'),
@@ -89,6 +92,30 @@ class AIDatabaseSeeder extends Seeder
             count($runtime->realigned) + count($models->realigned),
             $runtime->unchanged + $models->unchanged,
         ));
+    }
+
+    /**
+     * The embedding model choice, the active profile and the switch progress. The profile settings
+     * default in code to the first configured profile; the choices are the configured profiles,
+     * and the active profile is always among them.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function embeddingModelSettings(): array
+    {
+        $registry = app(EmbeddingModelRegistry::class);
+        $default = $registry->activeKey();
+        $choices = $registry->configuredKeys();
+
+        if ($default !== '' && ! in_array($default, $choices, true)) {
+            $choices[] = $default;
+        }
+
+        return [
+            self::setting('features.embeddings.model', $default, SettingTypeEnum::String, 'ai', 'Embedding model, as provider:model (changing it starts a model switch)', $choices),
+            [...self::setting('features.embeddings.active', $default, SettingTypeEnum::String, 'ai', 'Active embedding model, as provider:model (set by the embedding model switch)'), 'managed' => true],
+            [...self::setting('features.embeddings.switch', EmbeddingSwitchState::idle()->toJson(), SettingTypeEnum::String, 'ai', 'Embedding model switch progress, as JSON (set by the embedding model switch)'), 'managed' => true],
+        ];
     }
 
     /**

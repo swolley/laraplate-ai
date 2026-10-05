@@ -23,16 +23,14 @@ return [
 
     'features' => [
         'embeddings' => [
-            'default_provider' => env('AI_EMBEDDINGS_PROVIDER', 'sentence_transformers'),
-
             // Optional per-module allowlist. Empty = every module (default).
             // When non-empty, only models whose owning module is listed are embedded,
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
             'modules' => [],
 
-            // Active embedding-model profile key (see `models` below). Resolved by
-            // EmbeddingModelRegistry.
-            'active' => env('AI_EMBEDDINGS_MODEL', 'sentence_transformers:intfloat/multilingual-e5-small'),
+            // The active profile key and the model choice are the managed/settings
+            // `features.embeddings.active|model`, overlaid as `ai.features.embeddings.active|model`;
+            // EmbeddingModelRegistry falls back to the first configured profile below.
             // Profiles are keyed `provider:service_model`, split at the first colon. Each
             // declares the dimensions of its vectors; Core's `core.search.vector.*` follows.
             'models' => [

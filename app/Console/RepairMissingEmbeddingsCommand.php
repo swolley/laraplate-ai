@@ -33,7 +33,7 @@ use Throwable;
  * embed failure degrades the document to keyword-only indexing (see
  * GenerateEmbeddingsJob::failed()), leaving no embedding row. With --stale,
  * targets records whose embeddings were produced by a different model_key
- * than the active profile (e.g. after switching AI_EMBEDDINGS_MODEL).
+ * than the active profile (e.g. after changing the embedding model).
  *
  * Either way, regeneration dispatches GenerateEmbeddingsJob with locale=null,
  * which performs a full per-locale regenerate (all locales, stamping the
