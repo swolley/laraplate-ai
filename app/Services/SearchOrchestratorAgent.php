@@ -58,7 +58,7 @@ final readonly class SearchOrchestratorAgent implements ISearchPlanner
         $vector_globally_enabled = (bool) config('core.search.vector.enabled', false);
         $use_vector = $vector_globally_enabled && ! $has_numbers;
 
-        $use_reranker = (bool) config('core.search.reranker.enabled', true);
+        $use_reranker = (bool) config('core.search.reranker.enabled');
         $rerank_top_k = $this->intValue(config('core.search.reranker.top_k'), 30);
 
         return [
