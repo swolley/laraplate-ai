@@ -279,18 +279,54 @@ it('records nothing when a refused start is not asked to report it', function ()
     switch_expect_nothing_changed();
 });
 
-it('records a start refused by a held lock as a failed preflight when asked to report it', function (): void {
+it('records nothing for a start that finds the lock held, even when asked to report it', function (?string $holderState): void {
     Queue::fake();
-    $release = app(EmbeddingSwitchStore::class)->lock();
+    switch_probe_measures(768);
+    switch_service_reports('all-MiniLM-L6-v2');
+    $store = app(EmbeddingSwitchStore::class);
+    // The holder of the lock is still in its preflight (idle) or has already stored its start (running).
+    $before = $holderState === null ? EmbeddingSwitchState::idle() : new EmbeddingSwitchState($holderState, 'preflight', SWITCH_TARGET, SWITCH_ACTIVE);
+    $store->put($before);
+    $release = $store->lock();
 
     try {
-        $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET, '--report-failure' => true])->assertFailed();
+        $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET, '--report-failure' => true])
+            ->expectsOutputToContain('Another embedding model switch is starting')
+            ->assertFailed();
     } finally {
         $release();
     }
 
-    expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('failed')
-        ->and(app(EmbeddingSwitchStore::class)->get()->error)->toContain('Another embedding model switch is starting')
+    expect($store->get())->toEqual($before)
+        ->and(switch_suspended_reason())->toBeNull();
+    Queue::assertNothingPushed();
+})->with(['holder in its preflight' => [null], 'holder already started' => ['running']]);
+
+it('records nothing for the already active profile, even when asked to report it', function (): void {
+    Queue::fake();
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_ACTIVE, '--report-failure' => true])
+        ->expectsOutputToContain('already the active')
+        ->assertFailed();
+
+    switch_expect_nothing_changed();
+});
+
+it('records an unconfigured provider, decided under the lock, as a failed preflight when asked to report it', function (): void {
+    Queue::fake();
+    config()->set('ai.features.embeddings.models.voyageai:voyage-3-lite', ['dimensions' => 512]);
+    config()->set('ai.providers.voyageai.api_key', '');
+
+    $this->artisan('ai:embeddings:switch', ['profile' => 'voyageai:voyage-3-lite', '--report-failure' => true])
+        ->expectsOutputToContain('not configured')
+        ->assertFailed();
+
+    $state = app(EmbeddingSwitchStore::class)->get();
+
+    expect($state->status)->toBe('failed')
+        ->and($state->phase)->toBe('preflight')
+        ->and($state->target)->toBe('voyageai:voyage-3-lite')
+        ->and($state->error)->toContain('not configured')
         ->and(switch_suspended_reason())->toBeNull();
     Queue::assertNothingPushed();
 });
@@ -324,6 +360,26 @@ it('rolls the start back when the job cannot be queued', function (): void {
     expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('idle')
         ->and(switch_suspended_reason())->toBeNull()
         ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+});
+
+it('rolls the start back to idle even when the suspended reason row has gone', function (): void {
+    switch_probe_measures(384);
+    switch_service_reports('all-MiniLM-L6-v2');
+    $queue = Mockery::mock(QueueConnection::class);
+    $queue->shouldReceive('push', 'pushOn', 'later', 'laterOn')->andReturnUsing(static function (): never {
+        Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.suspended_reason')->toBase()->delete();
+
+        throw new RuntimeException('queue down');
+    });
+    $queues = Mockery::mock(QueueFactory::class);
+    $queues->shouldReceive('connection')->andReturn($queue);
+    app()->instance(QueueFactory::class, $queues);
+
+    $this->artisan('ai:embeddings:switch', ['profile' => SWITCH_TARGET])
+        ->expectsOutputToContain('could not queue the switch; nothing was changed (queue down)')
+        ->assertFailed();
+
+    expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('idle');
 });
 
 it('completes the preflight, moves to the embeddings phase and dispatches nothing more', function (): void {

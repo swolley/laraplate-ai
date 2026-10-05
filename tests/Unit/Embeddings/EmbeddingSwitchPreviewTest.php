@@ -18,6 +18,7 @@ use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 uses(RefreshDatabase::class);
 
 beforeEach(function (): void {
+    Http::preventStrayRequests();
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
     config()->set('ai.features.embeddings.models', [
         'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
@@ -44,30 +45,16 @@ beforeEach(function (): void {
 });
 
 /**
- * A preview whose probe answers with a vector of $dimensions components, or throws when null.
+ * A preview over $models.
  *
  * @param  list<class-string>  $models
  */
-function switch_preview(array $models = [], ?int $dimensions = 384): EmbeddingSwitchPreview
+function switch_preview(array $models = []): EmbeddingSwitchPreview
 {
-    $provider = Mockery::mock(EmbeddingsProviderInterface::class);
-
-    if ($dimensions === null) {
-        $provider->shouldReceive('embedText')->andThrow(new RuntimeException('connection refused'));
-    } else {
-        $provider->shouldReceive('embedText')->andReturn(array_fill(0, $dimensions, 0.1));
-    }
-
     $embeddable = Mockery::mock(IEmbeddableModels::class);
     $embeddable->shouldReceive('all')->andReturn($models);
 
-    $registry = app(EmbeddingModelRegistry::class);
-
-    return new EmbeddingSwitchPreview(
-        $registry,
-        $embeddable,
-        new EmbeddingDimensionProbe($registry, static fn (): EmbeddingsProviderInterface => $provider),
-    );
+    return new EmbeddingSwitchPreview(app(EmbeddingModelRegistry::class), $embeddable);
 }
 
 it('reports equal dimensions as a re-embed only', function (): void {
@@ -85,7 +72,7 @@ it('reports equal dimensions as a re-embed only', function (): void {
 it('reports the declared target dimensions when they differ', function (): void {
     $registry = app(EmbeddingModelRegistry::class);
 
-    $preview = switch_preview(dimensions: 1024)->for($registry->get('sentence_transformers:BAAI/bge-m3'));
+    $preview = switch_preview()->for($registry->get('sentence_transformers:BAAI/bge-m3'));
 
     expect($preview->targetDimensions)->toBe(1024)
         ->and($preview->dimensionsDiffer)->toBeTrue();
@@ -126,7 +113,7 @@ it('gives no estimate, after a short timeout, when the service cannot be measure
     }]);
     $registry = app(EmbeddingModelRegistry::class);
 
-    $preview = switch_preview(dimensions: null)->for($registry->get('sentence_transformers:all-MiniLM-L6-v2'));
+    $preview = switch_preview()->for($registry->get('sentence_transformers:all-MiniLM-L6-v2'));
 
     expect($preview->estimatedSeconds)->toBeNull()
         ->and($timeouts)->toBe([EmbeddingSwitchPreview::LATENCY_TIMEOUT_SECONDS])
@@ -152,4 +139,24 @@ it('measures again once a failed measurement has expired from the cache', functi
 
     $this->travel(31)->seconds();
     expect($preview->for($target)->estimatedSeconds)->toBeInt();
+});
+
+it('does not measure a hosted provider: no estimate and no call to its client', function (): void {
+    config()->set('ai.features.embeddings.models.openai:text-embedding-3-small', ['dimensions' => 1536]);
+    Http::fake();
+    $client = Mockery::mock(EmbeddingsProviderInterface::class);
+    $client->shouldNotReceive('embedText');
+    app()->instance(EmbeddingDimensionProbe::class, new EmbeddingDimensionProbe(
+        app(EmbeddingModelRegistry::class),
+        static fn (): EmbeddingsProviderInterface => $client,
+    ));
+    $embeddable = Mockery::mock(IEmbeddableModels::class);
+    $embeddable->shouldReceive('all')->andReturn([]);
+    app()->instance(IEmbeddableModels::class, $embeddable);
+
+    $preview = app(EmbeddingSwitchPreview::class)->for(app(EmbeddingModelRegistry::class)->get('openai:text-embedding-3-small'));
+
+    expect($preview->estimatedSeconds)->toBeNull()
+        ->and($preview->targetDimensions)->toBe(1536);
+    Http::assertNothingSent();
 });

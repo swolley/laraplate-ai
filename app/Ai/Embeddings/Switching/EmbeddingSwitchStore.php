@@ -44,25 +44,32 @@ final class EmbeddingSwitchStore
     }
 
     /**
-     * Suspends vector search for the switch (`search.vector.suspended_reason` = `switching`).
+     * Suspends vector search for the switch (`search.vector.suspended_reason` = `switching`). The
+     * settings cache is flushed again once the surrounding transaction commits, so a read made
+     * before the commit cannot keep the old value cached.
      */
     public function suspend(): void
     {
         Setting::writeManaged(self::SUSPENDED_REASON_SETTING, self::SUSPENDED_REASON);
+
+        $this->flushSuspensionAfterCommit();
     }
 
     /**
      * Lifts the suspension: the setting is unset again, stored as the seeder stores it, a JSON
      * `null`. `core_settings.value` is NOT NULL and `SettingObserver` turns an empty string into
      * null, so neither `null` nor `''` can go through `Setting::writeManaged()`. The settings cache
-     * and the runtime config are then flushed as the observer would have done.
+     * and the runtime config are flushed once the surrounding transaction commits (at once outside
+     * one). A missing row means there is nothing to clear.
      */
     public function clearSuspension(): void
     {
-        $setting = Setting::query()->withoutGlobalScopes()->where('name', self::SUSPENDED_REASON_SETTING)->firstOrFail();
-        $setting->newQuery()->withoutGlobalScopes()->whereKey($setting->getKey())->toBase()->update(['value' => 'null']);
+        Setting::query()->withoutGlobalScopes()
+            ->where('name', self::SUSPENDED_REASON_SETTING)
+            ->toBase()
+            ->update(['value' => 'null']);
 
-        app(SettingsCacheCoordinator::class)->flushSetting($setting->refresh(), sync_runtime_config: true);
+        $this->flushSuspensionAfterCommit();
     }
 
     /**
@@ -79,5 +86,16 @@ final class EmbeddingSwitchStore
         return static function () use ($lock): void {
             $lock->release();
         };
+    }
+
+    private function flushSuspensionAfterCommit(): void
+    {
+        new Setting()->getConnection()->afterCommit(static function (): void {
+            $setting = Setting::query()->withoutGlobalScopes()->where('name', self::SUSPENDED_REASON_SETTING)->first();
+
+            if ($setting instanceof Setting) {
+                app(SettingsCacheCoordinator::class)->flushSetting($setting, sync_runtime_config: true);
+            }
+        });
     }
 }

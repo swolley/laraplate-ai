@@ -51,7 +51,11 @@ it('lets the start lock expire after two minutes', function (): void {
     $again();
 });
 
-it('suspends vector search and clears the suspension through the real settings row', function (): void {
+/**
+ * Creates `search.vector.suspended_reason` as the seeder does: managed, with a JSON null (core_settings.value is NOT NULL).
+ */
+function switch_store_seed_suspended_reason(): Setting
+{
     $row = Setting::factory()->persistedWithoutApprovalCapture()->create([
         'name' => 'search.vector.suspended_reason',
         'module' => 'Core',
@@ -60,9 +64,14 @@ it('suspends vector search and clears the suspension through the real settings r
         'choices' => null,
         'group_name' => 'search',
     ]);
-    // Seeded as the seeder does it: a JSON null, since core_settings.value is NOT NULL.
     Setting::query()->withoutGlobalScopes()->whereKey($row->getKey())->toBase()->update(['value' => 'null', 'managed' => true]);
     config()->set('core.search.vector.suspended_reason', null);
+
+    return $row;
+}
+
+it('suspends vector search and clears the suspension through the real settings row', function (): void {
+    $row = switch_store_seed_suspended_reason();
     $store = new EmbeddingSwitchStore;
     $stored = static fn (): Setting => Setting::query()->withoutGlobalScopes()->whereKey($row->getKey())->sole();
 
@@ -76,4 +85,25 @@ it('suspends vector search and clears the suspension through the real settings r
     expect($stored()->value)->toBeNull()
         ->and($stored()->getRawOriginal('value'))->toBe('null')
         ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+});
+
+it('flushes the cleared suspension only once the surrounding transaction commits', function (): void {
+    switch_store_seed_suspended_reason();
+    $store = new EmbeddingSwitchStore;
+    $store->suspend();
+    $insideTransaction = null;
+
+    new Setting()->getConnection()->transaction(static function () use ($store, &$insideTransaction): void {
+        $store->clearSuspension();
+        $insideTransaction = config('core.search.vector.suspended_reason');
+    });
+
+    expect($insideTransaction)->toBe('switching')
+        ->and(config('core.search.vector.suspended_reason'))->toBeNull();
+});
+
+it('treats a missing suspended reason row as nothing to clear', function (): void {
+    (new EmbeddingSwitchStore)->clearSuspension();
+
+    expect(Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.suspended_reason')->exists())->toBeFalse();
 });

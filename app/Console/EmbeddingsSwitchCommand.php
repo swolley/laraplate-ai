@@ -30,9 +30,10 @@ use Throwable;
  * of the switch the persisted `running` or `failed` state is what refuses another start.
  *
  * A refusal changes nothing. With `--report-failure`, the option the settings confirmation queues
- * the command with, a refusal is also stored as a `failed` switch in phase `preflight`, so the
- * settings page shows it; vector search is not suspended. A start whose job cannot be queued is
- * rolled back.
+ * the command with, a refusal decided under the start lock (provider not configured, preflight
+ * failed) is also stored as a `failed` switch in phase `preflight`, so the settings page shows it;
+ * vector search is not suspended. A held lock, an already active profile or a switch already
+ * running or failed records nothing. A start whose job cannot be queued is rolled back.
  */
 final class EmbeddingsSwitchCommand extends Command
 {
@@ -62,35 +63,33 @@ final class EmbeddingsSwitchCommand extends Command
         $active = $registry->activeKey();
 
         if ($profile->key === $active) {
-            return $this->refuse($store, $profile, $active, "Profile \"{$profile->key}\" is already the active embedding model: there is nothing to switch.");
-        }
-
-        if (! $providers->isConfigured($profile->provider)) {
-            return $this->refuse($store, $profile, $active, "The provider \"{$profile->provider}\" of profile \"{$profile->key}\" is not configured. Nothing was changed.");
+            return $this->refuse("Profile \"{$profile->key}\" is already the active embedding model: there is nothing to switch.");
         }
 
         $release = $store->lock();
 
         if ($release === null) {
-            return $this->refuse($store, $profile, $active, 'Another embedding model switch is starting: try again in a moment. Nothing was changed.');
+            return $this->refuse('Another embedding model switch is starting: try again in a moment. Nothing was changed.');
         }
 
         try {
             $current = $store->get();
 
             if ($current->status !== 'idle') {
-                return $this->refuse($store, $profile, $active, "An embedding model switch is already {$current->status} (phase {$current->phase}, target {$current->target}). Nothing was changed.");
+                return $this->refuse("An embedding model switch is already {$current->status} (phase {$current->phase}, target {$current->target}). Nothing was changed.");
             }
 
-            $failure = $this->preflight($profile, $probe, $identity);
+            $failure = $providers->isConfigured($profile->provider)
+                ? $this->preflight($profile, $probe, $identity)
+                : "the provider \"{$profile->provider}\" is not configured";
 
             if ($failure !== null) {
-                return $this->refuse($store, $profile, $active, "The switch to \"{$profile->key}\" did not start: {$failure}. Nothing was changed.");
+                return $this->refuseUnderLock($store, $profile, $active, "The switch to \"{$profile->key}\" did not start: {$failure}. Nothing was changed.");
             }
 
             $this->persistStart($store, $profile, $active);
         } catch (Throwable $exception) {
-            return $this->refuse($store, $profile, $active, "The switch to \"{$profile->key}\" did not start: {$exception->getMessage()}");
+            return $this->refuseUnderLock($store, $profile, $active, "The switch to \"{$profile->key}\" did not start: {$exception->getMessage()}");
         } finally {
             $release();
         }
@@ -192,12 +191,23 @@ final class EmbeddingsSwitchCommand extends Command
     }
 
     /**
-     * Prints why the start was refused. With `--report-failure` (the settings confirmation, whose
-     * queued output nobody reads) the refusal is also stored as a failed switch in its preflight, so
-     * the settings page locks the field and shows the reason. Only an idle state is replaced: a
-     * running switch or an earlier failure is left as it is. Vector search stays available.
+     * Prints why the start was refused, recording nothing: the profile is already active, another
+     * start holds the lock, or a switch is already running or failed.
      */
-    private function refuse(EmbeddingSwitchStore $store, EmbeddingModelProfile $profile, string $active, string $message): int
+    private function refuse(string $message): int
+    {
+        $this->error($message);
+
+        return self::FAILURE;
+    }
+
+    /**
+     * Prints why the start was refused by its own checks, while this command still holds the start
+     * lock and the state is idle. With `--report-failure` (the settings confirmation, whose queued
+     * output nobody reads) the refusal is also stored as a failed switch in its preflight, so the
+     * settings page locks the field and shows the reason. Vector search stays available.
+     */
+    private function refuseUnderLock(EmbeddingSwitchStore $store, EmbeddingModelProfile $profile, string $active, string $message): int
     {
         $this->error($message);
 
