@@ -69,15 +69,16 @@ it('verify throws naming profile, declared and measured when they differ', funct
     $profile = app(EmbeddingModelRegistry::class)->get('sentence_transformers:all-MiniLM-L6-v2');
     $probe = probe_with_service_answering(array_fill(0, 768, 0.1));
 
-    expect(fn (): int => $probe->verify($profile))
-        ->toThrow(EmbeddingDimensionMismatch::class, 'sentence_transformers:all-MiniLM-L6-v2');
+    $caught = null;
 
     try {
         $probe->verify($profile);
     } catch (EmbeddingDimensionMismatch $mismatch) {
-        expect($mismatch)->toBeInstanceOf(RuntimeException::class)
-            ->and($mismatch->getMessage())->toContain('384')->toContain('768')->toContain('dimensions');
+        $caught = $mismatch;
     }
+
+    expect($caught)->toBeInstanceOf(RuntimeException::class)
+        ->and($caught->getMessage())->toContain('sentence_transformers:all-MiniLM-L6-v2')->toContain('384')->toContain('768')->toContain('dimensions');
 });
 
 it('throws on an empty vector', function (): void {

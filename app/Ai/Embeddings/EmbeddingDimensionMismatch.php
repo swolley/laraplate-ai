@@ -11,6 +11,11 @@ use RuntimeException;
  */
 final class EmbeddingDimensionMismatch extends RuntimeException
 {
+    /**
+     * The vector length the model returned, or null when it returned no vector.
+     */
+    public ?int $measured = null;
+
     public static function noEmbedding(EmbeddingModelProfile $profile): self
     {
         return new self("The embedding service returned no embedding for profile \"{$profile->key}\".");
@@ -18,6 +23,9 @@ final class EmbeddingDimensionMismatch extends RuntimeException
 
     public static function differs(EmbeddingModelProfile $profile, int $measured): self
     {
-        return new self("Profile \"{$profile->key}\" declares {$profile->dimensions} dimensions but the model returned {$measured} dimensions.");
+        $exception = new self("Profile \"{$profile->key}\" declares {$profile->dimensions} dimensions but the model returned {$measured} dimensions.");
+        $exception->measured = $measured;
+
+        return $exception;
     }
 }

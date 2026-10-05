@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Scout\Searchable;
+use Modules\AI\Ai\Embeddings\EmbeddingDimensionMismatch;
 use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
@@ -281,7 +282,7 @@ final class RepairMissingEmbeddingsCommand extends Command
             }
 
             $response = $request->post($url . '/embed', [
-                'texts' => ['embedding service probe'],
+                'texts' => [EmbeddingDimensionProbe::TEXT],
                 'truncation' => true,
                 'normalize_embeddings' => true,
                 'max_length' => 512,
@@ -289,7 +290,13 @@ final class RepairMissingEmbeddingsCommand extends Command
             ]);
             $response->throw();
 
-            EmbeddingDimensionProbe::assertDimensions($active, $response->json('embeddings.0'));
+            try {
+                EmbeddingDimensionProbe::assertDimensions($active, $response->json('embeddings.0'));
+            } catch (EmbeddingDimensionMismatch $mismatch) {
+                return $this->probeFailed($url, $mismatch->measured === null
+                    ? 'the answer carries no embedding'
+                    : "it returned {$mismatch->measured} dimensions, the active profile \"{$active->key}\" expects {$active->dimensions}");
+            }
 
             $model = $response->json('model');
         } catch (Throwable $exception) {

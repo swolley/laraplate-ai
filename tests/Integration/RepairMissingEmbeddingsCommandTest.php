@@ -148,9 +148,9 @@ it('aborts before dispatching anything when the embedding service cannot embed',
     Queue::assertNothingPushed();
 })->with([
     'a server error' => [fn (): GuzzleHttp\Promise\PromiseInterface => Http::response('Internal Server Error', 500), '500'],
-    'an answer without embeddings' => [fn () => Http::response(['detail' => 'nope']), 'no embedding'],
-    'an empty list of embeddings' => [fn () => Http::response(['embeddings' => []]), 'no embedding'],
-    'the wrong dimensions' => [fn () => Http::response(['embeddings' => [[0.1, 0.2]]]), 'dimensions'],
+    'an answer without embeddings' => [fn () => Http::response(['detail' => 'nope']), 'the answer carries no embedding'],
+    'an empty list of embeddings' => [fn () => Http::response(['embeddings' => []]), 'the answer carries no embedding'],
+    'the wrong dimensions' => [fn () => Http::response(['embeddings' => [[0.1, 0.2]]]), 'it returned 2 dimensions, the active profile "sentence_transformers:intfloat/multilingual-e5-small" expects 384'],
     'a service that is unreachable' => [fn (): Closure => static fn () => throw new ConnectionException('connection timed out'), 'connection timed out'],
 ]);
 
