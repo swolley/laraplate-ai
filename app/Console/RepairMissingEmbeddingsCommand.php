@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Scout\Searchable;
+use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddableModels;
@@ -288,15 +289,7 @@ final class RepairMissingEmbeddingsCommand extends Command
             ]);
             $response->throw();
 
-            $vector = $response->json('embeddings.0');
-
-            if (! is_array($vector) || $vector === []) {
-                return $this->probeFailed($url, 'the answer carries no embedding');
-            }
-
-            if ($active->dimensions !== count($vector)) {
-                return $this->probeFailed($url, 'it returned ' . count($vector) . " dimensions, the active profile \"{$active->key}\" expects {$active->dimensions}");
-            }
+            EmbeddingDimensionProbe::assertDimensions($active, $response->json('embeddings.0'));
 
             $model = $response->json('model');
         } catch (Throwable $exception) {
