@@ -279,6 +279,35 @@ it('--stale regenerates records whose embeddings carry a non-active model_key, l
         ->and($fresh_rows->first()->model_key)->toBe($active_key);
 });
 
+it('--stale converges: a record kept by another configured profile is regenerated once, then no longer selected', function (): void {
+    fakeHealthyEmbeddingService();
+
+    $other_key = 'sentence_transformers:all-MiniLM-L6-v2';
+    $active_key = app(EmbeddingModelRegistry::class)->active()->key;
+
+    $record = new EmbeddableTestModel(['title' => 'Switched content']);
+    $record->saveQuietly();
+    $record->embeddings()->create(['embedding' => [0.1, 0.1], 'model_key' => $other_key]);
+
+    $embedding_service = Mockery::mock(IEmbeddingService::class);
+    stubRepairEmbedBatch($embedding_service, ['Switched content' => [0.9, 0.9]]);
+    app()->instance(IEmbeddingService::class, $embedding_service);
+
+    $options = ['model' => EmbeddableTestModel::class, '--sync' => true, '--stale' => true];
+
+    $this->artisan('ai:embeddings:repair', $options)
+        ->expectsOutputToContain('dispatched for 1 record(s)')
+        ->assertSuccessful();
+
+    $this->artisan('ai:embeddings:repair', $options)
+        ->expectsOutputToContain('dispatched for 0 record(s)')
+        ->assertSuccessful();
+
+    $keys = $record->embeddings()->orderBy('id')->pluck('model_key')->all();
+
+    expect($keys)->toBe([$other_key, $active_key]);
+});
+
 it('refuses to repair when the embedding service /health reports a different model than the active profile', function (): void {
     Http::fake([
         '*/health' => Http::response(['model' => 'some-other-model']),

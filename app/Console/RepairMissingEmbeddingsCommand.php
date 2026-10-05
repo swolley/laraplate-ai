@@ -59,10 +59,10 @@ final class RepairMissingEmbeddingsCommand extends Command
                             {--all : Repair every embeddable searchable model instead of one (for scheduled runs)}
                             {--if-idle : Skip the run while embeddings jobs are still queued, so a backlog is not dispatched twice}
                             {--sync : Generate embeddings synchronously instead of queuing}
-                            {--stale : Also target records whose embeddings were produced by a different model_key than the active profile (full per-locale regenerate)}';
+                            {--stale : Also target records that have embeddings but none produced by the active profile (full per-locale regenerate; rows of other models are kept)}';
 
     #[Override]
-    protected $description = 'Regenerate embeddings for searchable records that are missing them or stale (produced by a non-active model_key); cross-checks the embedding service /health against the active model <fg=magenta>(✨ Modules\AI)</fg=magenta>';
+    protected $description = 'Regenerate embeddings for searchable records that are missing them or stale (embedded, but by no row of the active model_key); cross-checks the embedding service /health against the active model <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
     public function handle(EmbeddingModelRegistry $registry, IEmbeddableModels $embeddable_models): int
     {
@@ -148,10 +148,14 @@ final class RepairMissingEmbeddingsCommand extends Command
         if ($stale) {
             $this->info("Scanning {$model_class} for records with embeddings stale against model_key \"{$active->key}\"...");
 
-            $query->whereHas('embeddings', function (Builder $embeddings) use ($active): void {
-                /** @var Builder<ModelEmbedding> $embeddings */
-                $embeddings->whereNot(fn (Builder $q): Builder => $q->producedBy($active->key));
-            });
+            // Embedded, but by no row of the active key. Rows of other models are kept until the
+            // switch is activated, so a record with an active-key row is not stale however many
+            // of them it keeps; selecting on "any non-active row" never converged.
+            $query->whereHas('embeddings')
+                ->whereDoesntHave('embeddings', function (Builder $embeddings) use ($active): void {
+                    /** @var Builder<ModelEmbedding> $embeddings */
+                    $embeddings->producedBy($active->key);
+                });
         } else {
             $this->info("Scanning {$model_class} for records with missing embeddings...");
 
