@@ -6,6 +6,7 @@ namespace Modules\AI\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\Switching\EmbeddingModelSettingConfirmation;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Contracts\MediaVisionAnalyzer;
 use Modules\AI\Ai\MediaAnalysis\MediaAnalysisGate;
@@ -59,6 +60,7 @@ use Modules\Core\Search\Contracts\ITextEmbedder;
 use Modules\Core\Search\Contracts\IVectorSearchAvailability;
 use Modules\Core\Search\SearchableContributorRegistry;
 use Modules\Core\Search\Services\VectorSearchAvailability;
+use Modules\Core\Services\SettingChangeConfirmations;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 use Override;
 
@@ -150,6 +152,11 @@ class AIServiceProvider extends ModuleServiceProvider
             ->register(new MediaAnalysisSchemaContributor($this->app->make(MediaAnalysisGate::class)));
 
         Media::observe(MediaAnalysisRefcountObserver::class);
+
+        // Changing the embedding model from the settings page asks for a confirmation that shows
+        // what the switch costs, starts it on confirm and locks the field while one runs.
+        $this->app->make(SettingChangeConfirmations::class)
+            ->register($this->app->make(EmbeddingModelSettingConfirmation::class));
     }
 
     #[Override]
