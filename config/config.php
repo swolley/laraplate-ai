@@ -28,9 +28,9 @@ return [
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
             'modules' => [],
 
-            // The active profile key and the model choice are the managed/settings
-            // `features.embeddings.active|model`, overlaid as `ai.features.embeddings.active|model`;
-            // EmbeddingModelRegistry falls back to the first configured profile below.
+            // The model choice is the setting `features.embeddings.model` (overlaid as
+            // `ai.features.embeddings.model`); the model that serves search is Core's managed
+            // `search.vector.model`. EmbeddingModelRegistry falls back to the first configured profile below.
             // Profiles are keyed `provider:service_model`, split at the first colon. Each
             // declares the dimensions of its vectors; Core's `core.search.vector.*` follows.
             'models' => [

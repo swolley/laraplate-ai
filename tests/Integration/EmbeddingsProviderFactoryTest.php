@@ -66,7 +66,7 @@ it('throws exception for unsupported embeddings provider', function (): void {
 })->throws(Exception::class, 'Unsupported embeddings provider: non-existent');
 
 it('uses default provider from config when none specified', function (): void {
-    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
 
     $provider = EmbeddingsProviderFactory::make();

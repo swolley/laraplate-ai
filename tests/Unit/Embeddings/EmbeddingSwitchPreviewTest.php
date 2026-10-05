@@ -25,7 +25,7 @@ beforeEach(function (): void {
         'sentence_transformers:all-MiniLM-L6-v2' => ['dimensions' => 384],
         'sentence_transformers:BAAI/bge-m3' => ['dimensions' => 1024],
     ]);
-    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();

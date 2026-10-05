@@ -6,6 +6,7 @@ use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
@@ -40,11 +41,11 @@ it('switches between models of equal dimensions: re-embeds everything, keeps the
         ->and($this->engine->forcedIndexes())->toBe([])
         ->and(Harness::storedModelKeys())->toBe([Harness::TARGET])
         ->and(Harness::rowsOf(Harness::TARGET))->toBe(3)
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET)
+        ->and(Harness::settingExists('features.embeddings.active'))->toBeFalse()
         ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET)
         ->and(Harness::setting('search.vector.dimensions'))->toBe(384)
         ->and(Harness::setting('search.vector.suspended_reason'))->toBeNull()
-        ->and(config('ai.features.embeddings.active'))->toBe(Harness::TARGET)
+        ->and(app(EmbeddingModelRegistry::class)->activeKey())->toBe(Harness::TARGET)
         ->and(config('core.search.vector.model'))->toBe(Harness::TARGET)
         ->and(config('core.search.vector.suspended_reason'))->toBeNull()
         ->and(Harness::$ragRebuilds)->toBe([['target' => Harness::TARGET, 'dimensions' => 384]])
@@ -90,8 +91,8 @@ it('fails the verification when a record has no row of the target, leaving the p
     expect($state->status)->toBe('failed')
         ->and($state->phase)->toBe('verify')
         ->and($state->error)->toContain('#' . $this->records[1]->getKey())
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::ACTIVE)
-        ->and(config('ai.features.embeddings.active'))->toBe(Harness::ACTIVE)
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::ACTIVE)
+        ->and(app(EmbeddingModelRegistry::class)->activeKey())->toBe(Harness::ACTIVE)
         ->and(Harness::rowsOf(Harness::ACTIVE))->toBe(3)
         ->and(Harness::setting('search.vector.suspended_reason'))->toBe('switching')
         ->and(app(IVectorSearchAvailability::class)->check(new EmbeddableTestModel)->reason)->toBe('suspended');
@@ -167,7 +168,7 @@ it('fails the embeddings phase when a record still has no row of the target afte
     expect($state->status)->toBe('failed')
         ->and($state->phase)->toBe('embeddings')
         ->and($state->error)->toContain('#' . $this->records[1]->getKey())
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::ACTIVE);
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::ACTIVE);
 });
 
 it('re-dispatches the switch job while the switch runs, and stops once it no longer runs', function (): void {

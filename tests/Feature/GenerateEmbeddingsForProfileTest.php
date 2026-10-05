@@ -19,7 +19,7 @@ const PROFILE_OTHER = 'sentence_transformers:all-MiniLM-L6-v2';
 
 beforeEach(function (): void {
     Event::fake([ModelPreProcessingCompleted::class]);
-    config()->set('ai.features.embeddings.active', PROFILE_ACTIVE);
+    config()->set('core.search.vector.model', PROFILE_ACTIVE);
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();

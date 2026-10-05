@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
@@ -52,7 +53,7 @@ it('resumes a switch failed in its verification once the cause is fixed, and com
         ->assertSuccessful();
 
     expect(resume_store()->get()->status)->toBe('idle')
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET)
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET)
         ->and(Harness::storedModelKeys())->toBe([Harness::TARGET])
         ->and(Harness::setting('search.vector.suspended_reason'))->toBeNull();
 });
@@ -82,8 +83,8 @@ it('leaves an activation whose settings write throws at the activate phase, and 
     expect($failure?->getMessage())->toBe('settings store unavailable')
         ->and($state->status)->toBe('running')
         ->and($state->phase)->toBe('activate')
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::ACTIVE)
-        ->and(config('ai.features.embeddings.active'))->toBe(Harness::ACTIVE)
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::ACTIVE)
+        ->and(app(EmbeddingModelRegistry::class)->activeKey())->toBe(Harness::ACTIVE)
         ->and(config('core.search.vector.model'))->toBe(Harness::ACTIVE)
         ->and(Harness::rowsOf(Harness::ACTIVE))->toBe(3);
 
@@ -93,7 +94,6 @@ it('leaves an activation whose settings write throws at the activate phase, and 
     $this->artisan('ai:embeddings:switch', ['--resume' => true])->assertSuccessful();
 
     expect(resume_store()->get()->status)->toBe('idle')
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET)
         ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET)
         ->and(Harness::storedModelKeys())->toBe([Harness::TARGET]);
 });
@@ -176,7 +176,7 @@ it('abandons a switch failed after it changed the index: rebuilds for the previo
     $forced = $this->engine->forcedIndexes();
 
     expect(resume_store()->get()->status)->toBe('idle')
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::ACTIVE)
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::ACTIVE)
         ->and(Harness::setting('features.embeddings.model'))->toBe(Harness::ACTIVE)
         ->and(Harness::setting('search.vector.dimensions'))->toBe(384)
         ->and(Harness::setting('search.vector.suspended_reason'))->toBeNull()
@@ -228,5 +228,5 @@ it('resumes a verification failed on a leftover document by rebuilding the index
 
     expect(resume_store()->get()->status)->toBe('idle')
         ->and($this->engine->documentsOf($this->index))->not->toHaveKey('999')
-        ->and(Harness::setting('features.embeddings.active'))->toBe(Harness::TARGET);
+        ->and(Harness::setting('search.vector.model'))->toBe(Harness::TARGET);
 });

@@ -44,7 +44,7 @@ beforeEach(function (): void {
     // Seeded as the seeder does it: a JSON null, since core_settings.value is NOT NULL.
     Setting::query()->withoutGlobalScopes()->whereKey($suspended->getKey())->toBase()->update(['value' => 'null', 'managed' => true]);
 
-    config()->set('ai.features.embeddings.active', SWITCH_ACTIVE);
+    config()->set('core.search.vector.model', SWITCH_ACTIVE);
     config()->set('core.search.vector.suspended_reason', null);
 
     Schema::create('embeddable_test_models', function ($table): void {

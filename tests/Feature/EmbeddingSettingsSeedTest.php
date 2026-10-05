@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
+use Modules\Core\Database\Seeders\CoreDatabaseSeeder;
 use Modules\Core\Models\Setting;
 
 function embeddingSetting(string $name): Setting
@@ -11,22 +13,21 @@ function embeddingSetting(string $name): Setting
     return Setting::query()->withoutGlobalScopes()->where('name', $name)->sole();
 }
 
-it('seeds the model, active and switch settings with the right managed flags', function (): void {
+it('seeds the model and switch settings with the right managed flags, and no copy of the serving model', function (): void {
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
     $this->seed(AIDatabaseSeeder::class);
 
     $model = embeddingSetting('features.embeddings.model');
-    $active = embeddingSetting('features.embeddings.active');
     $switch = embeddingSetting('features.embeddings.switch');
 
     expect($model->group_name)->toBe('ai')
         ->and($model->managed)->toBeFalse()
         ->and($model->choices)->toBe(app(EmbeddingModelRegistry::class)->keys())
         ->and($model->value)->toBe('sentence_transformers:intfloat/multilingual-e5-small')
-        ->and($active->managed)->toBeTrue()
-        ->and($active->value)->toBe('sentence_transformers:intfloat/multilingual-e5-small')
         ->and($switch->managed)->toBeTrue()
-        ->and(json_decode((string) $switch->value, true)['status'])->toBe('idle');
+        ->and(json_decode((string) $switch->value, true)['status'])->toBe('idle')
+        ->and(Setting::query()->withoutGlobalScopes()->where('name', 'features.embeddings.active')->exists())->toBeFalse()
+        ->and(collect(AIDatabaseSeeder::runtimeSettingDefinitions())->pluck('name'))->not->toContain('features.embeddings.active');
 });
 
 it('leaves out the profiles whose provider is not configured', function (): void {
@@ -36,23 +37,22 @@ it('leaves out the profiles whose provider is not configured', function (): void
         'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
         'voyageai:voyage-3-lite' => ['dimensions' => 512],
     ]);
-    config()->set('ai.features.embeddings.active', null);
+    config()->set('core.search.vector.model', null);
 
     $definitions = collect(AIDatabaseSeeder::runtimeSettingDefinitions())->keyBy('name');
 
     expect($definitions['features.embeddings.model']['choices'])->toBe(['voyageai:voyage-3-lite'])
-        ->and($definitions['features.embeddings.model']['value'])->toBe('voyageai:voyage-3-lite')
-        ->and($definitions['features.embeddings.active']['value'])->toBe('voyageai:voyage-3-lite');
+        ->and($definitions['features.embeddings.model']['value'])->toBe('voyageai:voyage-3-lite');
 });
 
-it('always keeps the active profile among the choices', function (): void {
+it('always keeps the serving model among the choices', function (): void {
     config()->set('ai.providers.sentence_transformers.url', '');
     config()->set('ai.providers.voyageai.api_key', 'k');
     config()->set('ai.features.embeddings.models', [
         'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
         'voyageai:voyage-3-lite' => ['dimensions' => 512],
     ]);
-    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
 
     $choices = collect(AIDatabaseSeeder::runtimeSettingDefinitions())->keyBy('name')['features.embeddings.model']['choices'];
 
@@ -60,12 +60,32 @@ it('always keeps the active profile among the choices', function (): void {
         ->and($choices)->toContain('voyageai:voyage-3-lite');
 });
 
+it('defaults the model choice to the Core serving model on a fresh install whose first configured profile differs', function (): void {
+    config()->set('ai.providers.sentence_transformers.url', '');
+    config()->set('ai.providers.voyageai.api_key', 'k');
+    config()->set('ai.features.embeddings.models', [
+        'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
+        'voyageai:voyage-3-lite' => ['dimensions' => 512],
+    ]);
+    config()->set('core.search.vector.model', null);
+
+    $this->seed(CoreDatabaseSeeder::class);
+    $this->seed(AIDatabaseSeeder::class);
+
+    $model = embeddingSetting('features.embeddings.model');
+
+    expect(embeddingSetting('search.vector.model')->value)->toBe('sentence_transformers:intfloat/multilingual-e5-small')
+        ->and($model->value)->toBe('sentence_transformers:intfloat/multilingual-e5-small')
+        ->and($model->choices)->toBe(['voyageai:voyage-3-lite', 'sentence_transformers:intfloat/multilingual-e5-small']);
+});
+
 it('does not overwrite a managed value on a re-seed', function (): void {
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
     $this->seed(AIDatabaseSeeder::class);
 
-    Setting::writeManaged('features.embeddings.active', 'sentence_transformers:all-MiniLM-L6-v2');
+    $running = new EmbeddingSwitchState('running', 'embeddings', 'sentence_transformers:all-MiniLM-L6-v2', 'sentence_transformers:intfloat/multilingual-e5-small');
+    Setting::writeManaged('features.embeddings.switch', $running->toJson());
     $this->seed(AIDatabaseSeeder::class);
 
-    expect(embeddingSetting('features.embeddings.active')->value)->toBe('sentence_transformers:all-MiniLM-L6-v2');
+    expect(json_decode((string) embeddingSetting('features.embeddings.switch')->value, true)['status'])->toBe('running');
 });

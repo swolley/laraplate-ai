@@ -69,7 +69,6 @@ final class EmbeddingSwitchHarness
         self::$ragRebuilds = [];
 
         config()->set('ai.features.embeddings.models.' . self::WIDE, ['dimensions' => 768]);
-        config()->set('ai.features.embeddings.active', self::ACTIVE);
         config()->set('core.search.vector.enabled', true);
         config()->set('core.search.vector.dimensions', 384);
         config()->set('core.search.vector.similarity', 'cosine');
@@ -174,6 +173,11 @@ final class EmbeddingSwitchHarness
     public static function setting(string $name): mixed
     {
         return Setting::query()->withoutGlobalScopes()->where('name', $name)->value('value');
+    }
+
+    public static function settingExists(string $name): bool
+    {
+        return Setting::query()->withoutGlobalScopes()->where('name', $name)->exists();
     }
 
     /**

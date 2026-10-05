@@ -329,17 +329,19 @@ cannot be the target of a switch, and a vector of the wrong length is refused wh
 | Setting | Module | Managed | Meaning |
 |---------|--------|---------|---------|
 | `features.embeddings.model` | AI | no | the profile the operator chose (the **target**), a dropdown of the configured profile keys. Changing it asks for confirmation and starts a switch |
-| `features.embeddings.active` | AI | yes | the profile whose vectors serve search. Written only at activation. The registry reads it as `ai.features.embeddings.active`, falling back to the first configured profile, then the first declared one |
 | `features.embeddings.switch` | AI | yes | the switch state as JSON: `status` (`idle`, `running`, `failed`), `phase`, `target`, `previous`, `total`, `done`, `error`, `startedAt`, `updatedAt` |
-| `search.vector.model` | Core | yes | the `model_key` Core queries and serializes into index documents; written at activation |
+| `search.vector.model` | Core | yes | the profile whose vectors serve search: the `model_key` Core queries and serializes into index documents. Written only at activation. The AI registry reads it too, as `core.search.vector.model`, falling back to the first configured profile, then the first declared one. There is no AI copy of it |
 | `search.vector.dimensions` | Core | yes | the vector length the index mappings and the pgvector query use; written at activation |
 | `search.vector.similarity` | Core | yes | the similarity of the mappings and the pgvector operator; written at activation |
 | `search.vector.suspended_reason` | Core | yes | `switching` while a switch runs or failed after its start, JSON `null` otherwise; read by the vector guard |
 
 A managed setting is read-only in the settings form and written by code through
 `Setting::writeManaged()`, which skips approval (see `Modules/Core/docs/rag/SETTING_ACTIONS_DEVELOPER.md`).
-A fresh installation seeds both AI profile settings with the first configured profile; Core seeds
-`search.vector.model` with `sentence_transformers:intfloat/multilingual-e5-small`, 384 and `cosine`.
+A fresh installation gets its serving model from Core, which seeds `search.vector.model` with
+`sentence_transformers:intfloat/multilingual-e5-small`, 384 and `cosine`, whatever profiles are
+configured. The AI seeder runs after Core and defaults `features.embeddings.model` to that stored
+value, adding it to the choices when its provider is not configured, so the target and the serving
+model agree from the start. To serve another model, run a switch to it.
 
 ### Changing the model from Settings
 
@@ -415,7 +417,7 @@ dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is
    holds one document per searchable record (engines with their own index; not the database
    engine), every record has target rows, and with vector search on, the mapping reports the target's
    dimensions and a vector query of the embedded text `test` runs.
-5. **activate**: in one transaction writes `features.embeddings.active`, `search.vector.dimensions`,
+5. **activate**: in one transaction writes `search.vector.dimensions`,
    `search.vector.similarity`, `search.vector.model` and sets `features.embeddings.model` to the
    target; then clears the suspension, sets the state `idle`, forgets the guard's cached dimension
    checks, deletes the rows of every other model key (and rows with none) and, on pgvector, drops
@@ -424,7 +426,7 @@ dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is
 
 **Failure.** A check that does not hold stores `failed` with the phase and the error. Any other error
 is retried by the job (3 tries, backoff 10 and 30 s) and recorded when they are spent, including a
-run killed by the 900-second timeout. `active`, the previous model's rows and the suspension of vector
+run killed by the 900-second timeout. `search.vector.model`, the previous model's rows and the suspension of vector
 search are left as they are. `--resume` continues; repeating the activation is harmless.
 
 **Abandon.** A start refused in its preflight is cleared: state `idle`, `features.embeddings.model`

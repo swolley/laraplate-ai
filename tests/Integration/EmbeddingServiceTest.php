@@ -8,7 +8,7 @@ use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Splitter\SplitterInterface;
 
 it('returns an embeddings provider via getEmbeddingsProvider', function (): void {
-    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
 
     $service = new EmbeddingService;

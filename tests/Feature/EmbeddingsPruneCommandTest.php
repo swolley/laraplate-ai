@@ -15,7 +15,7 @@ const PRUNE_OTHER = 'sentence_transformers:all-MiniLM-L6-v2';
 
 beforeEach(function (): void {
     $this->seed(AIDatabaseSeeder::class);
-    config()->set('ai.features.embeddings.active', PRUNE_ACTIVE);
+    config()->set('core.search.vector.model', PRUNE_ACTIVE);
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();

@@ -66,7 +66,7 @@ sequenceDiagram
 
 ### Configuration
 
-Embeddings use the profile chosen in the setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). The model that serves search is the managed setting `features.embeddings.active`; it changes only when `ai:embeddings:switch` activates the chosen model. Profiles, the switch, its commands and the vector length of each profile (`dimensions`, measured with `ai:embeddings:probe`): [rag/MODULE.md](rag/MODULE.md), section *Embedding model and model switch*. Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
+Embeddings use the profile chosen in the setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). The model that serves search is Core's managed setting `search.vector.model`; it changes only when `ai:embeddings:switch` activates the chosen model. Profiles, the switch, its commands and the vector length of each profile (`dimensions`, measured with `ai:embeddings:probe`): [rag/MODULE.md](rag/MODULE.md), section *Embedding model and model switch*. Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
 
 ```env
 AI_EMBEDDINGS_ENABLED=true

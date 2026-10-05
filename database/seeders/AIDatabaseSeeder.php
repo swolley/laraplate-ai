@@ -9,19 +9,21 @@ use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Services\ModerationEntitySettings;
 use Modules\Core\Casts\SettingTypeEnum;
+use Modules\Core\Models\Setting;
 use Modules\Core\Overrides\Seeder;
 use Modules\Core\Seeding\SeedReconciler;
 
 class AIDatabaseSeeder extends Seeder
 {
     /**
+     * @param  ?string  $servingModel  the model that serves search, when already stored (see {@see self::storedServingModel()})
      * @return array<int, array{name: string, value: mixed, encrypted: bool, choices: ?array<int, mixed>, type: SettingTypeEnum, group_name: string, description: string}>
      */
-    public static function runtimeSettingDefinitions(): array
+    public static function runtimeSettingDefinitions(?string $servingModel = null): array
     {
         return [
             self::setting('features.embeddings.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable embeddings generation'),
-            ...self::embeddingModelSettings(),
+            ...self::embeddingModelSettings($servingModel),
             self::setting('features.translation.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable automatic translation'),
             self::setting('features.media_analysis.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable media LLM analysis (caption, OCR, transcription)'),
             self::setting('features.chat.summary.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable chat summarization'),
@@ -78,7 +80,7 @@ class AIDatabaseSeeder extends Seeder
 
         $runtime = $reconciler->reconcile(
             self::internalSettingsDefinition('AI', [
-                ...self::runtimeSettingDefinitions(),
+                ...self::runtimeSettingDefinitions(self::storedServingModel()),
                 ...app(ModerationEntitySettings::class)->definitions(),
             ]),
         );
@@ -95,16 +97,18 @@ class AIDatabaseSeeder extends Seeder
     }
 
     /**
-     * The embedding model choice, the active profile and the switch progress. The profile settings
-     * default in code to the first configured profile; the choices are the configured profiles,
-     * and the active profile is always among them.
+     * The embedding model choice and the switch progress. The model that serves search is Core's
+     * managed `search.vector.model`, not an AI setting. The choice defaults to that serving model,
+     * so a fresh installation starts with the dropdown on the model Core seeded; without a stored
+     * value it is the registry's active key. The choices are the configured profiles, and the
+     * serving model is always among them.
      *
      * @return list<array<string, mixed>>
      */
-    private static function embeddingModelSettings(): array
+    private static function embeddingModelSettings(?string $servingModel): array
     {
         $registry = app(EmbeddingModelRegistry::class);
-        $default = $registry->activeKey();
+        $default = $servingModel !== null && $servingModel !== '' ? $servingModel : $registry->activeKey();
         $choices = $registry->configuredKeys();
 
         if ($default !== '' && ! in_array($default, $choices, true)) {
@@ -113,9 +117,20 @@ class AIDatabaseSeeder extends Seeder
 
         return [
             self::setting('features.embeddings.model', $default, SettingTypeEnum::String, 'ai', 'Embedding model, as provider:model (changing it starts a model switch)', $choices),
-            [...self::setting('features.embeddings.active', $default, SettingTypeEnum::String, 'ai', 'Active embedding model, as provider:model (set by the embedding model switch)'), 'managed' => true],
             [...self::setting('features.embeddings.switch', EmbeddingSwitchState::idle()->toJson(), SettingTypeEnum::String, 'ai', 'Embedding model switch progress, as JSON (set by the embedding model switch)'), 'managed' => true],
         ];
+    }
+
+    /**
+     * The stored `search.vector.model`, written by the Core seeder that runs first. It is read from
+     * the table because the seed reconciler upserts without model events, so on a fresh
+     * installation the runtime config does not hold the Core value yet.
+     */
+    private static function storedServingModel(): ?string
+    {
+        $stored = Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.model')->value('value');
+
+        return is_string($stored) && $stored !== '' ? $stored : null;
     }
 
     /**

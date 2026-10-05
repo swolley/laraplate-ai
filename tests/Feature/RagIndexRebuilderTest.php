@@ -12,7 +12,7 @@ const RAG_WIDE = 'sentence_transformers:wide-768';
 
 beforeEach(function (): void {
     config()->set('ai.features.embeddings.models.' . RAG_WIDE, ['dimensions' => 768]);
-    config()->set('ai.features.embeddings.active', RAG_ACTIVE);
+    config()->set('core.search.vector.model', RAG_ACTIVE);
     config()->set('ai.features.faq.enabled', true);
     config()->set('ai.features.faq.vector_store', 'elasticsearch');
 });

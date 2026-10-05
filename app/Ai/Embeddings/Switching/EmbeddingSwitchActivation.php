@@ -27,7 +27,6 @@ final readonly class EmbeddingSwitchActivation
      * The settings written together, managed by the switch.
      */
     private const array SETTINGS = [
-        'features.embeddings.active',
         'search.vector.dimensions',
         'search.vector.similarity',
         'search.vector.model',
@@ -96,7 +95,6 @@ final readonly class EmbeddingSwitchActivation
 
         try {
             $connection->transaction(function () use ($target): void {
-                Setting::writeManaged('features.embeddings.active', $target->key);
                 Setting::writeManaged('search.vector.dimensions', $target->dimensions);
                 Setting::writeManaged('search.vector.similarity', $target->similarity);
                 Setting::writeManaged('search.vector.model', $target->key);

@@ -124,8 +124,22 @@ it('resolves a dotted profile key when the whole models array is replaced', func
         ->and($profile->dimensions)->toBe(768);
 });
 
-it('defaults the active profile to the first configured one when none is set', function (): void {
-    config()->set('ai.features.embeddings.active', null);
+it('serves the model named by Core search.vector.model', function (): void {
+    config()->set('core.search.vector.model', 'voyageai:voyage-3-lite');
+    config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
+    config()->set('ai.features.embeddings.models', [
+        'sentence_transformers:intfloat/multilingual-e5-small' => ['dimensions' => 384],
+        'voyageai:voyage-3-lite' => ['dimensions' => 512],
+    ]);
+
+    $registry = app(EmbeddingModelRegistry::class);
+
+    expect($registry->activeKey())->toBe('voyageai:voyage-3-lite')
+        ->and($registry->active()->dimensions)->toBe(512);
+});
+
+it('defaults the active profile to the first configured one when Core names no model', function (?string $model): void {
+    config()->set('core.search.vector.model', $model);
     config()->set('ai.providers.sentence_transformers.url', '');
     config()->set('ai.providers.voyageai.api_key', 'k');
     config()->set('ai.features.embeddings.models', [
@@ -134,7 +148,7 @@ it('defaults the active profile to the first configured one when none is set', f
     ]);
 
     expect(app(EmbeddingModelRegistry::class)->active()->key)->toBe('voyageai:voyage-3-lite');
-});
+})->with(['null' => [null], 'empty' => ['']]);
 
 it('knows voyageai and sentence_transformers configuration', function (): void {
     $providers = new Modules\AI\Ai\Providers\Models\ProviderConfiguration;

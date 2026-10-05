@@ -34,7 +34,7 @@ beforeEach(function (): void {
         CONFIRM_OTHER_DIMENSIONS => ['dimensions' => 1024],
     ]);
     $this->seed(AIDatabaseSeeder::class);
-    config()->set('ai.features.embeddings.active', CONFIRM_ACTIVE);
+    config()->set('core.search.vector.model', CONFIRM_ACTIVE);
 
     $provider = Mockery::mock(EmbeddingsProviderInterface::class);
     $provider->shouldReceive('embedText')->andReturn(array_fill(0, 1024, 0.1));
@@ -89,7 +89,7 @@ it('is registered for the embedding model setting only', function (): void {
     $confirmations = app(SettingChangeConfirmations::class);
 
     expect($confirmations->for('features.embeddings.model'))->toBeInstanceOf(EmbeddingModelSettingConfirmation::class)
-        ->and($confirmations->for('features.embeddings.active'))->toBeNull();
+        ->and($confirmations->for('search.vector.model'))->toBeNull();
 });
 
 it('asks nothing when the chosen profile is the active one', function (): void {

@@ -7,7 +7,7 @@ use Modules\AI\Contracts\IEmbeddingService;
 use NeuronAI\RAG\Document;
 
 it('returns developer index hits without an ACL or permission gate', function (): void {
-    config()->set('ai.features.embeddings.active', 'sentence_transformers:intfloat/multilingual-e5-small');
+    config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
     config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.query_prefix', 'query: ');
 
     $embedding_service = Mockery::mock(IEmbeddingService::class);

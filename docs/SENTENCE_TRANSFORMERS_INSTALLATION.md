@@ -254,7 +254,7 @@ SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
 ```
 
-The embedding model is chosen in the setting `features.embeddings.model`; the one that serves search is the managed setting `features.embeddings.active` (default the first configured profile, `sentence_transformers:intfloat/multilingual-e5-small`), which only a model switch changes. Neither is an env var. Laraplate sends the profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to the active one.
+The embedding model is chosen in the setting `features.embeddings.model`; the one that serves search is Core's managed setting `search.vector.model` (seeded with `sentence_transformers:intfloat/multilingual-e5-small`), which only a model switch changes. Neither is an env var. Laraplate sends the profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to the active one.
 
 Notes:
 

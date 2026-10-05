@@ -15,7 +15,7 @@ uses(RefreshDatabase::class);
 const ACTIVE_KEY = 'sentence_transformers:intfloat/multilingual-e5-small';
 
 beforeEach(function (): void {
-    config()->set('ai.features.embeddings.active', ACTIVE_KEY);
+    config()->set('core.search.vector.model', ACTIVE_KEY);
 });
 
 function availabilityWith(VectorAvailability $inner): EmbeddingVectorSearchAvailability
@@ -70,7 +70,7 @@ it('is bound over the Core guard', function (): void {
 
 it('answers no_vectors instead of throwing when no active profile resolves', function (?string $active): void {
     config()->set('ai.features.embeddings.models', []);
-    config()->set('ai.features.embeddings.active', $active);
+    config()->set('core.search.vector.model', $active);
 
     $answer = availabilityWith(VectorAvailability::yes())->check(new EmbeddableTestModel);
 
@@ -80,7 +80,7 @@ it('answers no_vectors instead of throwing when no active profile resolves', fun
 
 it('still lets the Core answer win when no active profile resolves', function (): void {
     config()->set('ai.features.embeddings.models', []);
-    config()->set('ai.features.embeddings.active', null);
+    config()->set('core.search.vector.model', null);
 
     expect(availabilityWith(VectorAvailability::no('suspended'))->check(new EmbeddableTestModel)->reason)->toBe('suspended');
 });
