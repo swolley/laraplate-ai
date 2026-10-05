@@ -125,7 +125,7 @@ AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/new
 AI_FAQ_VECTOR_STORE=filesystem       # Vector store: memory (tests), filesystem, elasticsearch (multi-instance)
 AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
-AI_FAQ_ES_EMBEDDING_DIMS=384         # Must match your embeddings model dimensionality
+# (AI_FAQ_ES_EMBEDDING_DIMS was removed: the RAG vector length is the active embedding profile's `dimensions`)
 
 # Tools Configuration
 AI_TOOLS_ENABLED=true                # Enable tool/function calling

@@ -22,6 +22,11 @@ class EmbeddableTestModel extends Model implements ISearchableModel
     protected $guarded = [];
 
     /**
+     * No soft deletes, so `toSearchableArray()` adds no `is_deleted` field.
+     */
+    protected bool $softDeletesEnabled = false;
+
+    /**
      * @var list<string>
      */
     protected array $embed = ['title'];

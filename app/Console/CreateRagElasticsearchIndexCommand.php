@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\AI\Console;
 
 use function ai_config_bool;
-use function ai_config_int;
 
 use Illuminate\Console\Command;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
@@ -18,7 +17,8 @@ final class CreateRagElasticsearchIndexCommand extends Command
 {
     #[Override]
     protected $signature = 'ai:create-rag-index
-                            {--profile=all : Index profile: developer, user, or all}';
+                            {--profile=all : Index profile: developer, user, or all}
+                            {--force : Delete each index first, so its vector mapping takes the dimensions of the active embedding profile}';
 
     #[Override]
     protected $description = 'Create or update the RAG index for documentation <fg=magenta>(✨ Modules\\AI)</fg=magenta>';
@@ -31,7 +31,8 @@ final class CreateRagElasticsearchIndexCommand extends Command
             return self::FAILURE;
         }
 
-        $embedding_dims = ai_config_int('ai.features.faq.elasticsearch.embedding_dims', 384);
+        $embedding_dims = ElasticsearchRagVectorStore::activeDimensions();
+        $force = (bool) $this->option('force');
         $profile_option = $this->option('profile');
         $profile_name = is_string($profile_option) ? mb_strtolower(mb_trim($profile_option)) : '';
 
@@ -48,6 +49,12 @@ final class CreateRagElasticsearchIndexCommand extends Command
 
             foreach ($profiles as $profile) {
                 $index = $profile->indexName();
+
+                // An existing dense_vector field cannot change its dimensions: only a new index can.
+                if ($force) {
+                    ElasticsearchService::getInstance()->deleteIndex($index);
+                }
+
                 ElasticsearchService::getInstance()->createIndex(
                     $index,
                     [],

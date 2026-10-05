@@ -34,12 +34,19 @@ use Throwable;
  * failed) is also stored as a `failed` switch in phase `preflight`, so the settings page shows it;
  * vector search is not suspended. A held lock, an already active profile or a switch already
  * running or failed records nothing. A start whose job cannot be queued is rolled back.
+ *
+ * `--resume` continues a failed switch, or a running one that stopped making progress
+ * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase. `--abandon` clears a start
+ * refused by its preflight, and after a later failure runs the same procedure back to the previous
+ * model. Neither acts on a switch that is running normally.
  */
 final class EmbeddingsSwitchCommand extends Command
 {
     #[Override]
     protected $signature = 'ai:embeddings:switch
-                            {profile : Target embedding model profile key, e.g. sentence_transformers:all-MiniLM-L6-v2}
+                            {profile? : Target embedding model profile key, e.g. sentence_transformers:all-MiniLM-L6-v2}
+                            {--resume : Continue a failed switch, or a running one that stopped making progress, from its stored phase}
+                            {--abandon : Give up the switch and return to the active model (a refused start is just cleared)}
                             {--report-failure : Internal (the settings confirmation): record a refused start as a failed switch, so the settings page shows why}';
 
     #[Override]
@@ -52,8 +59,32 @@ final class EmbeddingsSwitchCommand extends Command
         EmbeddingDimensionProbe $probe,
         EmbeddingServiceIdentity $identity,
     ): int {
+        $resume = (bool) $this->option('resume');
+        $abandon = (bool) $this->option('abandon');
+        $profileKey = $this->argument('profile');
+
+        if ($resume && $abandon) {
+            return $this->refuse('Pass either --resume or --abandon, not both.');
+        }
+
+        if (($resume || $abandon) && $profileKey !== null) {
+            return $this->refuse('--resume and --abandon act on the stored switch: pass no profile with them.');
+        }
+
+        if ($resume) {
+            return $this->resume($store);
+        }
+
+        if ($abandon) {
+            return $this->abandon($store, $registry);
+        }
+
+        if ($profileKey === null) {
+            return $this->refuse('Pass the target profile, or --resume / --abandon to act on a stored switch.');
+        }
+
         try {
-            $profile = $registry->get((string) $this->argument('profile'));
+            $profile = $registry->get((string) $profileKey);
         } catch (InvalidArgumentException $exception) {
             $this->error($exception->getMessage());
 
@@ -106,6 +137,151 @@ final class EmbeddingsSwitchCommand extends Command
         $this->info("Switch to \"{$profile->key}\" started: vector search is off until it ends. Follow it with ai:embeddings:status.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Continues a failed switch, or a running one that stopped making progress, from its stored
+     * phase. A switch refused at its start has nothing to continue; one still running is left alone.
+     */
+    private function resume(EmbeddingSwitchStore $store): int
+    {
+        $release = $store->lock();
+
+        if ($release === null) {
+            return $this->refuse('An embedding model switch is starting: try again in a moment. Nothing was changed.');
+        }
+
+        try {
+            $state = $store->get();
+            $refusal = $this->refusalToActOn($state, 'resume');
+
+            if ($refusal === null && $state->status === 'failed' && $state->phase === 'preflight') {
+                $refusal = "The switch to \"{$state->target}\" was refused before it started, so there is nothing to resume: run ai:embeddings:switch --abandon to clear it.";
+            }
+
+            if ($refusal !== null) {
+                return $this->refuse($refusal);
+            }
+
+            $resumed = $state->with(status: 'running', error: null, rounds: 0, updatedAt: now()->toIso8601String());
+            $store->put($resumed);
+        } finally {
+            $release();
+        }
+
+        if (! $this->dispatchSwitch($store, $state, $resumed)) {
+            return self::FAILURE;
+        }
+
+        $this->info("Switch to \"{$state->target}\" resumed from phase {$state->phase}. Follow it with ai:embeddings:status.");
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Gives the switch up. A start refused by its preflight changed nothing: the state is cleared and
+     * the chosen model set back to the active one. After a later failure the indexes and the target's
+     * rows may already have changed, so the same procedure runs with the previous model as target:
+     * its rows still exist, so only records missing one are embedded, the indexes are rebuilt for its
+     * dimensions, verified, and it is activated again.
+     */
+    private function abandon(EmbeddingSwitchStore $store, EmbeddingModelRegistry $registry): int
+    {
+        $release = $store->lock();
+
+        if ($release === null) {
+            return $this->refuse('An embedding model switch is starting: try again in a moment. Nothing was changed.');
+        }
+
+        try {
+            $state = $store->get();
+            $refusal = $this->refusalToActOn($state, 'abandon');
+
+            if ($refusal !== null) {
+                return $this->refuse($refusal);
+            }
+
+            $active = $registry->activeKey();
+
+            if ($state->status === 'failed' && $state->phase === 'preflight') {
+                new Setting()->getConnection()->transaction(static function () use ($store, $active): void {
+                    $store->put(EmbeddingSwitchState::idle()->with(updatedAt: now()->toIso8601String()));
+                    $store->recordTarget($active);
+                });
+
+                $this->info("The refused switch to \"{$state->target}\" was cleared: the embedding model stays \"{$active}\".");
+
+                return self::SUCCESS;
+            }
+
+            $previous = $state->previous ?? $active;
+            $return = new EmbeddingSwitchState(
+                status: 'running',
+                phase: 'preflight',
+                target: $previous,
+                previous: $active,
+                startedAt: now()->toIso8601String(),
+                updatedAt: now()->toIso8601String(),
+            );
+
+            new Setting()->getConnection()->transaction(static function () use ($store, $return, $previous): void {
+                $store->put($return);
+                $store->recordTarget($previous);
+                $store->suspend();
+            });
+        } finally {
+            $release();
+        }
+
+        if (! $this->dispatchSwitch($store, $state, $return)) {
+            return self::FAILURE;
+        }
+
+        $this->info("Switch to \"{$state->target}\" abandoned: returning to \"{$previous}\" (vector search stays off until it ends). Follow it with ai:embeddings:status.");
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Why the stored switch cannot be resumed or abandoned, or null when it can: there is none, or it
+     * is running and still making progress.
+     */
+    private function refusalToActOn(EmbeddingSwitchState $state, string $action): ?string
+    {
+        if ($state->status === 'idle') {
+            return "No embedding model switch to {$action}.";
+        }
+
+        if ($state->status === 'running' && ! $state->isInterrupted()) {
+            $since = $state->updatedAt ?? $state->startedAt ?? 'unknown';
+
+            return "The switch to \"{$state->target}\" is running (phase {$state->phase}, last progress at {$since}): it cannot be resumed or abandoned while it runs. Nothing was changed.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Frees the overlap lock a dead run may still hold, then queues the switch job. When it cannot be
+     * queued, the state goes back to `$before`, unless a synchronous run has already moved it on.
+     */
+    private function dispatchSwitch(EmbeddingSwitchStore $store, EmbeddingSwitchState $before, EmbeddingSwitchState $stored): bool
+    {
+        SwitchEmbeddingModelJob::releaseOverlapLock();
+
+        try {
+            app(Dispatcher::class)->dispatch(new SwitchEmbeddingModelJob());
+        } catch (Throwable $exception) {
+            if ($store->get()->toJson() === $stored->toJson()) {
+                $store->put($before);
+            }
+
+            $this->error("Could not queue the switch job; nothing was changed ({$exception->getMessage()}).");
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

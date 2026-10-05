@@ -98,8 +98,8 @@ return [
                 'user_index' => env('AI_FAQ_USER_ES_INDEX', Str::slug(config('app.name')) . '_rag_user_docs'),
                 // Deprecated alias retained only for migration compatibility.
                 'index' => env('AI_FAQ_ES_INDEX', Str::slug(config('app.name')) . '_rag_docs'),
-                // Must match the active embeddings provider output dimensionality.
-                'embedding_dims' => (int) env('AI_FAQ_ES_EMBEDDING_DIMS', 384),
+                // The vector length is the active embedding profile's `dimensions`
+                // (ai.features.embeddings.models); a model switch rebuilds these indexes.
             ],
             'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
         ],

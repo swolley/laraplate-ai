@@ -29,6 +29,11 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    /**
+     * The queue embedding jobs run on.
+     */
+    public const string QUEUE = 'embeddings';
+
     public int $tries = 3;
 
     /**
@@ -62,7 +67,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         private readonly ?string $locale = null,
         private readonly ?string $profile = null,
     ) {
-        $this->onQueue('embeddings');
+        $this->onQueue(self::QUEUE);
     }
 
     /**

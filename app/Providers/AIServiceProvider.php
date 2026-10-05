@@ -13,11 +13,13 @@ use Modules\AI\Ai\MediaAnalysis\MediaAnalysisGate;
 use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
+use Modules\AI\Ai\Rag\RagIndexRebuilder;
 use Modules\AI\Console\RefreshAiModelsCommand;
 use Modules\AI\Console\RepairMissingEmbeddingsCommand;
 use Modules\AI\Contracts\IChatService;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Contracts\IEmbeddingService;
+use Modules\AI\Contracts\IRagIndexRebuilder;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Filament\MediaAnalysisSchemaContributor;
 use Modules\AI\Observers\MediaAnalysisRefcountObserver;
@@ -80,6 +82,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->singleton(IChatService::class, ChatService::class);
         $this->app->singleton(IEmbeddingService::class, EmbeddingService::class);
         $this->app->singleton(IEmbeddableModels::class, EmbeddableModels::class);
+        $this->app->bind(IRagIndexRebuilder::class, RagIndexRebuilder::class);
         $this->app->singleton(EmbeddingModelRegistry::class);
         $this->app->singleton(
             IVectorSearchAvailability::class,

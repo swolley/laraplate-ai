@@ -382,7 +382,7 @@ it('rolls the start back to idle even when the suspended reason row has gone', f
     expect(app(EmbeddingSwitchStore::class)->get()->status)->toBe('idle');
 });
 
-it('completes the preflight, moves to the embeddings phase and dispatches nothing more', function (): void {
+it('completes the preflight, moves to the embeddings phase and only queues its own next run', function (): void {
     $resolver = Mockery::mock(IEmbeddableModels::class);
     $resolver->shouldReceive('all')->andReturn([EmbeddableTestModel::class]);
     app()->instance(IEmbeddableModels::class, $resolver);
@@ -401,7 +401,8 @@ it('completes the preflight, moves to the embeddings phase and dispatches nothin
         ->and($state->target)->toBe(SWITCH_TARGET)
         ->and($state->total)->toBe(2)
         ->and($state->done)->toBe(0);
-    Queue::assertNothingPushed();
+    Queue::assertPushed(SwitchEmbeddingModelJob::class, 1);
+    Queue::assertNotPushed(GenerateEmbeddingsJob::class);
 });
 
 it('records the failure in the state when the job fails', function (): void {

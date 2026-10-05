@@ -143,7 +143,7 @@ Use the same port in the Python process and in `SENTENCE_TRANSFORMERS_URL`.
 Laraplate defaults assume **384-dimensional** vectors:
 
 - Core setting `core.search.vector.dimensions` (default `384`)
-- `AI_FAQ_ES_EMBEDDING_DIMS` (default `384`)
+- the active embedding profile's `dimensions` (`ai.features.embeddings.models`), which also sizes the RAG index
 - Elasticsearch `dense_vector` mappings for search and RAG
 
 Recommended models (384-d output):
@@ -256,8 +256,6 @@ AI_EMBEDDINGS_ENABLED=true
 
 SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
-
-AI_FAQ_ES_EMBEDDING_DIMS=384
 ```
 
 The active embedding model is the setting `features.embeddings.model` (managed value `features.embeddings.active`, default the first configured profile, `sentence_transformers:intfloat/multilingual-e5-small`), not an env var; Laraplate sends that profile's service model (the part of the key after the provider) to the service per request. Keep the service's `EMBEDDING_MODEL` default equal to it.

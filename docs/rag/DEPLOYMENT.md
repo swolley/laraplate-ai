@@ -33,7 +33,7 @@ Without a shared volume, each replica has its own index and FAQ answers differ p
 
 ## Elasticsearch (recommended for production)
 
-1. Set embedding dimensions to match your embeddings provider (`AI_FAQ_ES_EMBEDDING_DIMS`, e.g. `384` for many Sentence Transformers models).
+1. The index's vector length is the `dimensions` of the active embedding profile (`ai.features.embeddings.models`); there is nothing to set.
 2. Create the index:
 
 ```bash
@@ -45,7 +45,6 @@ php artisan ai:create-rag-es-index
 ```env
 AI_FAQ_VECTOR_STORE=elasticsearch
 AI_FAQ_ES_INDEX=laraplate_rag_docs
-AI_FAQ_ES_EMBEDDING_DIMS=384
 ```
 
 4. Index documentation (from any single instance or CI job):
@@ -58,7 +57,7 @@ All replicas then share the same corpus via Elasticsearch.
 
 ### Embedding dimension changes
 
-If you change the embeddings model and vector size, create a **new** index (or drop and recreate) with updated `AI_FAQ_ES_EMBEDDING_DIMS`, then run `ai:index-rag-docs --full`.
+Changing the embedding model goes through `ai:embeddings:switch`, which recreates these indexes for the new model (`ai:create-rag-index --force`) and reindexes them (`ai:index-rag-docs --full`). By hand: `ai:create-rag-index --force` drops and recreates each index with the active profile's dimensions.
 
 ### Embedding service timeout and batch size
 

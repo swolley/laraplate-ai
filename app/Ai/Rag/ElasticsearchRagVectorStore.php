@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\AI\Ai\Rag;
 
-use function ai_config_int;
 use function ai_config_string;
 use function is_array;
 use function is_numeric;
@@ -16,6 +15,7 @@ use Elastic\Elasticsearch\Exception\ClientResponseException;
 use Elastic\Elasticsearch\Exception\ServerResponseException;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Rag\Retrieval\DocumentationRetrievalContext;
 use Modules\Core\Services\ElasticsearchService;
 use NeuronAI\Exceptions\VectorStoreException;
@@ -50,8 +50,18 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
             client: ElasticsearchService::getInstance()->client,
             indexProfile: $profile,
             topK: $topK,
-            embedding_dims: ai_config_int('ai.features.faq.elasticsearch.embedding_dims', 384),
+            embedding_dims: self::activeDimensions(),
         );
+    }
+
+    /**
+     * The length of the documentation vectors: the dimensions of the active embedding profile, the
+     * model that embeds the documents and the questions (a switch rebuilds the index with the target
+     * profile in force).
+     */
+    public static function activeDimensions(): int
+    {
+        return app(EmbeddingModelRegistry::class)->active()->dimensions;
     }
 
     /**
