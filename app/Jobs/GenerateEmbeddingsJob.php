@@ -59,6 +59,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     public function __construct(
         private readonly Model $model,
         private readonly ?string $locale = null,
+        private readonly ?string $profile = null,
     ) {
         $this->onQueue('embeddings');
     }
@@ -111,12 +112,16 @@ final class GenerateEmbeddingsJob implements ShouldQueue
      */
     public function handle(IEmbeddingService $embedding_service): void
     {
-        $synchronizer = new ModelEmbeddingSynchronizer(
-            $embedding_service,
-            app(EmbeddingModelRegistry::class),
-        );
+        $registry = app(EmbeddingModelRegistry::class);
+        $synchronizer = new ModelEmbeddingSynchronizer($embedding_service, $registry);
 
-        $synchronizer->sync([$this->model], $this->locale);
+        if ($this->profile === null) {
+            $synchronizer->sync([$this->model], $this->locale);
+
+            return;
+        }
+
+        $registry->withActive($this->profile, fn () => $synchronizer->sync([$this->model], $this->locale));
     }
 
     /**

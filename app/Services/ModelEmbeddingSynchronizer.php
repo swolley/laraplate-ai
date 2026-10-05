@@ -7,6 +7,8 @@ namespace Modules\AI\Services;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Modules\AI\Ai\Embeddings\EmbeddingDimensionMismatch;
+use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\Core\Events\ModelPreProcessingCompleted;
@@ -153,20 +155,32 @@ final readonly class ModelEmbeddingSynchronizer
     /**
      * @param  array{model: Model, locale: string|null, stale: list<array{row_locale: string|null, content_hash: string, text_index: int|null, vectors: list<mixed>|null}>, processed_locales: list<string|null>, existing: \Illuminate\Support\Collection<int, ModelEmbedding>}  $plan
      * @param  list<Document[]>  $embedded
+     *
+     * @throws EmbeddingDimensionMismatch when a vector's length differs from the active profile's dimensions
      */
     private function writePlan(array $plan, string $model_key, array $embedded, bool $announceCompletion): void
     {
         $model = $plan['model'];
 
         try {
-            foreach ($plan['stale'] as $item) {
-                /** @phpstan-ignore method.notFound */
-                $model->embeddings()->forLocale($item['row_locale'])->delete();
+            $profile = $this->registry->active();
 
+            foreach ($plan['stale'] as $item) {
                 $vectors = $item['vectors'] ?? array_map(
                     static fn (Document $document): mixed => $document->embedding,
                     $embedded[$item['text_index']],
                 );
+
+                // Checked before anything is deleted: a vector of the wrong length would be
+                // rejected by the vector column or, worse, stored and never matched.
+                foreach ($vectors as $vector) {
+                    EmbeddingDimensionProbe::assertDimensions($profile, $vector);
+                }
+
+                /** @phpstan-ignore method.notFound */
+                $model->embeddings()->forLocale($item['row_locale'])
+                    ->where(fn ($query) => $this->scopeToOwnedRows($query, $model_key))
+                    ->delete();
 
                 foreach ($vectors as $vector) {
                     /** @phpstan-ignore method.notFound */
@@ -185,7 +199,8 @@ final readonly class ModelEmbeddingSynchronizer
                 // processed_locales and were already replaced above, so rejecting
                 // processed locales leaves exactly the orphans to drop.
                 $plan['existing']
-                    ->reject(static fn (ModelEmbedding $row): bool => in_array($row->locale, $plan['processed_locales'], true))
+                    ->reject(fn (ModelEmbedding $row): bool => in_array($row->locale, $plan['processed_locales'], true)
+                        || ! $this->ownsRow($row, $model_key))
                     ->each(static fn (ModelEmbedding $row) => $row->delete());
             }
 
@@ -210,6 +225,23 @@ final readonly class ModelEmbeddingSynchronizer
 
             throw $exception;
         }
+    }
+
+    /**
+     * Rows a run for `$model_key` may replace or drop: its own, and those of a model that is
+     * no longer a profile. The rows of another configured profile are left alone, so a run for
+     * one profile does not remove the vectors another profile is still serving.
+     */
+    private function ownsRow(ModelEmbedding $row, string $model_key): bool
+    {
+        return $row->model_key === $model_key || ! in_array($row->model_key, $this->registry->keys(), true);
+    }
+
+    private function scopeToOwnedRows(\Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Eloquent\Relations\Relation $query, string $model_key): void
+    {
+        $query->where('model_key', $model_key)
+            ->orWhereNull('model_key')
+            ->orWhereNotIn('model_key', $this->registry->keys());
     }
 
     private function isEmbeddable(Model $model): bool

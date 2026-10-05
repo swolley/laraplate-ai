@@ -85,6 +85,7 @@ function makeBilingualEmbeddedModel(array $it = [0.1, 0.1], array $en = [0.2, 0.
 }
 
 beforeEach(function (): void {
+    config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.dimensions', 2);
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();
         $table->string('title')->nullable();
@@ -318,6 +319,7 @@ it('recomputes every locale when the active embedding model changed', function (
 
     // Switch the active embedding-model profile: model_key no longer matches.
     config()->set('ai.features.embeddings.active', 'sentence_transformers:all-MiniLM-L6-v2');
+    config()->set('ai.features.embeddings.models.sentence_transformers:all-MiniLM-L6-v2.dimensions', 2);
     $new_key = app(EmbeddingModelRegistry::class)->active()->key;
 
     $service = Mockery::mock(IEmbeddingService::class);
@@ -325,10 +327,12 @@ it('recomputes every locale when the active embedding model changed', function (
 
     (new GenerateEmbeddingsJob($model))->handle($service);
 
-    $rows = $model->embeddings()->get();
+    // The previous profile's rows are not touched by a run for another profile: its vectors
+    // are removed when the switch is activated, not by the embedding run.
+    $rows = $model->embeddings()->where('model_key', $new_key)->get();
 
     expect($rows)->toHaveCount(2)
-        ->and($rows->pluck('model_key')->unique()->all())->toBe([$new_key])
+        ->and($model->embeddings()->count())->toBe(4)
         ->and($rows->firstWhere('locale', 'it')->embedding)->toBe([0.3, 0.3])
         ->and($rows->firstWhere('locale', 'en')->embedding)->toBe([0.4, 0.4]);
 });

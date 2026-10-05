@@ -14,6 +14,7 @@ use Modules\Core\Events\ModelPreProcessingCompleted;
 use NeuronAI\RAG\Document;
 
 beforeEach(function (): void {
+    config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.dimensions', 2);
     Log::spy();
 });
 
@@ -125,6 +126,7 @@ it('replaces existing embeddings then creates records stamped with locale and mo
     $embeddingRelation = Mockery::mock();
     $embeddingRelation->shouldReceive('get')->andReturn(collect());
     $embeddingRelation->shouldReceive('forLocale')->andReturnSelf();
+    $embeddingRelation->shouldReceive('where')->andReturnSelf();
     $embeddingRelation->shouldReceive('delete')->once();
     $embeddingRelation->shouldReceive('create')
         ->once()

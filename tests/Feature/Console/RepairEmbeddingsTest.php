@@ -96,6 +96,7 @@ function repairProbeAnswer(): GuzzleHttp\Promise\PromiseInterface
 }
 
 beforeEach(function (): void {
+    config()->set('ai.features.embeddings.models.sentence_transformers:intfloat/multilingual-e5-small.dimensions', 2);
     Config::set('core.search.vector.enabled', true);
 
     Schema::create('embeddable_test_models', function ($table): void {
