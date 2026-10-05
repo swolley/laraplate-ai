@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace Modules\AI\Console;
 
-use function ai_config_int;
-use function ai_config_nullable_string;
-use function ai_config_string;
-
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Scout\Searchable;
 use Modules\AI\Ai\Embeddings\EmbeddingDimensionMismatch;
-use Modules\AI\Ai\Embeddings\EmbeddingDimensionProbe;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\EmbeddingServiceIdentity;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\Core\Models\ModelEmbedding;
@@ -220,15 +215,15 @@ final class RepairMissingEmbeddingsCommand extends Command
      */
     private function verifyService(EmbeddingModelProfile $active): bool
     {
-        $health_model = $this->reportedByHealth();
-        $probe = $this->probeEmbedding($active);
+        $identity = app(EmbeddingServiceIdentity::class);
+        $health_model = $this->reportedByHealth($identity);
+        $probe = $this->probeEmbedding($identity, $active);
 
         if ($probe === null) {
             return false;
         }
 
-        $reported = $probe['model'] ?? $health_model;
-        $source = $probe['model'] !== null ? '/embed' : '/health';
+        $reported = EmbeddingServiceIdentity::reported($probe['model'], $health_model);
 
         if ($reported === null) {
             $this->warn("The embedding service does not report which model it runs, so its vectors cannot be checked against the active profile \"{$active->key}\" ({$active->serviceModel}).");
@@ -236,8 +231,8 @@ final class RepairMissingEmbeddingsCommand extends Command
             return true;
         }
 
-        if (! EmbeddingModelProfile::sameServiceModel($reported, $active->serviceModel)) {
-            $this->error("Embedding service {$source} reports model \"{$reported}\" but the active profile \"{$active->key}\" expects \"{$active->serviceModel}\": its vectors would be stored under the wrong model. Nothing was dispatched.");
+        if (! EmbeddingModelProfile::sameServiceModel($reported['model'], $active->serviceModel)) {
+            $this->error("Embedding service {$reported['source']} reports model \"{$reported['model']}\" but the active profile \"{$active->key}\" expects \"{$active->serviceModel}\": its vectors would be stored under the wrong model. Nothing was dispatched.");
 
             return false;
         }
@@ -248,19 +243,12 @@ final class RepairMissingEmbeddingsCommand extends Command
     /**
      * The model /health reports, or null when it names none or cannot be reached (a warning).
      */
-    private function reportedByHealth(): ?string
+    private function reportedByHealth(EmbeddingServiceIdentity $identity): ?string
     {
-        $url = mb_rtrim(ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'), '/');
-
         try {
-            $response = Http::timeout(5)->get($url . '/health');
-            $response->throw();
-
-            $reported_model = $response->json('model');
-
-            return is_string($reported_model) && $reported_model !== '' ? $reported_model : null;
+            return $identity->healthModel();
         } catch (Throwable $exception) {
-            $this->warn("Could not verify embedding service health at {$url}/health: " . $exception->getMessage());
+            $this->warn("Could not verify embedding service health at {$identity->url()}/health: " . $exception->getMessage());
 
             return null;
         }
@@ -273,41 +261,21 @@ final class RepairMissingEmbeddingsCommand extends Command
      *
      * @return array{model: string|null}|null the model the answer names, or null when the probe failed (the reason is printed)
      */
-    private function probeEmbedding(EmbeddingModelProfile $active): ?array
+    private function probeEmbedding(EmbeddingServiceIdentity $identity, EmbeddingModelProfile $active): ?array
     {
-        $url = mb_rtrim(ai_config_string('ai.providers.sentence_transformers.url', 'http://localhost:8000'), '/');
-        $api_key = ai_config_nullable_string('ai.providers.sentence_transformers.api_key');
+        $url = $identity->url();
 
         try {
-            $request = Http::timeout(ai_config_int('ai.providers.sentence_transformers.timeout', 30))->acceptJson();
-
-            if ($api_key !== null && $api_key !== '') {
-                $request = $request->withToken($api_key);
-            }
-
-            $response = $request->post($url . '/embed', [
-                'texts' => [EmbeddingDimensionProbe::TEXT],
-                'truncation' => true,
-                'normalize_embeddings' => true,
-                'max_length' => 512,
-                'model' => $active->serviceModel,
-            ]);
-            $response->throw();
-
-            try {
-                EmbeddingDimensionProbe::assertDimensions($active, $response->json('embeddings.0'));
-            } catch (EmbeddingDimensionMismatch $mismatch) {
-                return $this->probeFailed($url, $mismatch->measured === null
-                    ? 'the answer carries no embedding'
-                    : "it returned {$mismatch->measured} dimensions, the active profile \"{$active->key}\" expects {$active->dimensions}");
-            }
-
-            $model = $response->json('model');
+            $model = $identity->probeModel($active);
+        } catch (EmbeddingDimensionMismatch $mismatch) {
+            return $this->probeFailed($url, $mismatch->measured === null
+                ? 'the answer carries no embedding'
+                : "it returned {$mismatch->measured} dimensions, the active profile \"{$active->key}\" expects {$active->dimensions}");
         } catch (Throwable $exception) {
             return $this->probeFailed($url, Str::limit($exception->getMessage(), 200));
         }
 
-        return ['model' => is_string($model) && $model !== '' ? $model : null];
+        return ['model' => $model];
     }
 
     private function probeFailed(string $url, string $reason): null

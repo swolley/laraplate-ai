@@ -15,6 +15,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\Core\Events\ModelPreProcessingCompleted;
@@ -114,14 +115,15 @@ final class GenerateEmbeddingsJob implements ShouldQueue
     {
         $registry = app(EmbeddingModelRegistry::class);
         $synchronizer = new ModelEmbeddingSynchronizer($embedding_service, $registry);
+        $profile = $this->profile ?? $this->switchTarget();
 
-        if ($this->profile === null) {
+        if ($profile === null) {
             $synchronizer->sync([$this->model], $this->locale);
 
             return;
         }
 
-        $registry->withActive($this->profile, fn () => $synchronizer->sync([$this->model], $this->locale));
+        $registry->withActive($profile, fn () => $synchronizer->sync([$this->model], $this->locale));
     }
 
     /**
@@ -140,5 +142,17 @@ final class GenerateEmbeddingsJob implements ShouldQueue
         // vector). Otherwise a failed embedding would keep the document out of the
         // search index entirely.
         event(new ModelPreProcessingCompleted($this->model, 'embeddings'));
+    }
+
+    /**
+     * The target of a running embedding model switch: a record created or edited meanwhile is
+     * embedded with it, since the old index is being rebuilt and serves no vectors. Read when the
+     * job runs, not when it is queued, so a job queued before the switch started follows it too.
+     */
+    private function switchTarget(): ?string
+    {
+        $state = app(EmbeddingSwitchStore::class)->get();
+
+        return $state->status === 'running' ? $state->target : null;
     }
 }
