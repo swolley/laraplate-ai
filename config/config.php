@@ -180,6 +180,8 @@ return [
                 'unmoderated_writes' => [
                     // 'cms.tag',
                 ],
+                // How long a write the assistant proposed can still be confirmed, in minutes.
+                'proposal_ttl_minutes' => 30,
             ],
         ],
         'guardrails' => [

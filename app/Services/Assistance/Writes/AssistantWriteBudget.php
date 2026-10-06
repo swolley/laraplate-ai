@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Assistance\Writes;
 
 /**
- * How many writes the assistant may apply in one turn, whatever the tool.
+ * How many writes the assistant may propose in one turn, whatever the tool.
  *
  * `MAX_RUNS` limits how often the model may call one tool; this limits the damage of a model that
- * spreads an action over many small calls, each of which looks reasonable. One instance serves one
+ * spreads an action over many small proposals, each of which looks reasonable. One instance serves one
  * request (scoped binding) and `respond()` starts every turn from zero.
  */
 final class AssistantWriteBudget
@@ -23,7 +23,7 @@ final class AssistantWriteBudget
     }
 
     /**
-     * Takes one write from the budget. False when the turn has used it all, and nothing is taken.
+     * Takes one proposal from the budget. False when the turn has used it all, and nothing is taken.
      */
     public function take(): bool
     {

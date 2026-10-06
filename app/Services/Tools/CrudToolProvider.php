@@ -13,7 +13,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Fluent;
 use Modules\AI\Enums\AssistantProfile;
+use Modules\AI\Enums\WriteProposalStatus;
+use Modules\AI\Models\WriteProposal;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\Writes\ActingUserName;
+use Modules\AI\Services\Assistance\Writes\WriteApplyResult;
+use Modules\AI\Services\Assistance\Writes\WriteProposalService;
+use Modules\Core\Approvals\Operation;
 use Modules\Core\Casts\CrudRequestData;
 use Modules\Core\Casts\DetailRequestData;
 use Modules\Core\Casts\ListRequestData;
@@ -26,6 +32,7 @@ use Modules\Core\Http\Requests\PendingApprovalsRequest;
 use Modules\Core\Http\Requests\SearchRequest;
 use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\DynamicEntity;
+use Modules\Core\Models\User;
 use Modules\Core\Services\Authorization\AuthorizationService;
 use Modules\Core\Services\Crud\CrudService;
 use Modules\Core\Services\Crud\DTOs\CrudResult;
@@ -119,6 +126,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         private Request $request,
         private TabularCsvExporter $csvExporter,
         private TabularPdfExporter $pdfExporter,
+        private WriteProposalService $proposals,
     ) {}
 
     public function tools(AssistantAccessContext $context): array
@@ -146,22 +154,62 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 continue;
             }
 
-            $writesAllowed = $this->writesAllowed((string) $entityKey, $model);
-
             foreach ($operations as $operation) {
-                if (in_array($operation, self::WRITE_OPERATIONS, true) && ! $writesAllowed) {
+                if (! $this->isOperationOffered((string) $entityKey, $model, $operation)) {
                     continue;
                 }
 
-                if (! $this->userCanAll($model, $this->requiredAbilities($operation))) {
-                    continue;
-                }
-
-                $tools[] = $this->buildTool($module, $entity, (string) $operation);
+                $tools[] = $this->buildTool($module, $entity, (string) $operation, $context);
             }
         }
 
         return $tools;
+    }
+
+    /**
+     * Applies a stored proposal as the person who confirmed it: through CrudService, so permission and
+     * row-level ACL are decided again now, and only if the operator still offers the operation.
+     */
+    public function applyProposal(WriteProposal $proposal): WriteApplyResult
+    {
+        $user = $this->request->user();
+        $model = $this->resolveModel($proposal->module, $proposal->entity);
+        $entityKey = mb_strtolower($proposal->module . '.' . $proposal->entity);
+
+        $offered = $user instanceof User
+            && (int) $user->getKey() === (int) $proposal->user_id
+            && $model instanceof Model
+            && $this->isOperationStillListed($entityKey, $proposal->operation)
+            && $this->isOperationOffered($entityKey, $model, $proposal->operation);
+
+        if (! $offered) {
+            return new WriteApplyResult(WriteProposalStatus::Failed, ['error' => 'This change is no longer available to you.']);
+        }
+
+        $payload = $proposal->payload;
+        $attributes = is_array($payload['attributes'] ?? null) ? $payload['attributes'] : [];
+
+        return match ($proposal->operation) {
+            'create' => $this->singleResult($this->runCreate($proposal->module, $proposal->entity, $attributes)),
+            'update' => $this->singleResult($this->runUpdate($proposal->module, $proposal->entity, $payload['id'] ?? null, $attributes)),
+            'delete' => $this->singleResult($this->runDelete($proposal->module, $proposal->entity, $payload['id'] ?? null)),
+            'bulk_update', 'bulk_delete' => $this->applyBulk($proposal->operation, $proposal->module, $proposal->entity, is_array($payload['ids'] ?? null) ? $payload['ids'] : [], $attributes),
+            default => new WriteApplyResult(WriteProposalStatus::Failed, ['error' => 'Unsupported operation.']),
+        };
+    }
+
+    /**
+     * Whether this operation is offered to the acting user on this entity: opted in by the operator,
+     * allowed as a write where it is one, and permitted to the user. The same answer decides what a
+     * tool is built for and whether a stored proposal may still be applied.
+     */
+    private function isOperationOffered(string $entityKey, Model $model, string $operation): bool
+    {
+        if (in_array($operation, self::WRITE_OPERATIONS, true) && ! $this->writesAllowed($entityKey, $model)) {
+            return false;
+        }
+
+        return $this->userCanAll($model, $this->requiredAbilities($operation));
     }
 
     /**
@@ -237,7 +285,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             && $context->userId === (string) $identifier;
     }
 
-    private function buildTool(string $module, string $entity, string $operation): ToolDefinition
+    private function buildTool(string $module, string $entity, string $operation, AssistantAccessContext $context): ToolDefinition
     {
         $name = sprintf('crud_%s_%s_%s', $operation, mb_strtolower($module), mb_strtolower($entity));
         $label = mb_strtolower($module) . '.' . mb_strtolower($entity);
@@ -247,7 +295,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             description: $this->describe($operation, $label),
             parameters: $this->parameters($operation),
             riskLevel: 'low',
-            handler: $this->handlerFor($operation, $module, $entity),
+            handler: $this->handlerFor($operation, $module, $entity, $context),
             maxRuns: self::MAX_RUNS,
         );
     }
@@ -314,11 +362,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'search' => "Full-text search {$label} records.",
             'summarize' => "Aggregate {$label} records: group by one or more columns and compute a count plus optional sum/avg/min/max metrics. Honours the same structured filters as list.",
             'export' => "Export {$label} records the current user may read to a CSV or PDF file. Honours the same structured filters and sort as list; returns the file inline (base64).",
-            'create' => "Create a {$label} record. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
-            'update' => "Update a {$label} record by id. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
-            'delete' => "Delete a {$label} record by id. When the entity requires approval the change is not applied: the result has status pending_approval and the id of the request.",
-            'bulk_update' => "Update many {$label} records matched by filters. Preview first (default): returns the match count and a sample without changing anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each change is captured for approval.',
-            'bulk_delete' => "Delete many {$label} records matched by filters. Preview first (default): returns the match count and a sample without deleting anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each deletion is captured for approval.',
+            'create' => "Propose creating a {$label} record. Nothing is created: the proposal waits for the signed-in person to confirm it in the interface. Tell them what you propose and that it needs their confirmation.",
+            'update' => "Propose changing a {$label} record by id. Nothing is changed: the proposal waits for the signed-in person to confirm it in the interface. Tell them what you propose and that it needs their confirmation.",
+            'delete' => "Propose deleting a {$label} record by id. Nothing is deleted: the proposal waits for the signed-in person to confirm it in the interface. Tell them what you propose and that it needs their confirmation.",
+            'bulk_update' => "Propose changing many {$label} records matched by filters, at most " . self::BULK_CAP . ' at a time. Nothing is changed: the proposal lists the matched records and waits for the signed-in person to confirm it in the interface.',
+            'bulk_delete' => "Propose deleting many {$label} records matched by filters, at most " . self::BULK_CAP . ' at a time. Nothing is deleted: the proposal lists the matched records and waits for the signed-in person to confirm it in the interface.',
             'pending_approvals' => "List pending {$label} changes awaiting approval, each with its author; optionally filter by author (name, email or user id).",
             default => "Operate on {$label}.",
         };
@@ -373,11 +421,9 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'bulk_update' => [
                 $filters,
                 ['name' => 'attributes', 'type' => 'object', 'description' => 'Field values to apply to every matched record.', 'required' => true],
-                ['name' => 'confirm', 'type' => 'boolean', 'description' => 'False (default) previews the match without changing anything; true applies the update.', 'required' => false],
             ],
             'bulk_delete' => [
                 $filters,
-                ['name' => 'confirm', 'type' => 'boolean', 'description' => 'False (default) previews the match without deleting anything; true applies the deletion.', 'required' => false],
             ],
             'pending_approvals' => [
                 ['name' => 'author', 'type' => 'string', 'description' => 'Optional filter: modifier name, email, or user id.', 'required' => false],
@@ -390,7 +436,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
      * Named-argument handler matching the tool's parameter names (NeuronAI
      * invokes tools with named arguments, as GraphToolProvider does).
      */
-    private function handlerFor(string $operation, string $module, string $entity): callable
+    private function handlerFor(string $operation, string $module, string $entity, AssistantAccessContext $context): callable
     {
         return match ($operation) {
             'view' => fn (mixed $filters = null, mixed $sort = null, mixed $limit = null, mixed $page = null): array => $this->runView($module, $entity, $filters, $sort, $limit, $page),
@@ -399,11 +445,11 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'summarize' => fn (mixed $filters = null, mixed $group_by = null, mixed $metrics = null): array => $this->runSummarize($module, $entity, $filters, $group_by, $metrics),
             'export' => fn (mixed $format = null, mixed $filters = null, mixed $sort = null, mixed $columns = null, mixed $limit = null): array => $this->runExport($module, $entity, $format, $filters, $sort, $columns, $limit),
             'detail' => fn (mixed $id = null): array => $this->runDetail($module, $entity, $id),
-            'create' => fn (mixed $attributes = null): array => $this->runCreate($module, $entity, $attributes),
-            'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->runUpdate($module, $entity, $id, $attributes),
-            'delete' => fn (mixed $id = null): array => $this->runDelete($module, $entity, $id),
-            'bulk_update' => fn (mixed $filters = null, mixed $attributes = null, mixed $confirm = null): array => $this->runBulk('bulk_update', $module, $entity, $filters, $attributes, $confirm),
-            'bulk_delete' => fn (mixed $filters = null, mixed $confirm = null): array => $this->runBulk('bulk_delete', $module, $entity, $filters, null, $confirm),
+            'create' => fn (mixed $attributes = null): array => $this->proposeWrite($context, 'create', $module, $entity, ['attributes' => $this->toArray($attributes)]),
+            'update' => fn (mixed $id = null, mixed $attributes = null): array => $this->proposeWrite($context, 'update', $module, $entity, ['id' => $this->toString($id), 'attributes' => $this->toArray($attributes)]),
+            'delete' => fn (mixed $id = null): array => $this->proposeWrite($context, 'delete', $module, $entity, ['id' => $this->toString($id)]),
+            'bulk_update' => fn (mixed $filters = null, mixed $attributes = null): array => $this->proposeWrite($context, 'bulk_update', $module, $entity, ['filters' => $this->normalizeFilters($filters), 'attributes' => $this->toArray($attributes)]),
+            'bulk_delete' => fn (mixed $filters = null): array => $this->proposeWrite($context, 'bulk_delete', $module, $entity, ['filters' => $this->normalizeFilters($filters)]),
             'pending_approvals' => fn (mixed $author = null): array => $this->runPendingApprovals($module, $entity, $author),
             default => static fn (): array => ['error' => 'Unsupported operation.'],
         };
@@ -840,94 +886,283 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     }
 
     /**
-     * Bulk update/delete matched by filters with a mandatory preview and a hard
-     * cap. The preview (confirm=false) reports the match count and a sample of
-     * ids without touching anything. On confirm, records are resolved through
-     * CrudService::list (permission + ACL enforced) and each one is updated or
-     * deleted individually so every write is authorized, ACL-scoped and — on
-     * moderated entities — captured for approval per record. A match larger than
-     * the cap is refused so a bulk call can never affect an unbounded set.
+     * Stores what the model asked for as a proposal and changes nothing. What is applied later is the stored
+     * payload, so the person confirms exactly what was shown; for a bulk call that includes the ids that
+     * matched now. The record is read as the acting person, so one they cannot see is not proposed.
      *
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function runBulk(string $operation, string $module, string $entity, mixed $filters, mixed $attributes, mixed $confirm): array
+    private function proposeWrite(AssistantAccessContext $context, string $operation, string $module, string $entity, array $payload): array
     {
-        $normalizedFilters = $this->normalizeFilters($filters);
-        $changes = $operation === 'bulk_update' ? $this->toArray($attributes) : [];
-        $doApply = $this->toBool($confirm);
-
-        $request = ['verb' => $operation, 'module' => $module, 'entity' => $entity, 'filters' => $normalizedFilters, 'confirm' => $doApply];
-
-        if ($operation === 'bulk_update') {
-            $request['attributes'] = $changes;
-        }
-
-        if ($normalizedFilters === []) {
-            return ['request' => $request, 'error' => 'Bulk operations require at least one filter to scope the affected records.'];
-        }
-
-        if ($operation === 'bulk_update' && $changes === []) {
-            return ['request' => $request, 'error' => 'Bulk update requires at least one attribute to change.'];
-        }
+        $request = ['verb' => $operation, 'module' => $module, 'entity' => $entity];
 
         try {
-            $key = $this->primaryKey($module, $entity);
-            $ids = $this->matchedIds($module, $entity, $normalizedFilters, $key);
-            $matched = count($ids);
-            $exceedsCap = $matched > self::BULK_CAP;
+            $user = $this->request->user();
+            $model = $this->resolveModel($module, $entity);
 
-            if (! $doApply) {
-                return [
-                    'request' => $request,
-                    'preview' => true,
-                    'meta' => [
-                        'matched_records' => $matched,
-                        'cap' => self::BULK_CAP,
-                        'exceeds_cap' => $exceedsCap,
-                        'sample_ids' => array_slice($ids, 0, 20),
-                    ],
-                ];
+            if (! $user instanceof User || ! $model instanceof Model || ! $this->actingUserMatches($context) || $context->conversationId === null) {
+                return ['request' => $request, 'error' => 'This change cannot be proposed.'];
             }
 
-            if ($exceedsCap) {
-                return [
-                    'request' => $request,
-                    'error' => sprintf('Refusing to %s %d records: the hard cap is %d. Narrow the filters and retry.', $operation === 'bulk_update' ? 'update' : 'delete', $matched, self::BULK_CAP),
-                    'meta' => ['matched_records' => $matched, 'cap' => self::BULK_CAP, 'exceeds_cap' => true],
-                ];
+            $prepared = $this->prepareProposal($operation, $module, $entity, $payload);
+
+            if (isset($prepared['error'])) {
+                return ['request' => $request, 'error' => $prepared['error']];
             }
 
-            $applied = 0;
-            $failed = 0;
+            $requiresApproval = $this->wouldRequireApproval($model, $operation);
+            $proposal = $this->proposals->propose(
+                $user,
+                $context->conversationId,
+                sprintf('crud_%s_%s_%s', $operation, mb_strtolower($module), mb_strtolower($entity)),
+                $module,
+                $entity,
+                $operation,
+                $prepared['payload'],
+                $prepared['summary'],
+                $requiresApproval,
+            );
 
-            foreach ($ids as $id) {
-                try {
-                    $data = $this->modifyData($module, $entity, [$key => $id] + $changes);
-
-                    if ($operation === 'bulk_update') {
-                        $this->crud->update($data);
-                    } else {
-                        $this->crud->delete($data);
-                    }
-
-                    $applied++;
-                } catch (Throwable) {
-                    $failed++;
-                }
+            if (! $proposal instanceof WriteProposal) {
+                return ['request' => $request, 'refused' => true, 'error' => 'Too many changes were proposed in this turn. Propose the rest in a later message.'];
             }
 
             return [
                 'request' => $request,
-                'meta' => [
-                    'matched_records' => $matched,
-                    'cap' => self::BULK_CAP,
-                    'applied' => $applied,
-                    'failed' => $failed,
-                ],
+                'status' => 'awaiting_confirmation',
+                'proposal_id' => $proposal->getKey(),
+                'acting_user' => ActingUserName::of($user),
+                'summary' => $prepared['summary'],
+                'requires_approval' => $requiresApproval,
+                'expires_at' => $proposal->expires_at->toIso8601String(),
+                'message' => 'Nothing has been changed. The signed-in person must confirm this proposal in the interface'
+                    . ($requiresApproval ? ', and the change is then sent for approval before it takes effect.' : '.'),
             ];
         } catch (Throwable $exception) {
             return $this->fail($request, $exception);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{payload: array<string, mixed>, summary: array<string, mixed>}|array{error: string}
+     */
+    private function prepareProposal(string $operation, string $module, string $entity, array $payload): array
+    {
+        $attributes = is_array($payload['attributes'] ?? null) ? $payload['attributes'] : [];
+
+        if (in_array($operation, ['create', 'update', 'bulk_update'], true) && $attributes === []) {
+            return ['error' => 'At least one attribute to set is required.'];
+        }
+
+        if (in_array($operation, ['update', 'delete'], true)) {
+            $id = $this->toString($payload['id'] ?? null);
+
+            if ($id === '') {
+                return ['error' => 'A record identifier is required.'];
+            }
+
+            $current = $this->findRecord($module, $entity, $id);
+
+            if ($current === null) {
+                return ['error' => 'The record was not found or is not available to you.'];
+            }
+
+            $summary = $operation === 'update'
+                ? ['record_id' => $id, 'changes' => $this->diff($current, $attributes)]
+                : ['record_id' => $id, 'record' => $this->clipRecord($current)];
+
+            return ['payload' => $payload, 'summary' => $summary];
+        }
+
+        if ($operation === 'create') {
+            return ['payload' => $payload, 'summary' => ['changes' => $this->clipRecord($attributes)]];
+        }
+
+        $filters = $payload['filters'] ?? [];
+
+        if (! is_array($filters) || $filters === []) {
+            return ['error' => 'Bulk operations require at least one filter to scope the affected records.'];
+        }
+
+        $ids = $this->matchedIds($module, $entity, $filters, $this->primaryKey($module, $entity));
+
+        if ($ids === []) {
+            return ['error' => 'No record matches those filters.'];
+        }
+
+        if (count($ids) > self::BULK_CAP) {
+            return ['error' => sprintf('%d or more records match: the hard cap is %d. Narrow the filters and retry.', self::BULK_CAP + 1, self::BULK_CAP)];
+        }
+
+        return [
+            'payload' => ['ids' => $ids, 'attributes' => $attributes, 'filters' => $filters],
+            'summary' => [
+                'matched_records' => count($ids),
+                'sample_ids' => array_slice($ids, 0, 20),
+                'changes' => $this->clipRecord($attributes),
+                'cap' => self::BULK_CAP,
+            ],
+        ];
+    }
+
+    /**
+     * The record as the acting person may read it, through CrudService::list so permission and ACL apply.
+     * Not through `detail`: that call resolves its key from a form request that was never validated here.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function findRecord(string $module, string $entity, string $id): ?array
+    {
+        $key = $this->primaryKey($module, $entity);
+        $validated = ['filters' => [['property' => $key, 'operator' => '=', 'value' => $id]], 'pagination' => 1, 'page' => 1];
+        $data = new ListRequestData($this->makeRequest(ListRequest::class), $entity, $validated, $key, $module);
+        $rows = $this->crud->list($data)->data;
+
+        if (! $rows instanceof Collection && ! $rows instanceof EloquentCollection) {
+            return null;
+        }
+
+        $row = $rows->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        return $row instanceof Model ? $row->toArray() : (array) $row;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function singleResult(array $result): WriteApplyResult
+    {
+        if (isset($result['error'])) {
+            return new WriteApplyResult(WriteProposalStatus::Failed, ['error' => $result['error']]);
+        }
+
+        if (($result['status'] ?? null) === 'pending_approval') {
+            return new WriteApplyResult(WriteProposalStatus::PendingApproval, [
+                'modification' => $result['modification'] ?? null,
+                'operation' => $result['operation'] ?? null,
+            ]);
+        }
+
+        return new WriteApplyResult(WriteProposalStatus::Applied, ['record' => $result['data'] ?? null]);
+    }
+
+    /**
+     * Applies a bulk write to exactly the ids the person was shown. Each record is written on its own, so
+     * every write is authorized, ACL-scoped and, on moderated entities, captured for approval per record.
+     *
+     * @param  list<mixed>  $ids
+     * @param  array<string, mixed>  $changes
+     */
+    private function applyBulk(string $operation, string $module, string $entity, array $ids, array $changes): WriteApplyResult
+    {
+        $key = $this->primaryKey($module, $entity);
+        $applied = 0;
+        $captured = 0;
+        $failed = 0;
+        $modifications = [];
+
+        foreach (array_slice($ids, 0, self::BULK_CAP) as $id) {
+            try {
+                $data = $this->modifyData($module, $entity, [$key => $id] + $changes);
+                $result = $operation === 'bulk_update' ? $this->crud->update($data) : $this->crud->delete($data);
+
+                if ($result->statusCode === Response::HTTP_ACCEPTED) {
+                    $captured++;
+                    $modifications[] = is_array($result->data) ? ($result->data['modification'] ?? null) : null;
+                } else {
+                    $applied++;
+                }
+            } catch (Throwable) {
+                $failed++;
+            }
+        }
+
+        $status = match (true) {
+            $applied === 0 && $captured === 0 => WriteProposalStatus::Failed,
+            $applied === 0 => WriteProposalStatus::PendingApproval,
+            default => WriteProposalStatus::Applied,
+        };
+
+        return new WriteApplyResult($status, [
+            'applied' => $applied,
+            'captured_for_approval' => $captured,
+            'failed' => $failed,
+            'modifications' => array_values(array_filter($modifications, static fn (mixed $id): bool => $id !== null)),
+        ]);
+    }
+
+    private function isOperationStillListed(string $entityKey, string $operation): bool
+    {
+        foreach ($this->allowlist() as $key => $operations) {
+            if ($entityKey === mb_strtolower((string) $key) && in_array($operation, $operations, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function wouldRequireApproval(Model $model, string $operation): bool
+    {
+        if (! class_uses_trait($model, HasApprovals::class) || ! method_exists($model, 'wouldRequireApproval')) {
+            return false;
+        }
+
+        return (bool) $model->wouldRequireApproval(match ($operation) {
+            'create' => Operation::Create,
+            'update', 'bulk_update' => Operation::Update,
+            default => Operation::Delete,
+        });
+    }
+
+    /**
+     * What each attribute is now and what the proposal would make it.
+     *
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, array{from: mixed, to: mixed}>
+     */
+    private function diff(array $current, array $attributes): array
+    {
+        $changes = [];
+
+        foreach ($attributes as $field => $value) {
+            $changes[(string) $field] = ['from' => $this->clip($current[$field] ?? null), 'to' => $this->clip($value)];
+        }
+
+        return $changes;
+    }
+
+    /**
+     * A bounded view of a record for the person to read: scalar values only, clipped, a limited number.
+     *
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function clipRecord(array $record): array
+    {
+        $clipped = [];
+
+        foreach (array_slice($record, 0, 12, true) as $field => $value) {
+            $clipped[(string) $field] = $this->clip($value);
+        }
+
+        return $clipped;
+    }
+
+    private function clip(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return mb_strlen($value) > 200 ? mb_substr($value, 0, 200) . '…' : $value;
+        }
+
+        return is_scalar($value) || $value === null ? $value : '[' . gettype($value) . ']';
     }
 
     /**
@@ -1221,11 +1456,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
     private function toString(mixed $value): string
     {
         return is_scalar($value) ? (string) $value : '';
-    }
-
-    private function toBool(mixed $value): bool
-    {
-        return filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
     }
 
     /**

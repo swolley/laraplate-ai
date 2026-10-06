@@ -45,18 +45,29 @@ beforeEach(function (): void {
         $request,
         resolve(TabularCsvExporter::class),
         resolve(TabularPdfExporter::class),
+        resolve(Modules\AI\Services\Assistance\Writes\WriteProposalService::class),
     );
-    $context = new AssistantAccessContext(AssistantProfile::InAppAssistance, (string) $user->getAuthIdentifier(), AssistantTenantScope::Global, null, 'en', [], 'conv-test');
+    $this->conversation = Modules\AI\Models\Conversation::query()->create(['user_id' => $user->getKey()]);
+    $context = new AssistantAccessContext(AssistantProfile::InAppAssistance, (string) $user->getAuthIdentifier(), AssistantTenantScope::Global, null, 'en', [], (string) $this->conversation->getKey());
+    $this->provider = $provider;
+    $this->user = $user;
 
     $this->update = collect($provider->tools($context))->first(static fn (ToolDefinition $tool): bool => $tool->name === 'crud_update_core_setting');
 });
 
-it('reports an update sent for approval instead of the updated record', function (): void {
-    $result = ($this->update->handler)(id: (string) $this->setting->id, attributes: ['is_public' => true]);
+it('proposes an update and, once the person confirms, reports it as sent for approval instead of applied', function (): void {
+    $proposal = ($this->update->handler)(id: (string) $this->setting->id, attributes: ['is_public' => true]);
 
-    expect($result['status'])->toBe('pending_approval')
-        ->and($result['operation'])->toBe('update')
-        ->and($result['modification'])->toBeInt()
-        ->and($result)->not->toHaveKey('data')
+    expect($proposal['status'])->toBe('awaiting_confirmation')
+        ->and($proposal['requires_approval'])->toBeTrue()
+        ->and($this->setting->fresh()->is_public)->toBeFalse();
+
+    $stored = Modules\AI\Models\WriteProposal::query()->findOrFail($proposal['proposal_id']);
+    $resolved = resolve(Modules\AI\Services\Assistance\Writes\WriteProposalService::class)
+        ->confirm($stored, $this->user, $this->provider->applyProposal(...));
+
+    expect($resolved->status)->toBe(Modules\AI\Enums\WriteProposalStatus::PendingApproval)
+        ->and($resolved->outcome['operation'])->toBe('update')
+        ->and($resolved->outcome['modification'])->toBeInt()
         ->and($this->setting->fresh()->is_public)->toBeFalse();
 });

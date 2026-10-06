@@ -30,11 +30,14 @@ function makeCrudToolProvider(object $user): CrudToolProvider
         $request,
         resolve(Modules\Core\Services\Export\TabularCsvExporter::class),
         resolve(Modules\Core\Services\Export\TabularPdfExporter::class),
+        resolve(Modules\AI\Services\Assistance\Writes\WriteProposalService::class),
     );
 }
 
 function inAppContext(object $user): AssistantAccessContext
 {
+    $conversation = Modules\AI\Models\Conversation::query()->create(['user_id' => $user->getKey()]);
+
     return new AssistantAccessContext(
         AssistantProfile::InAppAssistance,
         (string) $user->getAuthIdentifier(),
@@ -42,7 +45,7 @@ function inAppContext(object $user): AssistantAccessContext
         null,
         'en',
         [],
-        'conv-test',
+        (string) $conversation->getKey(),
     );
 }
 
@@ -337,7 +340,7 @@ it('exposes bulk tools only with select plus the matching write permission', fun
         ->and($names)->not->toContain('crud_bulk_delete_core_setting'); // no forceDelete
 });
 
-it('previews a bulk update without changing anything', function (): void {
+it('proposes a bulk update without changing anything and lists what matched', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
     grantSettingAbility($user, 'select');
@@ -355,38 +358,12 @@ it('previews a bulk update without changing anything', function (): void {
         attributes: ['description' => 'changed'],
     );
 
-    expect($result['preview'])->toBeTrue()
-        ->and($result['meta']['matched_records'])->toBe(2)
-        ->and($result['meta']['exceeds_cap'])->toBeFalse()
-        ->and($result['request']['confirm'])->toBeFalse();
+    expect($result['status'])->toBe('awaiting_confirmation')
+        ->and($result['summary']['matched_records'])->toBe(2)
+        ->and($result['summary']['changes'])->toBe(['description' => 'changed'])
+        ->and($result['message'])->toContain('Nothing has been changed');
 
     expect(Modules\Core\Models\Setting::where('group_name', 'bulk')->where('description', 'orig')->count())->toBe(2);
-});
-
-it('applies a bulk update when confirmed', function (): void {
-    $user = user_class()::factory()->create();
-    Auth::login($user);
-    grantSettingAbility($user, 'select');
-    grantSettingAbility($user, 'update');
-    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['bulk_update']]);
-
-    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b1', 'group_name' => 'bulk', 'description' => 'orig']);
-    Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'b2', 'group_name' => 'bulk', 'description' => 'orig']);
-
-    $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_bulk_update_core_setting');
-
-    /** @var array<string, mixed> $result */
-    $result = ($tool->handler)(
-        filters: [['property' => 'group_name', 'operator' => '=', 'value' => 'bulk']],
-        attributes: ['description' => 'changed'],
-        confirm: true,
-    );
-
-    expect($result)->not->toHaveKey('error')
-        ->and($result['meta']['applied'])->toBe(2)
-        ->and($result['meta']['failed'])->toBe(0);
-
-    expect(Modules\Core\Models\Setting::where('group_name', 'bulk')->where('description', 'changed')->count())->toBe(2);
 });
 
 it('refuses a bulk operation without filters', function (): void {
@@ -399,7 +376,7 @@ it('refuses a bulk operation without filters', function (): void {
     $tool = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_bulk_delete_core_setting');
 
     /** @var array<string, mixed> $result */
-    $result = ($tool->handler)(confirm: true);
+    $result = ($tool->handler)();
 
     expect($result)->toHaveKey('error')
         ->and($result['error'])->toContain('at least one filter');

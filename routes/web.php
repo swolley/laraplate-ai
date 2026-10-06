@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Modules\AI\Http\Controllers\AgentController;
+use Modules\AI\Http\Controllers\AssistantWriteController;
 use Modules\AI\Http\Controllers\CapabilitiesController;
 use Modules\AI\Http\Controllers\ChatController;
 use Modules\AI\Http\Controllers\SuggestionController;
@@ -23,6 +24,13 @@ Route::prefix('crud')->name('crud.')->group(function (): void {
         Route::get('select/ai/conversations/{conversation}/messages', 'listMessages')->name('messages.list');
         Route::post('stream/ai/conversations/{conversation}/messages', 'streamMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.stream');
         Route::post('insert/ai/conversations/{conversation}/messages', 'insertMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.insert');
+    });
+
+    // The person decides on what the assistant proposed: outside the model, as the authenticated user
+    Route::controller(AssistantWriteController::class)->group(function (): void {
+        Route::get('detail/ai/assistant-writes/{proposal}', 'show')->name('assistant-writes.show');
+        Route::post('update/ai/assistant-writes/{proposal}/confirm', 'confirm')->name('assistant-writes.confirm');
+        Route::post('update/ai/assistant-writes/{proposal}/reject', 'reject')->name('assistant-writes.reject');
     });
 
     // Contextual suggestions routes

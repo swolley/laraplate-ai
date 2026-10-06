@@ -18,7 +18,8 @@ test('module specific ai routes win over the core crud catch-all', function (str
 })->with([
     ['GET', 'app/crud/select/ai/conversations', 'ai.crud.conversations.list'],
     ['POST', 'app/crud/insert/ai/conversations', 'ai.crud.conversations.insert'],
-    ['GET', 'app/crud/select/ai/action-requests', 'ai.crud.action-requests.list'],
+    ['GET', 'app/crud/detail/ai/assistant-writes/1', 'ai.crud.assistant-writes.show'],
+    ['POST', 'app/crud/update/ai/assistant-writes/1/confirm', 'ai.crud.assistant-writes.confirm'],
     ['GET', 'app/crud/select/ai/suggestions', 'ai.crud.suggestions.list'],
     ['POST', 'app/crud/insert/ai/suggestions', 'ai.crud.suggestions.generate'],
 ]);
