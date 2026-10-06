@@ -65,7 +65,6 @@ final class HandleMediaAnalysisListener
             return;
         }
 
-        $cache_key = "model_indexing:{$event->model->getTable()}:{$model_key}";
-        Cache::put($cache_key, $event, now()->addMinutes(10));
+        Cache::put(ModelRequiresIndexing::cacheKey($event->model), $event, now()->addMinutes(ModelRequiresIndexing::CACHE_TTL_MINUTES));
     }
 }

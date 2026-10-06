@@ -7,13 +7,14 @@ namespace Modules\AI\Listeners;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
-use Modules\AI\Services\FeatureModuleGate;
+use Modules\AI\Services\EmbeddingsGate;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Models\Media;
-use Modules\Core\Search\Traits\Searchable;
 
-final class HandleModelIndexingListener
+final readonly class HandleModelIndexingListener
 {
+    public function __construct(private EmbeddingsGate $gate) {}
+
     public function handle(ModelRequiresIndexing $event): void
     {
         if (! $this->shouldHandle($event->model)) {
@@ -47,32 +48,7 @@ final class HandleModelIndexingListener
             return false;
         }
 
-        // Check if AI embeddings feature is enabled
-        if (! config('ai.features.embeddings.enabled', true)) {
-            return false;
-        }
-
-        // Respect the optional per-module allowlist for embeddings.
-        if (! FeatureModuleGate::allows('embeddings', $model)) {
-            return false;
-        }
-
-        // Check if model supports embeddings (has embed property and vector search enabled)
-        return $this->modelSupportsEmbeddings($model);
-    }
-
-    private function modelSupportsEmbeddings(Model $model): bool
-    {
-        // Check if model uses Searchable trait
-        if (! class_uses_trait($model, Searchable::class)) {
-            return false;
-        }
-
-        // Ask the model's own public capability query. Reaching into the
-        // protected `$embed` property or the private vector-enabled check from
-        // here silently fails (Eloquent __isset / __call), which previously
-        // stopped embeddings from ever being generated via indexing.
-        return method_exists($model, 'isEmbeddable') && $model->isEmbeddable();
+        return $this->gate->allows($model);
     }
 
     private function saveEventToCache(ModelRequiresIndexing $event): void
@@ -87,7 +63,6 @@ final class HandleModelIndexingListener
             return;
         }
 
-        $cache_key = "model_indexing:{$event->model->getTable()}:{$model_key}";
-        Cache::put($cache_key, $event, now()->addMinutes(10));
+        Cache::put(ModelRequiresIndexing::cacheKey($event->model), $event, now()->addMinutes(ModelRequiresIndexing::CACHE_TTL_MINUTES));
     }
 }

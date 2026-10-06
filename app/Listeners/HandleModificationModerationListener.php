@@ -104,7 +104,6 @@ final class HandleModificationModerationListener
             return;
         }
 
-        $cache_key = 'modification_moderation:' . $modification_key;
-        Cache::put($cache_key, $event, now()->addMinutes(10));
+        Cache::put(ModificationRequiresModeration::cacheKey($event->modification), $event, now()->addMinutes(ModificationRequiresModeration::CACHE_TTL_MINUTES));
     }
 }

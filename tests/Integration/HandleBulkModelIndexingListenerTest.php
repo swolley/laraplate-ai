@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Modules\AI\Listeners\HandleBulkModelIndexingListener;
+use Modules\AI\Services\EmbeddingsGate;
 use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\AI\Tests\Unit\SearchableModelStub;
 use Modules\Core\Events\ModelsRequireIndexing;
@@ -37,7 +38,7 @@ it('batch-embeds only the embeddable models in the chunk', function (): void {
             // Bulk path must not announce completion: it indexes the batch itself.
             && $announceCompletion === false);
 
-    $listener = new HandleBulkModelIndexingListener($synchronizer);
+    $listener = new HandleBulkModelIndexingListener($synchronizer, new EmbeddingsGate);
     $listener->handle(new ModelsRequireIndexing(collect([$embeddableA, $plain, $embeddableB]), true));
 });
 
@@ -47,7 +48,7 @@ it('does nothing when the embeddings feature is disabled', function (): void {
     $synchronizer = Mockery::mock(ModelEmbeddingSynchronizer::class);
     $synchronizer->shouldNotReceive('sync');
 
-    $listener = new HandleBulkModelIndexingListener($synchronizer);
+    $listener = new HandleBulkModelIndexingListener($synchronizer, new EmbeddingsGate);
     $listener->handle(new ModelsRequireIndexing(collect([bulk_listener_stub(1)]), true));
 });
 
@@ -57,6 +58,15 @@ it('does nothing when no model in the chunk is embeddable', function (): void {
     $synchronizer = Mockery::mock(ModelEmbeddingSynchronizer::class);
     $synchronizer->shouldNotReceive('sync');
 
-    $listener = new HandleBulkModelIndexingListener($synchronizer);
+    $listener = new HandleBulkModelIndexingListener($synchronizer, new EmbeddingsGate);
     $listener->handle(new ModelsRequireIndexing(collect([bulk_listener_stub(1), bulk_listener_stub(2)]), true));
+});
+
+it('does nothing while the embeddings setting is not there at all, like the seeded default which is off', function (): void {
+    Config::set('ai.features.embeddings', []);
+
+    $synchronizer = Mockery::mock(ModelEmbeddingSynchronizer::class);
+    $synchronizer->shouldNotReceive('sync');
+
+    new HandleBulkModelIndexingListener($synchronizer, new EmbeddingsGate)->handle(new ModelsRequireIndexing(collect([bulk_listener_stub(1)]), true));
 });

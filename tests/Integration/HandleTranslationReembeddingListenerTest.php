@@ -104,3 +104,14 @@ it('dispatches no GenerateEmbeddingsJob during a deferred bulk run', function ()
 
     Queue::assertNothingPushed();
 });
+
+it('does nothing while the embeddings setting is not there at all, like the seeded default which is off', function (): void {
+    config()->set('ai.features.embeddings', []);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    app(HandleTranslationReembeddingListener::class)->handle(new TranslationRequiresReembedding($model, 'it'));
+
+    Queue::assertNothingPushed();
+});

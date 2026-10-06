@@ -16,6 +16,7 @@ use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\EmbeddingServiceIdentity;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\AI\Services\EmbeddingsGate;
 use Modules\Core\Models\ModelEmbedding;
 use Modules\Core\Search\Traits\SearchableCommandUtils;
 use Override;
@@ -59,7 +60,7 @@ final class RepairMissingEmbeddingsCommand extends Command
     #[Override]
     protected $description = 'Regenerate embeddings for searchable records that are missing them or stale (embedded, but by no row of the active model_key); cross-checks the embedding service /health against the active model <fg=magenta>(✨ Modules\AI)</fg=magenta>';
 
-    public function handle(EmbeddingModelRegistry $registry, IEmbeddableModels $embeddable_models): int
+    public function handle(EmbeddingModelRegistry $registry, IEmbeddableModels $embeddable_models, EmbeddingsGate $gate): int
     {
         $all = (bool) $this->option('all');
 
@@ -78,7 +79,7 @@ final class RepairMissingEmbeddingsCommand extends Command
         }
 
         if ($all) {
-            if (! config('ai.features.embeddings.enabled', true)) {
+            if (! $gate->enabled()) {
                 $this->info('The embeddings feature is disabled: nothing to repair.');
 
                 return self::SUCCESS;

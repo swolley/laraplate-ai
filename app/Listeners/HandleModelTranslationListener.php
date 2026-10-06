@@ -4,20 +4,18 @@ declare(strict_types=1);
 
 namespace Modules\AI\Listeners;
 
-use function ai_config_bool;
-
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Modules\AI\Jobs\TranslateModelJob;
-use Modules\AI\Services\FeatureModuleGate;
-use Modules\Core\Contracts\ITranslatableModel;
+use Modules\AI\Services\TranslationGate;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
-use Modules\Core\Models\Concerns\HasTranslations;
 use Modules\Core\Search\Traits\Searchable;
 
-final class HandleModelTranslationListener
+final readonly class HandleModelTranslationListener
 {
+    public function __construct(private TranslationGate $gate) {}
+
     public function handle(TranslatedModelSaved $event): void
     {
         if (! $this->shouldHandle($event->model)) {
@@ -34,20 +32,7 @@ final class HandleModelTranslationListener
 
     private function shouldHandle(Model $model): bool
     {
-        if (! ai_config_bool('ai.features.translation.enabled', true)) {
-            return false;
-        }
-
-        // Respect the optional per-module allowlist for translation.
-        if (! FeatureModuleGate::allows('translation', $model)) {
-            return false;
-        }
-
-        if (! $this->isTranslatable($model)) {
-            return false;
-        }
-
-        return $model->autoTranslateEnabledBySettings();
+        return $this->gate->allows($model);
     }
 
     private function registerTranslationForIndexing(Model $model): void
@@ -58,20 +43,12 @@ final class HandleModelTranslationListener
             return;
         }
 
-        $cache_key = "model_indexing:{$model->getTable()}:{$model_key}";
+        $cache_key = ModelRequiresIndexing::cacheKey($model);
         $indexing_event = Cache::get($cache_key);
 
         if ($indexing_event instanceof ModelRequiresIndexing) {
             $indexing_event->addRequiredPreProcessing('translation');
-            Cache::put($cache_key, $indexing_event, now()->addMinutes(10));
+            Cache::put($cache_key, $indexing_event, now()->addMinutes(ModelRequiresIndexing::CACHE_TTL_MINUTES));
         }
-    }
-
-    /**
-     * @phpstan-assert-if-true ITranslatableModel&Model $model
-     */
-    private function isTranslatable(Model $model): bool
-    {
-        return in_array(HasTranslations::class, class_uses_recursive($model), true);
     }
 }

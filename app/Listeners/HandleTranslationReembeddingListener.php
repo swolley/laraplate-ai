@@ -6,7 +6,7 @@ namespace Modules\AI\Listeners;
 
 use Illuminate\Database\Eloquent\Model;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
-use Modules\AI\Services\FeatureModuleGate;
+use Modules\AI\Services\EmbeddingsGate;
 use Modules\Core\Contracts\ISearchableModel;
 use Modules\Core\Events\TranslationRequiresReembedding;
 use Modules\Core\Search\DeferredSearchIndexing;
@@ -27,7 +27,7 @@ use Modules\Core\Search\DeferredSearchIndexing;
  */
 final class HandleTranslationReembeddingListener
 {
-    public function __construct(private readonly DeferredSearchIndexing $deferredIndexing) {}
+    public function __construct(private readonly DeferredSearchIndexing $deferredIndexing, private readonly EmbeddingsGate $gate) {}
 
     public function handle(TranslationRequiresReembedding $event): void
     {
@@ -44,12 +44,6 @@ final class HandleTranslationReembeddingListener
 
     private function shouldHandle(Model $model): bool
     {
-        // Check if AI embeddings feature is enabled
-        if (! config('ai.features.embeddings.enabled', true)) {
-            return false;
-        }
-
-        // Respect the optional per-module allowlist for embeddings.
-        return FeatureModuleGate::allows('embeddings', $model);
+        return $this->gate->allows($model, requireEmbeddable: false);
     }
 }

@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Modules\AI\Listeners;
 
 use Illuminate\Database\Eloquent\Model;
-use Modules\AI\Services\FeatureModuleGate;
+use Modules\AI\Services\EmbeddingsGate;
 use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\Core\Events\ModelsRequireIndexing;
-use Modules\Core\Search\Traits\Searchable;
 
 /**
  * Batch pre-processing on the bulk indexing path: embeds every embeddable model
@@ -18,7 +17,7 @@ use Modules\Core\Search\Traits\Searchable;
  */
 final readonly class HandleBulkModelIndexingListener
 {
-    public function __construct(private ModelEmbeddingSynchronizer $synchronizer) {}
+    public function __construct(private ModelEmbeddingSynchronizer $synchronizer, private EmbeddingsGate $gate) {}
 
     public function handle(ModelsRequireIndexing $event): void
     {
@@ -40,18 +39,6 @@ final readonly class HandleBulkModelIndexingListener
 
     private function shouldEmbed(Model $model): bool
     {
-        if (! config('ai.features.embeddings.enabled', true)) {
-            return false;
-        }
-
-        if (! FeatureModuleGate::allows('embeddings', $model)) {
-            return false;
-        }
-
-        if (! class_uses_trait($model, Searchable::class)) {
-            return false;
-        }
-
-        return method_exists($model, 'isEmbeddable') && $model->isEmbeddable();
+        return $this->gate->allows($model);
     }
 }

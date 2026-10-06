@@ -32,7 +32,7 @@ it('dispatches translation job when auto translate is enabled for the model', fu
     app(PerModelSettingResolver::class)->flush();
 
     $event = new TranslatedModelSaved($model);
-    (new HandleModelTranslationListener())->handle($event);
+    (app(HandleModelTranslationListener::class))->handle($event);
 
     Bus::assertDispatched(TranslateModelJob::class);
     expect($event->isHandled())->toBeTrue();
@@ -44,7 +44,7 @@ it('does not dispatch translation job when auto translate is disabled for the mo
     $model = new FakeTranslatableModel();
     $event = new TranslatedModelSaved($model);
 
-    (new HandleModelTranslationListener())->handle($event);
+    (app(HandleModelTranslationListener::class))->handle($event);
 
     Bus::assertNothingDispatched();
     expect($event->isHandled())->toBeFalse();

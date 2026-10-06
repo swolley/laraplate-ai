@@ -52,6 +52,7 @@ function repair_fake_embedding_service(): void
 
 beforeEach(function (): void {
     Config::set('core.search.vector.enabled', true);
+    Config::set('ai.features.embeddings.enabled', true);
 
     Schema::create('embeddable_test_models', function ($table): void {
         $table->id();

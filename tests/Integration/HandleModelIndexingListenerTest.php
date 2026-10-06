@@ -36,7 +36,7 @@ it('does nothing when embeddings feature disabled', function (): void {
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, false);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -48,7 +48,7 @@ it('does nothing when model does not support embeddings', function (): void {
     $model->shouldReceive('getTable')->andReturn('test');
 
     $event = new ModelRequiresIndexing($model, false);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -59,7 +59,7 @@ it('dispatches GenerateEmbeddingsJob for async', function (): void {
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, false);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class);
@@ -72,7 +72,7 @@ it('runs GenerateEmbeddingsJob sync when event sync is true in CLI context', fun
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, true);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -84,7 +84,7 @@ it('adds embeddings to required pre-processing', function (): void {
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, false);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     expect($event->required_pre_processing)->toContain('embeddings');
@@ -96,7 +96,7 @@ it('skips event cache when model key is not scalar', function (): void {
     $model = new CompoundKeySearchableModel;
 
     $event = new ModelRequiresIndexing($model, false);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class);
@@ -113,7 +113,7 @@ it('dispatches GenerateEmbeddingsJob async when sync=true in web context', funct
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, true);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class);
@@ -130,7 +130,7 @@ it('executes GenerateEmbeddingsJob synchronously when sync=true in CLI context',
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, true);
-    $listener = new HandleModelIndexingListener();
+    $listener = app(HandleModelIndexingListener::class);
     $listener->handle($event);
 
     // Sync execution does not push to the queue.
@@ -146,7 +146,7 @@ it('does nothing when the embeddings module allowlist excludes the model module'
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, false);
-    new HandleModelIndexingListener()->handle($event);
+    app(HandleModelIndexingListener::class)->handle($event);
 
     Queue::assertNothingPushed();
 });
@@ -158,7 +158,18 @@ it('dispatches when the embeddings module allowlist includes the model module', 
     $model->id = 1;
 
     $event = new ModelRequiresIndexing($model, false);
-    new HandleModelIndexingListener()->handle($event);
+    app(HandleModelIndexingListener::class)->handle($event);
 
     Queue::assertPushed(GenerateEmbeddingsJob::class);
+});
+
+it('does nothing while the embeddings setting is not there at all, like the seeded default which is off', function (): void {
+    config()->set('ai.features.embeddings', []);
+
+    $model = new SearchableModelStub;
+    $model->id = 1;
+
+    app(HandleModelIndexingListener::class)->handle(new ModelRequiresIndexing($model, false));
+
+    Queue::assertNothingPushed();
 });

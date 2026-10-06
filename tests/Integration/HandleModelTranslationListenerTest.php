@@ -26,7 +26,7 @@ it('does nothing when translation feature disabled', function (): void {
     $model->id = 1;
 
     $event = new TranslatedModelSaved($model, [], false);
-    $listener = new HandleModelTranslationListener();
+    $listener = app(HandleModelTranslationListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -39,7 +39,7 @@ it('does nothing when model does not use HasTranslations', function (): void {
     $model->shouldReceive('getKey')->andReturn(1);
 
     $event = new TranslatedModelSaved($model, [], false);
-    $listener = new HandleModelTranslationListener();
+    $listener = app(HandleModelTranslationListener::class);
     $listener->handle($event);
 
     Queue::assertNothingPushed();
@@ -50,7 +50,7 @@ it('dispatches TranslateModelJob', function (): void {
     $model->id = 1;
 
     $event = new TranslatedModelSaved($model, ['it'], false);
-    $listener = new HandleModelTranslationListener();
+    $listener = app(HandleModelTranslationListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(TranslateModelJob::class);
@@ -65,7 +65,7 @@ it('registers translation for indexing when model is Searchable', function (): v
     Cache::put($cacheKey, $indexingEvent, now()->addMinutes(10));
 
     $event = new TranslatedModelSaved($model, ['it'], false);
-    $listener = new HandleModelTranslationListener();
+    $listener = app(HandleModelTranslationListener::class);
     $listener->handle($event);
 
     $cached = Cache::get($cacheKey);
@@ -79,7 +79,7 @@ it('skips indexing cache registration when searchable model key is not scalar', 
     $model = new CompoundKeySearchableTranslatableTestModel;
 
     $event = new TranslatedModelSaved($model, ['it'], false);
-    $listener = new HandleModelTranslationListener();
+    $listener = app(HandleModelTranslationListener::class);
     $listener->handle($event);
 
     Queue::assertPushed(TranslateModelJob::class);
@@ -95,7 +95,7 @@ it('does nothing when the translation module allowlist excludes the model module
     $model->id = 1;
 
     $event = new TranslatedModelSaved($model, ['it'], false);
-    new HandleModelTranslationListener()->handle($event);
+    app(HandleModelTranslationListener::class)->handle($event);
 
     Queue::assertNothingPushed();
 });
@@ -107,7 +107,7 @@ it('dispatches when the translation module allowlist includes the model module',
     $model->id = 1;
 
     $event = new TranslatedModelSaved($model, ['it'], false);
-    new HandleModelTranslationListener()->handle($event);
+    app(HandleModelTranslationListener::class)->handle($event);
 
     Queue::assertPushed(TranslateModelJob::class);
 });
