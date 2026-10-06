@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use Modules\AI\Console\Concerns\WritesJsonReport;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationCase;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentRetrievalStrategyEvaluationService;
@@ -24,6 +25,8 @@ use Throwable;
 
 final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
 {
+    use WritesJsonReport;
+
     #[Override]
     protected $signature = 'ai:evaluate-retrieval-strategies
                             {--dataset= : Path to a generated evaluation dataset}
@@ -74,16 +77,10 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
             $model_class = $provider->permissionModel();
             $model = new $model_class();
 
-            if ($files->exists($output_path) && ! (bool) $this->option('force')) {
-                $this->error('The output report already exists. Use --force to replace it.');
+            $output_issue = $this->outputPathIssue($files, $output_path);
 
-                return self::FAILURE;
-            }
-
-            $output_directory = dirname($output_path);
-
-            if (! $files->isDirectory($output_directory) || ! $files->isWritable($output_directory)) {
-                $this->error('The output directory is unavailable.');
+            if ($output_issue !== null) {
+                $this->error($output_issue);
 
                 return self::FAILURE;
             }
@@ -112,20 +109,7 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
                     return $retriever->retrieve($model, $case->query, $useReranker, $case->limit, $vectors[$case->id], $case->locale);
                 },
             );
-            $encoded = json_encode(
-                $report,
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR,
-            );
-            $temporary_path = $output_path . '.tmp-' . bin2hex(random_bytes(6));
-
-            try {
-                $files->put($temporary_path, $encoded . PHP_EOL, true);
-                $files->move($temporary_path, $output_path);
-            } finally {
-                if ($files->exists($temporary_path)) {
-                    $files->delete($temporary_path);
-                }
-            }
+            $this->writeReport($files, $output_path, $report);
 
             $this->info(sprintf('Evaluated %d generated cases.', $report['case_count']));
 
@@ -141,12 +125,5 @@ final class EvaluateApplicationContentRetrievalStrategiesCommand extends Command
 
             return self::FAILURE;
         }
-    }
-
-    private function optionString(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && mb_trim($value) !== '' ? $value : null;
     }
 }

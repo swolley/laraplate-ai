@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Evaluation\EvaluationCaseRules;
 
 final readonly class DocumentationEvaluationCase
 {
@@ -34,16 +35,13 @@ final readonly class DocumentationEvaluationCase
     ) {
         $empty_expected = $this->expectedSourceLabels === [] && $this->expectedCitationLabels === [];
 
-        if (preg_match('/^[a-z0-9][a-z0-9_-]{0,99}$/', $this->id) !== 1
-            || mb_trim($this->query) === ''
-            || mb_strlen($this->query) > 2000
-            || preg_match('/^[a-z]{2,3}(?:[-_][A-Z]{2})?$/', $this->locale) !== 1
+        if (! EvaluationCaseRules::isValidIdentity($this->id, $this->query, $this->locale)
             || $this->topK < 1
             || $this->topK > 10
-            || ! $this->validStringList($this->expectedSourceLabels, 200)
-            || ! $this->validStringList($this->expectedCitationLabels, 200)
-            || ! $this->validSlugList($this->slices, 64)
-            || ! $this->validStringList($this->effectivePermissions, 200)
+            || ! EvaluationCaseRules::isValidStringList($this->expectedSourceLabels, 200)
+            || ! EvaluationCaseRules::isValidStringList($this->expectedCitationLabels, 200)
+            || ! EvaluationCaseRules::isValidSlugList($this->slices, 64)
+            || ! EvaluationCaseRules::isValidStringList($this->effectivePermissions, 200)
             || ($this->tenantScope === AssistantTenantScope::Global && $this->tenantId !== null)
             || ($this->tenantScope === AssistantTenantScope::Tenant
                 && ($this->tenantId === null || mb_trim($this->tenantId) === ''))
@@ -65,41 +63,5 @@ final readonly class DocumentationEvaluationCase
             effectivePermissions: $this->effectivePermissions,
             conversationId: 'evaluation-conversation',
         );
-    }
-
-    /**
-     * @param  array<mixed>  $values
-     */
-    private function validStringList(array $values, int $maximumLength): bool
-    {
-        if (! array_is_list($values) || count(array_unique($values)) !== count($values)) {
-            return false;
-        }
-
-        foreach ($values as $value) {
-            if (! is_string($value) || mb_trim($value) === '' || $maximumLength < mb_strlen($value)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param  array<mixed>  $values
-     */
-    private function validSlugList(array $values, int $maximumLength): bool
-    {
-        if (! $this->validStringList($values, $maximumLength)) {
-            return false;
-        }
-
-        foreach ($values as $value) {
-            if (preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $value) !== 1) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

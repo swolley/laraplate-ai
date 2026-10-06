@@ -9,6 +9,7 @@ use Illuminate\Filesystem\Filesystem;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\Retrieval\DeveloperDocumentationRetrieval;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
+use Modules\AI\Console\Concerns\WritesJsonReport;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationDataset;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
@@ -17,6 +18,8 @@ use Throwable;
 
 final class EvaluateDocumentationCommand extends Command
 {
+    use WritesJsonReport;
+
     #[Override]
     protected $signature = 'ai:evaluate-documentation
                             {--module= : Module that owns the dataset}
@@ -46,16 +49,10 @@ final class EvaluateDocumentationCommand extends Command
         }
 
         try {
-            if ($files->exists($output_path) && ! (bool) $this->option('force')) {
-                $this->error('The output report already exists. Use --force to replace it.');
+            $output_issue = $this->outputPathIssue($files, $output_path);
 
-                return self::FAILURE;
-            }
-
-            $output_directory = dirname($output_path);
-
-            if (! $files->isDirectory($output_directory) || ! $files->isWritable($output_directory)) {
-                $this->error('The output directory is unavailable.');
+            if ($output_issue !== null) {
+                $this->error($output_issue);
 
                 return self::FAILURE;
             }
@@ -82,20 +79,7 @@ final class EvaluateDocumentationCommand extends Command
 
             $report = $evaluation->evaluate($dataset, $driver, $retrieve);
 
-            $encoded = json_encode(
-                $report,
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR,
-            );
-            $temporary_path = $output_path . '.tmp-' . bin2hex(random_bytes(6));
-
-            try {
-                $files->put($temporary_path, $encoded . PHP_EOL, true);
-                $files->move($temporary_path, $output_path);
-            } finally {
-                if ($files->exists($temporary_path)) {
-                    $files->delete($temporary_path);
-                }
-            }
+            $this->writeReport($files, $output_path, $report);
 
             $this->info(sprintf('Evaluated %d documentation cases.', $report['case_count']));
 
@@ -105,12 +89,5 @@ final class EvaluateDocumentationCommand extends Command
 
             return self::FAILURE;
         }
-    }
-
-    private function optionString(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && mb_trim($value) !== '' ? $value : null;
     }
 }

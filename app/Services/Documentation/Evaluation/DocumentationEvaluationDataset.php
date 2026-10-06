@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Documentation\Evaluation;
 
 use InvalidArgumentException;
-use JsonException;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Enums\AssistantTenantScope;
+use Modules\AI\Services\Evaluation\EvaluationDatasetReader;
 
 final readonly class DocumentationEvaluationDataset
 {
@@ -24,8 +24,8 @@ final readonly class DocumentationEvaluationDataset
     ) {
         $ids = array_map(static fn (DocumentationEvaluationCase $case): string => $case->id, $this->cases);
 
-        if (! $this->validRevision($this->version)
-            || ! $this->validRevision($this->corpusRevision)
+        if (! EvaluationDatasetReader::isValidRevision($this->version)
+            || ! EvaluationDatasetReader::isValidRevision($this->corpusRevision)
             || preg_match('/^[a-z][a-z0-9_]*$/', $this->module) !== 1
             || DocumentationIndexProfile::tryFrom($this->indexProfile) === null
             || $this->cases === []
@@ -39,25 +39,7 @@ final readonly class DocumentationEvaluationDataset
 
     public static function fromFile(string $path): self
     {
-        if (! is_file($path) || ! is_readable($path)) {
-            throw new InvalidArgumentException('Documentation evaluation dataset is unavailable.');
-        }
-
-        $contents = file_get_contents($path);
-
-        if (! is_string($contents) || mb_strlen($contents) > 2_000_000) {
-            throw new InvalidArgumentException('Documentation evaluation dataset is invalid.');
-        }
-
-        try {
-            $data = json_decode($contents, true, 32, JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            throw new InvalidArgumentException('Documentation evaluation dataset is invalid.');
-        }
-
-        if (! is_array($data)) {
-            throw new InvalidArgumentException('Documentation evaluation dataset is invalid.');
-        }
+        $data = self::reader()->readFile($path);
 
         return self::fromArray($data);
     }
@@ -67,7 +49,7 @@ final readonly class DocumentationEvaluationDataset
      */
     public static function fromArray(array $data): self
     {
-        self::assertExactKeys($data, [
+        self::reader()->assertExactKeys($data, [
             'cases',
             'corpus_revision',
             'data_classification',
@@ -91,13 +73,18 @@ final readonly class DocumentationEvaluationDataset
         }, $raw_cases);
 
         return new self(
-            version: self::string($data, 'version'),
-            corpusRevision: self::string($data, 'corpus_revision'),
-            module: self::string($data, 'module'),
-            indexProfile: self::string($data, 'index_profile'),
+            version: self::reader()->string($data, 'version'),
+            corpusRevision: self::reader()->string($data, 'corpus_revision'),
+            module: self::reader()->string($data, 'module'),
+            indexProfile: self::reader()->string($data, 'index_profile'),
             cases: $cases,
-            dataClassification: self::string($data, 'data_classification'),
+            dataClassification: self::reader()->string($data, 'data_classification'),
         );
+    }
+
+    private static function reader(): EvaluationDatasetReader
+    {
+        return new EvaluationDatasetReader('Documentation');
     }
 
     /**
@@ -105,7 +92,7 @@ final readonly class DocumentationEvaluationDataset
      */
     private static function caseFromArray(array $data): DocumentationEvaluationCase
     {
-        self::assertExactKeys($data, [
+        self::reader()->assertExactKeys($data, [
             'effective_permissions',
             'expect_authorized_empty',
             'expect_refusal',
@@ -121,7 +108,7 @@ final readonly class DocumentationEvaluationDataset
             'top_k',
         ]);
 
-        $scope = AssistantTenantScope::tryFrom(self::string($data, 'tenant_scope'));
+        $scope = AssistantTenantScope::tryFrom(self::reader()->string($data, 'tenant_scope'));
 
         if ($scope === null) {
             throw new InvalidArgumentException('Documentation evaluation tenant scope is invalid.');
@@ -134,104 +121,19 @@ final readonly class DocumentationEvaluationDataset
         }
 
         return new DocumentationEvaluationCase(
-            id: self::string($data, 'id'),
-            query: self::string($data, 'query'),
-            locale: self::string($data, 'locale'),
-            topK: self::integer($data, 'top_k'),
-            expectedSourceLabels: self::stringList($data, 'expected_source_labels'),
-            expectedCitationLabels: self::stringList($data, 'expected_citation_labels'),
-            expectAuthorizedEmpty: self::boolean($data, 'expect_authorized_empty'),
-            expectSupportedAnswer: self::boolean($data, 'expect_supported_answer'),
-            expectRefusal: self::boolean($data, 'expect_refusal'),
-            slices: self::stringList($data, 'slices'),
+            id: self::reader()->string($data, 'id'),
+            query: self::reader()->string($data, 'query'),
+            locale: self::reader()->string($data, 'locale'),
+            topK: self::reader()->integer($data, 'top_k'),
+            expectedSourceLabels: self::reader()->stringList($data, 'expected_source_labels'),
+            expectedCitationLabels: self::reader()->stringList($data, 'expected_citation_labels'),
+            expectAuthorizedEmpty: self::reader()->boolean($data, 'expect_authorized_empty'),
+            expectSupportedAnswer: self::reader()->boolean($data, 'expect_supported_answer'),
+            expectRefusal: self::reader()->boolean($data, 'expect_refusal'),
+            slices: self::reader()->stringList($data, 'slices'),
             tenantScope: $scope,
             tenantId: $tenant_id,
-            effectivePermissions: self::stringList($data, 'effective_permissions'),
+            effectivePermissions: self::reader()->stringList($data, 'effective_permissions'),
         );
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @param  list<string>  $keys
-     */
-    private static function assertExactKeys(array $data, array $keys): void
-    {
-        $actual = array_keys($data);
-        sort($actual, SORT_STRING);
-        sort($keys, SORT_STRING);
-
-        if ($actual !== $keys) {
-            throw new InvalidArgumentException('Documentation evaluation schema is invalid.');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function string(array $data, string $key): string
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_string($value)) {
-            throw new InvalidArgumentException('Documentation evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function integer(array $data, string $key): int
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_int($value)) {
-            throw new InvalidArgumentException('Documentation evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function boolean(array $data, string $key): bool
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_bool($value)) {
-            throw new InvalidArgumentException('Documentation evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return list<string>
-     */
-    private static function stringList(array $data, string $key): array
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_array($value) || ! array_is_list($value)) {
-            throw new InvalidArgumentException('Documentation evaluation value is invalid.');
-        }
-
-        foreach ($value as $item) {
-            if (! is_string($item)) {
-                throw new InvalidArgumentException('Documentation evaluation value is invalid.');
-            }
-        }
-
-        return $value;
-    }
-
-    private function validRevision(string $value): bool
-    {
-        return mb_trim($value) !== ''
-            && mb_strlen($value) <= 200
-            && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $value) === 1;
     }
 }

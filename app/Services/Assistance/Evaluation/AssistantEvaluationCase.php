@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Assistance\Evaluation;
 
 use InvalidArgumentException;
+use Modules\AI\Services\Evaluation\EvaluationCaseRules;
 
 final readonly class AssistantEvaluationCase
 {
@@ -35,14 +36,11 @@ final readonly class AssistantEvaluationCase
     ) {
         $no_citations = $this->expectedCitations === [];
 
-        if (preg_match('/^[a-z0-9][a-z0-9_-]{0,99}$/', $this->id) !== 1
-            || mb_trim($this->query) === ''
-            || mb_strlen($this->query) > 2000
-            || preg_match('/^[a-z]{2,3}(?:[-_][A-Z]{2})?$/', $this->locale) !== 1
+        if (! EvaluationCaseRules::isValidIdentity($this->id, $this->query, $this->locale)
             || ($this->moduleKey !== null && preg_match('/^[a-z][a-z0-9_]*$/', $this->moduleKey) !== 1)
             || ! in_array($this->expectedSurface, self::SURFACES, true)
-            || ! $this->validList($this->expectedCitations, 500)
-            || ! $this->validSlugList($this->slices, 63)
+            || ! EvaluationCaseRules::isValidStringList($this->expectedCitations, 500)
+            || ! EvaluationCaseRules::isValidSlugList($this->slices, 63)
             || ($this->expectedSurface === 'clarify' && (! $this->expectClarification || ! $no_citations))
             || ($this->expectedSurface === 'refuse' && (! $this->expectRefusal || ! $no_citations))
             || ($this->expectClarification && $this->expectRefusal)
@@ -83,41 +81,5 @@ final readonly class AssistantEvaluationCase
     private function validExpectedProposals(?int $expected, ?array $page): bool
     {
         return $expected === null || ($page !== null && $expected >= 0 && $expected <= self::MAX_PROPOSALS);
-    }
-
-    /**
-     * @param  array<mixed>  $values
-     */
-    private function validList(array $values, int $maximumLength): bool
-    {
-        if (! array_is_list($values) || count(array_unique($values)) !== count($values)) {
-            return false;
-        }
-
-        foreach ($values as $value) {
-            if (! is_string($value) || mb_trim($value) === '' || $maximumLength < mb_strlen($value)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param  array<mixed>  $values
-     */
-    private function validSlugList(array $values, int $maximumLength): bool
-    {
-        if (! $this->validList($values, $maximumLength)) {
-            return false;
-        }
-
-        foreach ($values as $value) {
-            if (preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $value) !== 1) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

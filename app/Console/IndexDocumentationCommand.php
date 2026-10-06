@@ -8,13 +8,15 @@ use function ai_config_bool;
 
 use Exception;
 use Illuminate\Console\Command;
-use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
+use Modules\AI\Console\Concerns\ResolvesDocumentationProfiles;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
 final class IndexDocumentationCommand extends Command
 {
+    use ResolvesDocumentationProfiles;
+
     #[Override]
     protected $signature = 'ai:index-rag-docs
                             {--path= : Scan only this file or directory (omit to index roots returned by rag_paths())}
@@ -39,12 +41,9 @@ final class IndexDocumentationCommand extends Command
         $path_option = $this->option('path');
         $path = is_string($path_option) && $path_option !== '' ? $path_option : null;
         $full = (bool) $this->option('full');
-        $profile_option = $this->option('profile');
-        $profile_name = is_string($profile_option) ? mb_strtolower(mb_trim($profile_option)) : '';
+        $profiles = $this->documentationProfiles();
 
-        if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
-            $this->error('Invalid profile. Expected developer, user, or all.');
-
+        if ($profiles === null) {
             return self::FAILURE;
         }
 
@@ -59,9 +58,6 @@ final class IndexDocumentationCommand extends Command
         }
 
         try {
-            $profiles = $profile_name === 'all'
-                ? DocumentationIndexProfile::cases()
-                : [DocumentationIndexProfile::from($profile_name)];
             $count = 0;
 
             foreach ($profiles as $profile) {

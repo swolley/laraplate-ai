@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Documentation\Evaluation;
 
 use Closure;
+use Modules\AI\Services\ApplicationContent\Evaluation\IrMetrics;
+use Modules\AI\Services\Evaluation\EvaluationStatistics;
 use NeuronAI\RAG\Document;
 use RuntimeException;
 use Throwable;
@@ -69,8 +71,8 @@ final readonly class DocumentationEvaluationService
             'data_classification' => $dataset->dataClassification,
             'case_count' => count($records),
             'metrics' => $this->metrics($records),
-            'latency_ms' => $this->latency($records),
-            'slices' => $this->slices($records),
+            'latency_ms' => EvaluationStatistics::latency($records),
+            'slices' => EvaluationStatistics::groupBySlices($records, $this->metrics(...)),
         ];
     }
 
@@ -100,18 +102,9 @@ final readonly class DocumentationEvaluationService
 
             if ($case->expectedSourceLabels !== []) {
                 $relevant++;
-                $first_rank = null;
-
-                foreach ($labels as $index => $label) {
-                    if (in_array($label, $case->expectedSourceLabels, true)) {
-                        $first_rank ??= $index + 1;
-                    }
-                }
-
-                if ($first_rank !== null) {
-                    $hits++;
-                    $reciprocal += 1 / $first_rank;
-                }
+                $first_rank = IrMetrics::firstRank($labels, $case->expectedSourceLabels);
+                $hits += (int) ($first_rank !== null);
+                $reciprocal += IrMetrics::reciprocalRank($first_rank);
             }
 
             foreach ($labels as $label) {
@@ -136,78 +129,13 @@ final readonly class DocumentationEvaluationService
         $count = count($records);
 
         return [
-            'source_hit_at_k' => $this->ratio($hits, $relevant),
-            'mean_reciprocal_rank' => $this->ratio($reciprocal, $relevant),
-            'citation_precision' => $this->ratio($correct, $returned),
-            'authorized_empty_accuracy' => $this->ratio($authorized_empty_ok, $authorized_empty),
-            'supported_answer_rate' => $this->ratio($supported_ok, $supported),
-            'refusal_accuracy' => $this->ratio($refusal_ok, $count),
-            'unavailable_rate' => $this->ratio($unavailable, $count),
+            'source_hit_at_k' => EvaluationStatistics::ratio($hits, $relevant),
+            'mean_reciprocal_rank' => EvaluationStatistics::ratio($reciprocal, $relevant),
+            'citation_precision' => EvaluationStatistics::ratio($correct, $returned),
+            'authorized_empty_accuracy' => EvaluationStatistics::ratio($authorized_empty_ok, $authorized_empty),
+            'supported_answer_rate' => EvaluationStatistics::ratio($supported_ok, $supported),
+            'refusal_accuracy' => EvaluationStatistics::ratio($refusal_ok, $count),
+            'unavailable_rate' => EvaluationStatistics::ratio($unavailable, $count),
         ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, float>
-     */
-    private function latency(array $records): array
-    {
-        $values = array_map(static fn (array $record): float => $record['latency_ms'], $records);
-        sort($values, SORT_NUMERIC);
-
-        return [
-            'average' => $this->rounded(array_sum($values) / count($values)),
-            'p50' => $this->rounded($this->percentile($values, 0.50)),
-            'p95' => $this->rounded($this->percentile($values, 0.95)),
-            'max' => $this->rounded(max($values)),
-        ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, array<string, array<string, float>>>
-     */
-    private function slices(array $records): array
-    {
-        $locales = [];
-        $categories = [];
-
-        foreach ($records as $record) {
-            /** @var DocumentationEvaluationCase $case */
-            $case = $record['case'];
-            $locales[$case->locale][] = $record;
-
-            foreach ($case->slices as $slice) {
-                $categories[$slice][] = $record;
-            }
-        }
-
-        ksort($locales, SORT_STRING);
-        ksort($categories, SORT_STRING);
-
-        return [
-            'locale' => array_map(fn (array $slice): array => $this->metrics($slice), $locales),
-            'category' => array_map(fn (array $slice): array => $this->metrics($slice), $categories),
-        ];
-    }
-
-    private function ratio(float|int $numerator, int $denominator): float
-    {
-        return $denominator === 0 ? 0.0 : $this->rounded($numerator / $denominator);
-    }
-
-    /**
-     * @param  list<float>  $values
-     */
-    private function percentile(array $values, float $percentile): float
-    {
-        $index = max(0, (int) ceil($percentile * count($values)) - 1);
-
-        return $values[$index];
-    }
-
-    private function rounded(float $value): float
-    {
-        return round($value, 4);
     }
 }

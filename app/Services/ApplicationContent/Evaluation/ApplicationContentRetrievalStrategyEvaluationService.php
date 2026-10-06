@@ -6,6 +6,7 @@ namespace Modules\AI\Services\ApplicationContent\Evaluation;
 
 use Closure;
 use InvalidArgumentException;
+use Modules\AI\Services\Evaluation\EvaluationStatistics;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Search\DTOs\AdvancedSearchResult;
 
@@ -121,8 +122,8 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
                 RerankerRun::modelOf(array_column(array_filter($records, static fn (array $record): bool => $record['reranker_ran']), 'reranker_model')),
             ),
             'metrics' => $this->metrics($records),
-            'latency_ms' => $this->latency($records),
-            'slices' => $this->slices($records),
+            'latency_ms' => EvaluationStatistics::latency($records),
+            'slices' => EvaluationStatistics::groupBySlices($records, $this->metrics(...)),
         ];
     }
 
@@ -269,18 +270,9 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
             $case = $record['case'];
             $ids = $record['orderings'][$name];
             $expected = $case->expectedHitIds;
-            $first_rank = null;
-
-            foreach ($ids as $index => $id) {
-                if (in_array($id, $expected, true)) {
-                    $first_rank ??= $index + 1;
-                }
-            }
-
-            if ($first_rank !== null) {
-                $hits_at_k++;
-                $reciprocal_rank += 1 / $first_rank;
-            }
+            $first_rank = IrMetrics::firstRank($ids, $expected);
+            $hits_at_k += (int) ($first_rank !== null);
+            $reciprocal_rank += IrMetrics::reciprocalRank($first_rank);
 
             $contributions = IrMetrics::atK($ids, $expected, self::CUTOFFS);
 
@@ -296,86 +288,17 @@ final readonly class ApplicationContentRetrievalStrategyEvaluationService
         $ndcg = [];
 
         foreach (self::CUTOFFS as $k) {
-            $precision["precision_at_{$k}"] = $this->ratio($precision_sum[$k], $relevant_cases);
-            $recall["recall_at_{$k}"] = $this->ratio($recall_sum[$k], $relevant_cases);
-            $ndcg["ndcg_at_{$k}"] = $this->ratio($ndcg_sum[$k], $relevant_cases);
+            $precision["precision_at_{$k}"] = EvaluationStatistics::ratio($precision_sum[$k], $relevant_cases);
+            $recall["recall_at_{$k}"] = EvaluationStatistics::ratio($recall_sum[$k], $relevant_cases);
+            $ndcg["ndcg_at_{$k}"] = EvaluationStatistics::ratio($ndcg_sum[$k], $relevant_cases);
         }
 
         return [
-            'hit_at_5' => $this->ratio($hits_at_k, $relevant_cases),
-            'mean_reciprocal_rank' => $this->ratio($reciprocal_rank, $relevant_cases),
+            'hit_at_5' => EvaluationStatistics::ratio($hits_at_k, $relevant_cases),
+            'mean_reciprocal_rank' => EvaluationStatistics::ratio($reciprocal_rank, $relevant_cases),
             ...$precision,
             ...$recall,
             ...$ndcg,
         ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, float>
-     */
-    private function latency(array $records): array
-    {
-        if ($records === []) {
-            return ['average' => 0.0, 'p50' => 0.0, 'p95' => 0.0, 'max' => 0.0];
-        }
-
-        $values = array_map(static fn (array $record): float => $record['latency_ms'], $records);
-        sort($values, SORT_NUMERIC);
-
-        return [
-            'average' => $this->rounded(array_sum($values) / count($values)),
-            'p50' => $this->rounded($this->percentile($values, 0.50)),
-            'p95' => $this->rounded($this->percentile($values, 0.95)),
-            'max' => $this->rounded(max($values)),
-        ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, array<string, array<string, array<string, float>>>>
-     */
-    private function slices(array $records): array
-    {
-        $locales = [];
-        $categories = [];
-
-        foreach ($records as $record) {
-            /** @var ApplicationContentEvaluationCase $case */
-            $case = $record['case'];
-            $locales[$case->locale][] = $record;
-
-            foreach ($case->slices as $slice) {
-                $categories[$slice][] = $record;
-            }
-        }
-
-        ksort($locales, SORT_STRING);
-        ksort($categories, SORT_STRING);
-
-        return [
-            'locale' => array_map(fn (array $slice): array => $this->metrics($slice), $locales),
-            'category' => array_map(fn (array $slice): array => $this->metrics($slice), $categories),
-        ];
-    }
-
-    private function ratio(float|int $numerator, int $denominator): float
-    {
-        return $denominator === 0 ? 0.0 : $this->rounded($numerator / $denominator);
-    }
-
-    /**
-     * @param  list<float>  $values
-     */
-    private function percentile(array $values, float $percentile): float
-    {
-        $index = max(0, (int) ceil($percentile * count($values)) - 1);
-
-        return $values[$index];
-    }
-
-    private function rounded(float $value): float
-    {
-        return round($value, 4);
     }
 }

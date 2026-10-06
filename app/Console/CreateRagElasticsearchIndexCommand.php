@@ -7,14 +7,16 @@ namespace Modules\AI\Console;
 use function ai_config_bool;
 
 use Illuminate\Console\Command;
-use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
+use Modules\AI\Console\Concerns\ResolvesDocumentationProfiles;
 use Modules\Core\Services\ElasticsearchService;
 use Override;
 use Throwable;
 
 final class CreateRagElasticsearchIndexCommand extends Command
 {
+    use ResolvesDocumentationProfiles;
+
     #[Override]
     protected $signature = 'ai:create-rag-index
                             {--profile=all : Index profile: developer, user, or all}
@@ -33,20 +35,13 @@ final class CreateRagElasticsearchIndexCommand extends Command
 
         $embedding_dims = ElasticsearchRagVectorStore::activeDimensions();
         $force = (bool) $this->option('force');
-        $profile_option = $this->option('profile');
-        $profile_name = is_string($profile_option) ? mb_strtolower(mb_trim($profile_option)) : '';
+        $profiles = $this->documentationProfiles();
 
-        if (! in_array($profile_name, ['developer', 'user', 'all'], true)) {
-            $this->error('Invalid profile. Expected developer, user, or all.');
-
+        if ($profiles === null) {
             return self::FAILURE;
         }
 
         try {
-            $profiles = $profile_name === 'all'
-                ? DocumentationIndexProfile::cases()
-                : [DocumentationIndexProfile::from($profile_name)];
-
             foreach ($profiles as $profile) {
                 $index = $profile->indexName();
 

@@ -14,6 +14,31 @@ namespace Modules\AI\Services\ApplicationContent\Evaluation;
 final class IrMetrics
 {
     /**
+     * The 1-based rank of the first relevant id of a ranked list, or null when none of them is.
+     *
+     * @param  list<string>  $ranked  Ranked ids, best match first.
+     * @param  list<string>  $expectedIds  Ids considered relevant for this case.
+     */
+    public static function firstRank(array $ranked, array $expectedIds): ?int
+    {
+        foreach (array_values($ranked) as $position => $id) {
+            if (in_array($id, $expectedIds, true)) {
+                return $position + 1;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The contribution of a case to the mean reciprocal rank: 1 over the rank of its first relevant id, 0 when it has none.
+     */
+    public static function reciprocalRank(?int $firstRank): float
+    {
+        return $firstRank === null ? 0.0 : 1 / $firstRank;
+    }
+
+    /**
      * @param  list<string>  $hitIds  Ranked ids returned by retrieval, best match first.
      * @param  list<string>  $expectedIds  Ids considered relevant for this case.
      * @param  list<int>  $cutoffs  The `@k` cutoffs to compute contributions for.

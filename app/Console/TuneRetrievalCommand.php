@@ -10,6 +10,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Console\Concerns\WritesJsonReport;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationCase;
 use Modules\AI\Services\ApplicationContent\Evaluation\ApplicationContentEvaluationDataset;
 use Modules\AI\Services\ApplicationContent\Evaluation\Contracts\PerStrategyEngineRetrieverInterface;
@@ -32,6 +33,8 @@ use Throwable;
  */
 final class TuneRetrievalCommand extends Command
 {
+    use WritesJsonReport;
+
     #[Override]
     protected $signature = 'ai:tune-retrieval
                             {--source= : Registered application content source}
@@ -111,16 +114,10 @@ final class TuneRetrievalCommand extends Command
             $model_class = $provider->permissionModel();
             $model = new $model_class();
 
-            if ($files->exists($output_path) && ! (bool) $this->option('force')) {
-                $this->error('The output report already exists. Use --force to replace it.');
+            $output_issue = $this->outputPathIssue($files, $output_path);
 
-                return self::FAILURE;
-            }
-
-            $output_directory = dirname($output_path);
-
-            if (! $files->isDirectory($output_directory) || ! $files->isWritable($output_directory)) {
-                $this->error('The output directory is unavailable.');
+            if ($output_issue !== null) {
+                $this->error($output_issue);
 
                 return self::FAILURE;
             }
@@ -150,20 +147,7 @@ final class TuneRetrievalCommand extends Command
                 $safeguards,
             );
             $report = $this->withContext($report, $model, $dataset_path);
-            $encoded = json_encode(
-                $report,
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR,
-            );
-            $temporary_path = $output_path . '.tmp-' . bin2hex(random_bytes(6));
-
-            try {
-                $files->put($temporary_path, $encoded . PHP_EOL, true);
-                $files->move($temporary_path, $output_path);
-            } finally {
-                if ($files->exists($temporary_path)) {
-                    $files->delete($temporary_path);
-                }
-            }
+            $this->writeReport($files, $output_path, $report);
 
             $this->info(sprintf('Ranked %d candidates by %s.', count($grid), $metric));
             $this->line('// ai:tune-retrieval report: ' . $output_path);
@@ -331,12 +315,5 @@ final class TuneRetrievalCommand extends Command
 
         /** @var list<array<string, int|float>> $decoded */
         return $decoded;
-    }
-
-    private function optionString(string $name): ?string
-    {
-        $value = $this->option($name);
-
-        return is_string($value) && mb_trim($value) !== '' ? $value : null;
     }
 }

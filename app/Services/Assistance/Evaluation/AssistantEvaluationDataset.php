@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Assistance\Evaluation;
 
 use InvalidArgumentException;
-use JsonException;
+use Modules\AI\Services\Evaluation\EvaluationDatasetReader;
 
 final readonly class AssistantEvaluationDataset
 {
@@ -21,8 +21,8 @@ final readonly class AssistantEvaluationDataset
     ) {
         $ids = array_map(static fn (AssistantEvaluationCase $case): string => $case->id, $this->cases);
 
-        if (! $this->validRevision($this->version)
-            || ! $this->validRevision($this->corpusRevision)
+        if (! EvaluationDatasetReader::isValidRevision($this->version)
+            || ! EvaluationDatasetReader::isValidRevision($this->corpusRevision)
             || preg_match('/^[a-z][a-z0-9_]*$/', $this->module) !== 1
             || $this->cases === []
             || count($this->cases) > 1000
@@ -35,25 +35,7 @@ final readonly class AssistantEvaluationDataset
 
     public static function fromFile(string $path): self
     {
-        if (! is_file($path) || ! is_readable($path)) {
-            throw new InvalidArgumentException('Assistant evaluation dataset is unavailable.');
-        }
-
-        $contents = file_get_contents($path);
-
-        if (! is_string($contents) || mb_strlen($contents) > 2_000_000) {
-            throw new InvalidArgumentException('Assistant evaluation dataset is invalid.');
-        }
-
-        try {
-            $data = json_decode($contents, true, 32, JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            throw new InvalidArgumentException('Assistant evaluation dataset is invalid.');
-        }
-
-        if (! is_array($data)) {
-            throw new InvalidArgumentException('Assistant evaluation dataset is invalid.');
-        }
+        $data = self::reader()->readFile($path);
 
         return self::fromArray($data);
     }
@@ -63,7 +45,7 @@ final readonly class AssistantEvaluationDataset
      */
     public static function fromArray(array $data): self
     {
-        self::assertExactKeys($data, [
+        self::reader()->assertExactKeys($data, [
             'cases',
             'corpus_revision',
             'data_classification',
@@ -86,12 +68,17 @@ final readonly class AssistantEvaluationDataset
         }, $raw_cases);
 
         return new self(
-            version: self::string($data, 'version'),
-            corpusRevision: self::string($data, 'corpus_revision'),
-            module: self::string($data, 'module'),
+            version: self::reader()->string($data, 'version'),
+            corpusRevision: self::reader()->string($data, 'corpus_revision'),
+            module: self::reader()->string($data, 'module'),
             cases: $cases,
-            dataClassification: self::string($data, 'data_classification'),
+            dataClassification: self::reader()->string($data, 'data_classification'),
         );
+    }
+
+    private static function reader(): EvaluationDatasetReader
+    {
+        return new EvaluationDatasetReader('Assistant');
     }
 
     /**
@@ -99,7 +86,7 @@ final readonly class AssistantEvaluationDataset
      */
     private static function caseFromArray(array $data): AssistantEvaluationCase
     {
-        self::assertKeys($data, [
+        self::reader()->assertKeys($data, [
             'expect_clarification',
             'expect_refusal',
             'expected_citations',
@@ -118,133 +105,17 @@ final readonly class AssistantEvaluationDataset
         }
 
         return new AssistantEvaluationCase(
-            id: self::string($data, 'id'),
-            query: self::string($data, 'query'),
-            locale: self::string($data, 'locale'),
+            id: self::reader()->string($data, 'id'),
+            query: self::reader()->string($data, 'query'),
+            locale: self::reader()->string($data, 'locale'),
             moduleKey: $module_key,
-            expectedSurface: self::string($data, 'expected_surface'),
-            expectedCitations: self::stringList($data, 'expected_citations'),
-            expectClarification: self::boolean($data, 'expect_clarification'),
-            expectRefusal: self::boolean($data, 'expect_refusal'),
-            slices: self::stringList($data, 'slices'),
-            page: self::optionalObject($data, 'page'),
-            expectedProposals: self::optionalInteger($data, 'expected_proposals'),
+            expectedSurface: self::reader()->string($data, 'expected_surface'),
+            expectedCitations: self::reader()->stringList($data, 'expected_citations'),
+            expectClarification: self::reader()->boolean($data, 'expect_clarification'),
+            expectRefusal: self::reader()->boolean($data, 'expect_refusal'),
+            slices: self::reader()->stringList($data, 'slices'),
+            page: self::reader()->optionalObject($data, 'page'),
+            expectedProposals: self::reader()->optionalInteger($data, 'expected_proposals'),
         );
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return array<array-key, mixed>|null
-     */
-    private static function optionalObject(array $data, string $key): ?array
-    {
-        $value = $data[$key] ?? null;
-
-        if ($value !== null && (! is_array($value) || array_is_list($value))) {
-            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function optionalInteger(array $data, string $key): ?int
-    {
-        $value = $data[$key] ?? null;
-
-        if ($value !== null && ! is_int($value)) {
-            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @param  list<string>  $keys
-     */
-    private static function assertExactKeys(array $data, array $keys): void
-    {
-        $actual = array_keys($data);
-        sort($actual, SORT_STRING);
-        sort($keys, SORT_STRING);
-
-        if ($actual !== $keys) {
-            throw new InvalidArgumentException('Assistant evaluation schema is invalid.');
-        }
-    }
-
-    /**
-     * Every required key and no key outside the required and optional ones.
-     *
-     * @param  array<string, mixed>  $data
-     * @param  list<string>  $required
-     * @param  list<string>  $optional
-     */
-    private static function assertKeys(array $data, array $required, array $optional): void
-    {
-        $actual = array_keys($data);
-
-        if (array_diff($required, $actual) !== [] || array_diff($actual, $required, $optional) !== []) {
-            throw new InvalidArgumentException('Assistant evaluation schema is invalid.');
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function string(array $data, string $key): string
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_string($value)) {
-            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private static function boolean(array $data, string $key): bool
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_bool($value)) {
-            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return list<string>
-     */
-    private static function stringList(array $data, string $key): array
-    {
-        $value = $data[$key] ?? null;
-
-        if (! is_array($value) || ! array_is_list($value)) {
-            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-        }
-
-        foreach ($value as $item) {
-            if (! is_string($item)) {
-                throw new InvalidArgumentException('Assistant evaluation value is invalid.');
-            }
-        }
-
-        return $value;
-    }
-
-    private function validRevision(string $value): bool
-    {
-        return mb_trim($value) !== ''
-            && mb_strlen($value) <= 200
-            && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $value) === 1;
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services\ApplicationContent\Evaluation;
 
 use InvalidArgumentException;
+use Modules\AI\Services\Evaluation\EvaluationStatistics;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Search\DTOs\AdvancedSearchResult;
 use Modules\Core\Search\Enums\QueryClass;
@@ -427,20 +428,9 @@ final readonly class RetrievalTuningService
         foreach ($records as $index => $record) {
             $ids = $orderings[$index];
             $expected = $record['case']->expectedHitIds;
-            $first_rank = null;
-
-            foreach ($ids as $position => $id) {
-                if (in_array($id, $expected, true)) {
-                    $first_rank = $position + 1;
-
-                    break;
-                }
-            }
-
-            if ($first_rank !== null) {
-                $hits++;
-                $reciprocal_rank += 1 / $first_rank;
-            }
+            $first_rank = IrMetrics::firstRank($ids, $expected);
+            $hits += (int) ($first_rank !== null);
+            $reciprocal_rank += IrMetrics::reciprocalRank($first_rank);
 
             $contributions = IrMetrics::atK($ids, $expected, self::CUTOFFS);
 
@@ -452,13 +442,13 @@ final readonly class RetrievalTuningService
         }
 
         $metrics = [
-            'hit_at_5' => $this->ratio($hits, $count),
-            'mean_reciprocal_rank' => $this->ratio($reciprocal_rank, $count),
+            'hit_at_5' => EvaluationStatistics::ratio($hits, $count),
+            'mean_reciprocal_rank' => EvaluationStatistics::ratio($reciprocal_rank, $count),
         ];
 
         foreach ($sums as $family => $values) {
             foreach ($values as $k => $sum) {
-                $metrics["{$family}_at_{$k}"] = $this->ratio($sum, $count);
+                $metrics["{$family}_at_{$k}"] = EvaluationStatistics::ratio($sum, $count);
             }
         }
 
@@ -719,10 +709,5 @@ final readonly class RetrievalTuningService
         $lines[] = mb_substr($indent, 4) . ']';
 
         return implode(PHP_EOL, $lines);
-    }
-
-    private function ratio(float|int $numerator, int $denominator): float
-    {
-        return $denominator === 0 ? 0.0 : round($numerator / $denominator, 4);
     }
 }

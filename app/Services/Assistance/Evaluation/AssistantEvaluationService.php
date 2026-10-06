@@ -8,6 +8,7 @@ use Closure;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\Policies\AssistanceOutputPolicy;
+use Modules\AI\Services\Evaluation\EvaluationStatistics;
 use RuntimeException;
 use Throwable;
 
@@ -92,8 +93,8 @@ final readonly class AssistantEvaluationService
             'data_classification' => $dataset->dataClassification,
             'case_count' => count($records),
             'metrics' => $this->metrics($records),
-            'latency_ms' => $this->latency($records),
-            'slices' => $this->slices($records),
+            'latency_ms' => EvaluationStatistics::latency($records),
+            'slices' => EvaluationStatistics::groupBySlices($records, $this->metrics(...)),
         ];
     }
 
@@ -163,78 +164,13 @@ final readonly class AssistantEvaluationService
         $count = count($records);
 
         return [
-            'citation_assembly' => $this->ratio($citation_matched, $citation_relevant),
-            'clarification_trigger_accuracy' => $this->ratio($clarification_ok, $clarification_total),
-            'abstention_accuracy' => $this->ratio($abstention_ok, $abstention_total),
-            'output_valid' => $this->ratio($valid_ok, $valid_total),
-            'proposal_accuracy' => $this->ratio($proposal_ok, $proposal_total),
-            'pending_report_accuracy' => $this->ratio($pending_ok, $pending_total),
-            'unavailable_rate' => $this->ratio($unavailable, $count),
+            'citation_assembly' => EvaluationStatistics::ratio($citation_matched, $citation_relevant),
+            'clarification_trigger_accuracy' => EvaluationStatistics::ratio($clarification_ok, $clarification_total),
+            'abstention_accuracy' => EvaluationStatistics::ratio($abstention_ok, $abstention_total),
+            'output_valid' => EvaluationStatistics::ratio($valid_ok, $valid_total),
+            'proposal_accuracy' => EvaluationStatistics::ratio($proposal_ok, $proposal_total),
+            'pending_report_accuracy' => EvaluationStatistics::ratio($pending_ok, $pending_total),
+            'unavailable_rate' => EvaluationStatistics::ratio($unavailable, $count),
         ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, float>
-     */
-    private function latency(array $records): array
-    {
-        $values = array_map(static fn (array $record): float => $record['latency_ms'], $records);
-        sort($values, SORT_NUMERIC);
-
-        return [
-            'average' => $this->rounded(array_sum($values) / count($values)),
-            'p50' => $this->rounded($this->percentile($values, 0.50)),
-            'p95' => $this->rounded($this->percentile($values, 0.95)),
-            'max' => $this->rounded(max($values)),
-        ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $records
-     * @return array<string, array<string, array<string, float>>>
-     */
-    private function slices(array $records): array
-    {
-        $locales = [];
-        $categories = [];
-
-        foreach ($records as $record) {
-            /** @var AssistantEvaluationCase $case */
-            $case = $record['case'];
-            $locales[$case->locale][] = $record;
-
-            foreach ($case->slices as $slice) {
-                $categories[$slice][] = $record;
-            }
-        }
-
-        ksort($locales, SORT_STRING);
-        ksort($categories, SORT_STRING);
-
-        return [
-            'locale' => array_map(fn (array $slice): array => $this->metrics($slice), $locales),
-            'category' => array_map(fn (array $slice): array => $this->metrics($slice), $categories),
-        ];
-    }
-
-    private function ratio(float|int $numerator, int $denominator): float
-    {
-        return $denominator === 0 ? 0.0 : $this->rounded($numerator / $denominator);
-    }
-
-    /**
-     * @param  list<float>  $values
-     */
-    private function percentile(array $values, float $percentile): float
-    {
-        $index = max(0, (int) ceil($percentile * count($values)) - 1);
-
-        return $values[$index];
-    }
-
-    private function rounded(float $value): float
-    {
-        return round($value, 4);
     }
 }
