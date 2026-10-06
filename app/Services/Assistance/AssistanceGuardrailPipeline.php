@@ -58,6 +58,11 @@ final readonly class AssistanceGuardrailPipeline
         return $this->output_policy->validate($output);
     }
 
+    public function reportPendingProposals(string $output, string $locale): string
+    {
+        return $this->output_policy->reportPendingProposals($output, $locale);
+    }
+
     public function insufficientEvidence(string $locale): string
     {
         return $this->output_policy->insufficientEvidence($locale);

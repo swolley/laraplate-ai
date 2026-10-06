@@ -8,6 +8,12 @@ use Modules\AI\Exceptions\AssistancePolicyViolationException;
 
 final readonly class AssistanceOutputPolicy
 {
+    /**
+     * An answer that says a change was made, in English or Italian: "I have updated", "has been
+     * applied", "ho modificato", "è stato salvato".
+     */
+    private const string APPLIED_CLAIM = '/\b(?:i(?:\'|’)?ve|i have|we(?:\'|’)?ve|we have|has been|have been|was|were|is now|are now|ho|abbiamo|è stato|è stata|sono stati|sono state|è ora|sono ora|ora è)\s+(?:\p{L}+\s+){0,2}?(?:changed|updated|applied|set|saved|switched|enabled|disabled|modified|configured|done|modificat\p{L}*|cambiat\p{L}*|aggiornat\p{L}*|impostat\p{L}*|applicat\p{L}*|salvat\p{L}*|attivat\p{L}*|disattivat\p{L}*|fatto)\b/iu';
+
     public function __construct(
         private RestrictedTopicPolicy $restricted_topics,
         private int $max_length = 8000,
@@ -33,6 +39,24 @@ final readonly class AssistanceOutputPolicy
         }
 
         return $output;
+    }
+
+    /**
+     * A message that carries proposals must not say that one of them was carried out: a proposal
+     * waits for the user, and nothing has changed. An answer that claims otherwise is replaced by a
+     * plain statement that the suggestion waits, the proposals themselves being untouched.
+     */
+    public function reportPendingProposals(string $output, string $locale): string
+    {
+        if (preg_match(self::APPLIED_CLAIM, $output) !== 1) {
+            return $output;
+        }
+
+        $message = str_starts_with(mb_strtolower($locale), 'it')
+            ? 'Ti ho preparato un suggerimento da rivedere. Non cambia nulla finché non lo accetti.'
+            : 'I prepared a suggestion for you to review. Nothing changes until you accept it.';
+
+        return $this->validate($message);
     }
 
     public function insufficientEvidence(string $locale): string

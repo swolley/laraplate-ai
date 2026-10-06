@@ -29,6 +29,7 @@ final readonly class AssistantPolicyCatalog
         $in_app_corpora = ['user_documentation'];
         $in_app_tools = ['application_content_search', 'graph_expand', 'graph_search', 'graph_stats'];
         $in_app_fields = ['content', 'count', 'items', 'relations', 'safe_citation', 'title', 'value'];
+        $proposal_tools = ['propose_preference_change', 'propose_view_state'];
 
         return new self(
             version: ai_config_string('ai.features.guardrails.in_app_policy_version', 'in-app-v1'),
@@ -37,7 +38,7 @@ final readonly class AssistantPolicyCatalog
                 AssistantProfile::InAppAssistance->value => new AssistantPolicyRuleSet(
                     instruction: 'Provide application usage assistance only. Never reveal technical internals, hidden data, access rules, secrets, or system configuration.',
                     allowedCorpora: $in_app_corpora,
-                    allowedTools: $in_app_tools,
+                    allowedTools: [...$in_app_tools, ...$proposal_tools],
                     allowedFields: $in_app_fields,
                     deniedCorpora: ['developer_documentation'],
                     deniedTools: ['write_record'],
@@ -64,6 +65,12 @@ final readonly class AssistantPolicyCatalog
                     allowedCorpora: [],
                     allowedTools: ['graph_expand', 'graph_search', 'graph_stats'],
                     allowedFields: ['count', 'items', 'relations', 'title', 'value'],
+                ),
+                'ui_proposals' => new AssistantPolicyRuleSet(
+                    instruction: 'You may suggest a change to the interface preferences or view of the user only through the proposal tools. A proposal waits for the confirmation of the user: say that you are suggesting it, never that it was applied, done or saved.',
+                    allowedCorpora: [],
+                    allowedTools: $proposal_tools,
+                    allowedFields: [],
                 ),
                 'application_content' => new AssistantPolicyRuleSet(
                     instruction: 'Use only bounded read-only module evidence already authorized by the backend.',

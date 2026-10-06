@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Modules\AI\Data\UiProposal;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Exceptions\AssistancePolicyViolationException;
 use Modules\AI\Models\Conversation;
@@ -18,6 +19,8 @@ use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\AI\Services\Assistance\Policies\CompiledAssistantPolicy;
+use Modules\AI\Services\Assistance\Proposals\ProposableTargets;
+use Modules\AI\Services\Assistance\Proposals\UiProposalCollector;
 use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\Assistance\Scope\DataAccess;
@@ -25,6 +28,8 @@ use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
+use Modules\AI\Services\Tools\ProposePreferenceChangeTool;
+use Modules\AI\Services\Tools\ProposeViewStateTool;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -70,7 +75,7 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
         try {
             $policy = $this->policy_compiler->compile(
                 AssistantProfile::InAppAssistance,
-                ['application_content', 'in_app_rag', 'read_only_graph'],
+                ['application_content', 'in_app_rag', 'read_only_graph', AssistantCapabilities::PROPOSALS_CAPABILITY],
             );
             $input = $this->guardrails->validateInput($user_input);
             $module_context = $this->serverApplicationContext();
@@ -86,6 +91,8 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             $tools = $scope->dataAccess === DataAccess::None
                 ? []
                 : $this->contextualTools($access, $input, $policy);
+            $proposals = $this->proposalCollector($policy);
+            $tools = [...$tools, ...$this->proposalTools($policy, $proposals)];
 
             if ($application_content->clarificationRequired()) {
                 $output = $this->guardrails->clarificationRequired($access->locale);
@@ -102,12 +109,19 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             }
 
             $prompt_context = $this->mergeApplicationContent($prompt_context, $application_content);
+            $metadata = ['citations' => $prompt_context->safeCitations];
+
+            if ($proposals instanceof UiProposalCollector && $proposals->hasProposals()) {
+                $output = $this->guardrails->reportPendingProposals($output, $access->locale);
+                $metadata['proposals'] = array_map(
+                    static fn (UiProposal $proposal): array => $proposal->toArray(),
+                    $proposals->proposals(),
+                );
+            }
 
             $conversation->addMessage('user', $input, $this->presentationPreferences($request_context));
 
-            return $conversation->addMessage('assistant', $output, [
-                'citations' => $prompt_context->safeCitations,
-            ]);
+            return $conversation->addMessage('assistant', $output, $metadata);
         } catch (Throwable $exception) {
             $reason_code = $exception instanceof AssistancePolicyViolationException
                 ? $exception->reasonCode
@@ -148,6 +162,43 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             $access,
             $policy->allowedTools,
         );
+    }
+
+    /**
+     * The proposals of this message, when the compiled policy allows a proposal tool and the page
+     * declared something proposable. Without both, the assistant has no proposal tool at all.
+     */
+    private function proposalCollector(CompiledAssistantPolicy $policy): ?UiProposalCollector
+    {
+        if (array_intersect([ProposePreferenceChangeTool::NAME, ProposeViewStateTool::NAME], $policy->allowedTools) === []) {
+            return null;
+        }
+
+        $targets = ProposableTargets::fromPageContext($this->request->input('context.page.proposable'));
+
+        return $targets->isEmpty() ? null : new UiProposalCollector($targets, $this->guardrails);
+    }
+
+    /**
+     * @return list<Tool>
+     */
+    private function proposalTools(CompiledAssistantPolicy $policy, ?UiProposalCollector $collector): array
+    {
+        if (! $collector instanceof UiProposalCollector) {
+            return [];
+        }
+
+        $definitions = [];
+
+        if (in_array(ProposePreferenceChangeTool::NAME, $policy->allowedTools, true) && $collector->targets()->has(UiProposal::KIND_PREFERENCE)) {
+            $definitions[] = new ProposePreferenceChangeTool($collector)->definition();
+        }
+
+        if (in_array(ProposeViewStateTool::NAME, $policy->allowedTools, true) && $collector->targets()->has(UiProposal::KIND_VIEW_STATE)) {
+            $definitions[] = new ProposeViewStateTool($collector)->definition();
+        }
+
+        return $this->tool_registry->getNeuronToolsForDefinitions($definitions);
     }
 
     private function serverApplicationContext(): ?ApplicationContentRequestContext

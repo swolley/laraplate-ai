@@ -10,12 +10,17 @@ use Modules\Core\Models\User;
 uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
 
 /**
- * A catalog where the profile of the in-app assistant is granted the capability `ui_proposals`.
+ * The default catalog, with the capability `ui_proposals` and/or the grant of the in-app profile removed.
  */
-function catalogGrantingProposals(): AssistantPolicyCatalog
+function catalogWithoutProposals(bool $keepCapability): AssistantPolicyCatalog
 {
     $defaults = AssistantPolicyCatalog::defaults();
     $profile = $defaults->profiles['in_app_assistance'];
+    $capabilities = $defaults->capabilities;
+
+    if (! $keepCapability) {
+        unset($capabilities['ui_proposals']);
+    }
 
     return new AssistantPolicyCatalog(
         version: $defaults->version,
@@ -25,22 +30,14 @@ function catalogGrantingProposals(): AssistantPolicyCatalog
             'in_app_assistance' => new AssistantPolicyRuleSet(
                 instruction: $profile->instruction,
                 allowedCorpora: $profile->allowedCorpora,
-                allowedTools: [...$profile->allowedTools, 'propose_preference_change', 'propose_view_state'],
+                allowedTools: array_values(array_diff($profile->allowedTools, ['propose_preference_change', 'propose_view_state'])),
                 allowedFields: $profile->allowedFields,
                 deniedCorpora: $profile->deniedCorpora,
                 deniedTools: $profile->deniedTools,
                 deniedFields: $profile->deniedFields,
             ),
         ],
-        capabilities: [
-            ...$defaults->capabilities,
-            'ui_proposals' => new AssistantPolicyRuleSet(
-                instruction: 'Propose changes the user confirms.',
-                allowedCorpora: [],
-                allowedTools: ['propose_preference_change', 'propose_view_state'],
-                allowedFields: [],
-            ),
-        ],
+        capabilities: $capabilities,
         modules: $defaults->modules,
     );
 }
@@ -64,7 +61,7 @@ it('tells a signed-in user what the assistant offers', function (): void {
     $this->actingAs($this->user)
         ->getJson(route('ai.capabilities'))
         ->assertOk()
-        ->assertJsonPath('data', ['enabled' => true, 'configured' => true, 'features' => ['proposals' => false, 'streaming' => false]]);
+        ->assertJsonPath('data', ['enabled' => true, 'configured' => true, 'features' => ['proposals' => true, 'streaming' => false]]);
 });
 
 it('is not enabled while the assistant feature is off', function (): void {
@@ -99,25 +96,16 @@ it('is configured when the chat provider holds a key', function (): void {
         ->assertJsonPath('data.configured', true);
 });
 
-it('offers proposals when the compiled policy of the in-app profile holds ui_proposals', function (): void {
-    useCatalog(catalogGrantingProposals());
+it('does not offer proposals when the catalog lacks the capability', function (): void {
+    useCatalog(catalogWithoutProposals(keepCapability: false));
 
     $this->actingAs($this->user)
         ->getJson(route('ai.capabilities'))
-        ->assertJsonPath('data.features.proposals', true);
+        ->assertJsonPath('data.features.proposals', false);
 });
 
 it('does not offer proposals when the capability exists but the profile does not grant it', function (): void {
-    $defaults = AssistantPolicyCatalog::defaults();
-    $granting = catalogGrantingProposals();
-
-    useCatalog(new AssistantPolicyCatalog(
-        version: $defaults->version,
-        globalPolicy: $defaults->globalPolicy,
-        profiles: $defaults->profiles,
-        capabilities: $granting->capabilities,
-        modules: $defaults->modules,
-    ));
+    useCatalog(catalogWithoutProposals(keepCapability: true));
 
     $this->actingAs($this->user)
         ->getJson(route('ai.capabilities'))
@@ -139,5 +127,5 @@ it('answers the same whatever the query string says', function (): void {
         ->getJson(route('ai.capabilities', ['enabled' => 'false', 'features' => ['proposals' => true]]))
         ->assertOk()
         ->assertJsonPath('data.enabled', true)
-        ->assertJsonPath('data.features.proposals', false);
+        ->assertJsonPath('data.features.proposals', true);
 });
