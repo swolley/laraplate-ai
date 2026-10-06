@@ -216,6 +216,29 @@ flowchart TB
   OutGuard --> Store
 ```
 
+### Structured output of the model
+
+Where the module needs the model's answer as data, it asks through Neuron's structured output
+(`Agent::structured($message, $class, $maxRetries)`) and never parses JSON itself: the class under
+`Modules/AI/app/Data` carries the schema (`#[SchemaProperty]`) and the validation rules; Neuron sends the
+schema, extracts the JSON (a Markdown fence is fine), deserializes and validates it, and when any step
+fails asks the model again with the list of what was wrong, up to `$maxRetries` times, then throws.
+
+| Call | Class | Retries | When it never fits |
+|------|-------|---------|--------------------|
+| Conversation title | `GeneratedConversationTitle` | 1 | the title is the first words of the question |
+| Comment moderation | `ModerationVerdictData` | 1 | verdict `uncertain`, a person decides |
+| Search plan | `SearchPlanData` (with `Data/Search/*`) | 0 | no plan: the rule-based planner |
+| Search intent | `SearchIntentData` | 0 | the raw query, no keywords |
+| Image analysis | `ImageAnalysisData` | 1 | throws, `AnalyzeMediaJob` retries |
+| Conversation facts | `ExtractedFacts` | 1 | no facts |
+| Prompt injection (LLM fallback) | `InjectionCheck` with `InjectionVerdict` | 1 | the input is refused |
+
+The retries are constants of the service that makes the call (`MAX_RETRIES`), not settings. The two calls
+on the path of a search do not retry because a search waits for them. The prompt of each call describes
+the answer in words; the schema is added by Neuron. `AI_GUARDRAILS_RETRY` (`ai.features.guardrails.retry_on_failure`)
+no longer exists: it controlled the hand-written retry that `structured()` replaced.
+
 ## Developer-facing CLI
 
 ### Documentation indexing

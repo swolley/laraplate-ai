@@ -63,3 +63,64 @@ it('safePlan falls back on LLM exception', function (): void {
     expect($plan)->toHaveKeys(['strategy', 'retrieval', 'ensemble', 'ranking', 'vector', 'filters', 'retry_policy', 'meta']);
     expect($plan['meta']['source'])->toBe('fallback_rules');
 });
+
+/**
+ * The orchestrator over a real LlmSearchService whose model answers with $reply (null: the provider is down).
+ */
+function orchestratorAnswering(?string $reply): SearchOrchestratorAgent
+{
+    $provider = new NeuronAI\Testing\FakeAIProvider(...($reply === null ? [] : [new NeuronAI\Chat\Messages\AssistantMessage($reply)]));
+
+    return new SearchOrchestratorAgent(new LlmSearchService(
+        chatAgentFactory: static fn (string $system): Modules\AI\Ai\Agents\ChatAgent => Modules\AI\Ai\Agents\ChatAgent::make(systemPrompt: $system)->setAiProvider($provider),
+    ));
+}
+
+it('clamps the plan of the model to the ranges the search accepts', function (): void {
+    config()->set('core.search.vector.enabled', true);
+    Illuminate\Support\Facades\Cache::flush();
+
+    $plan = orchestratorAnswering(json_encode([
+        'strategy' => 'hybrid',
+        'retrieval' => ['size' => 5000],
+        'ensemble' => ['keyword_weight' => 3.0, 'vector_weight' => -1.0, 'rrf_k' => 1],
+        'ranking' => ['rerank_top_k' => 1],
+        'retry_policy' => ['max_attempts' => 9, 'threshold_avg_score' => 0.0],
+    ], JSON_THROW_ON_ERROR))->plan('a query that is clamped');
+
+    expect($plan['retrieval']['size'])->toBe(200)
+        ->and($plan['ensemble']['keyword_weight'])->toBe(1.0)
+        ->and($plan['ensemble']['vector_weight'])->toBe(0.0)
+        ->and($plan['ensemble']['rrf_k'])->toBe(10)
+        ->and($plan['ranking']['rerank_top_k'])->toBe(5)
+        ->and($plan['retry_policy']['max_attempts'])->toBe(3)
+        ->and($plan['retry_policy']['threshold_avg_score'])->toBe(0.1)
+        ->and($plan['meta']['source'])->toBe('llm+guardrails');
+});
+
+it('runs no vector search when it is disabled for the application, whatever the model plans', function (): void {
+    config()->set('core.search.vector.enabled', false);
+    Illuminate\Support\Facades\Cache::flush();
+
+    $plan = orchestratorAnswering('{"strategy":"vector","retrieval":{"use_vector":true},"ensemble":{"vector_weight":0.9,"hybrid_weight":0.9}}')->plan('a query without vectors');
+
+    expect($plan['strategy'])->toBe('fulltext')
+        ->and($plan['retrieval']['use_vector'])->toBeFalse()
+        ->and($plan['ensemble']['vector_weight'])->toBe(0.0)
+        ->and($plan['ensemble']['hybrid_weight'])->toBe(0.0)
+        ->and($plan['vector']['enabled'])->toBeFalse();
+});
+
+it('uses the rule-based plan when the model gives none, and does not claim it came from the model', function (): void {
+    Illuminate\Support\Facades\Cache::flush();
+
+    expect(orchestratorAnswering(null)->safePlan('a query with no model')['meta']['source'])->toBe('fallback_rules');
+});
+
+it('caches the plan of a query under a stable key', function (): void {
+    Illuminate\Support\Facades\Cache::flush();
+
+    orchestratorAnswering('{"strategy":"fulltext"}')->plan('cached query');
+
+    expect(Illuminate\Support\Facades\Cache::has('search_orchestrator:' . md5('cached query')))->toBeTrue();
+});

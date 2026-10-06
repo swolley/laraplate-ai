@@ -8,17 +8,23 @@ use function ai_config_bool;
 use function ai_config_int;
 
 use Closure;
-use Exception;
 use Illuminate\Database\Eloquent\Collection;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Data\ExtractedFacts;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\ConversationSummary;
 use Modules\AI\Models\Message;
 use NeuronAI\Chat\Messages\UserMessage;
+use Throwable;
 
 final readonly class MemoryService
 {
+    /**
+     * Times Neuron asks the model again, with what was wrong, when the facts do not fit the schema.
+     */
+    public const int MAX_RETRIES = 1;
+
     private const int SUMMARY_THRESHOLD = 20;
 
     private const string SUMMARY_SYSTEM_PROMPT = <<<'PROMPT'
@@ -31,10 +37,9 @@ Be brief but comprehensive. Write in the same language as the conversation.
 PROMPT;
 
     private const string FACTS_SYSTEM_PROMPT = <<<'PROMPT'
-Extract key facts from this conversation as a JSON array of strings.
+Extract the key facts from this conversation.
 Focus on: user preferences, important information shared, decisions made.
-Return ONLY a valid JSON array, no other text.
-Example: ["User prefers dark mode", "Project deadline is March 15"]
+Example facts: "User prefers dark mode", "Project deadline is March 15"
 PROMPT;
 
     public function __construct(
@@ -118,20 +123,16 @@ PROMPT;
             ->implode("\n\n");
 
         try {
-            $facts_agent = $this->makeChatAgent(self::FACTS_SYSTEM_PROMPT);
+            $output = $this->makeChatAgent(self::FACTS_SYSTEM_PROMPT)->structured(
+                new UserMessage($conversation_text),
+                ExtractedFacts::class,
+                self::MAX_RETRIES,
+            );
 
-            $response = $facts_agent->chat(new UserMessage($conversation_text));
-            $facts = json_decode((string) ($response->getMessage()->getContent() ?? ''), true, 512, JSON_THROW_ON_ERROR);
-
-            if (! is_array($facts)) {
-                return [];
-            }
-
-            return array_values(array_filter(
-                $facts,
-                static fn (mixed $fact): bool => is_string($fact) && $fact !== '',
-            ));
-        } catch (Exception) {
+            return $output instanceof ExtractedFacts ? $output->toList() : [];
+        } catch (Throwable) {
+            // Facts are a by-product of a summary: a provider that fails, or an answer that never fits,
+            // leaves the snapshot without them.
             return [];
         }
     }

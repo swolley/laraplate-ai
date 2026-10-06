@@ -55,7 +55,7 @@ it('builds every chat-family agent on its own feature choice', function (): void
 
     expect(wiredAgent(ChatAgent::forFeature(Modules\AI\Enums\AiModelFeature::Chat)))->toBe(['ollama', 'chat-model'])
         ->and(wiredAgent(invokeWiring(new HandleAiTextGenerationListener(), 'makeChatAgent')))->toBe(['ollama', 'text-model'])
-        ->and(wiredAgent(invokeWiring(new ModerationService(new GuardrailsService()), 'createAgent', $request)))->toBe(['ollama', 'moderation-model'])
+        ->and(wiredAgent(invokeWiring(new ModerationService, 'createAgent', $request)))->toBe(['ollama', 'moderation-model'])
         ->and(wiredAgent(invokeWiring(new LlmSearchService(), 'createAgent', 'prompt')))->toBe(['ollama', 'search-model'])
         ->and(wiredAgent(invokeWiring(new ContextualSuggestionService(), 'makeChatAgent')))->toBe(['ollama', 'suggestion-model'])
         ->and(wiredAgent(invokeWiring(new MemoryService(), 'makeChatAgent', 'prompt')))->toBe(['ollama', 'summary-model'])

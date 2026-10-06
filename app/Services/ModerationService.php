@@ -4,24 +4,33 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
-use function ai_config_bool;
-
 use Closure;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Data\ModerationResult;
+use Modules\AI\Data\ModerationVerdictData;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Enums\ModerationVerdict;
 use Modules\Core\Data\ModerationRequest;
 use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
+use UnexpectedValueException;
 
+/**
+ * Moderates a text with the model chosen in Settings for the feature. The model answers through
+ * Neuron's structured output ({@see ModerationVerdictData}); the prompt, owned by the module that asks,
+ * describes the JSON, and Neuron adds the schema and asks again when the answer does not fit it.
+ */
 final readonly class ModerationService
 {
+    /**
+     * Times Neuron asks the model again, with what was wrong, when the verdict is not valid.
+     */
+    public const int MAX_RETRIES = 1;
+
     /**
      * @param  Closure(): ChatAgent|null  $chatAgentFactory
      */
     public function __construct(
-        private GuardrailsService $guardrails,
         private ?Closure $chatAgentFactory = null,
     ) {}
 
@@ -38,16 +47,19 @@ final readonly class ModerationService
         }
 
         try {
-            $agent = $this->createAgent($request);
-            $response = $agent->chat(new UserMessage($request->userPrompt))->getMessage();
-            $content = $response->getContent() ?? '';
+            $output = $this->createAgent($request)->structured(
+                new UserMessage($request->userPrompt),
+                ModerationVerdictData::class,
+                self::MAX_RETRIES,
+            );
 
-            if (! $this->guardrails->validateJsonOutput($content)) {
-                $content = $this->retryJson($agent, $request) ?? $content;
+            if (! $output instanceof ModerationVerdictData) {
+                throw new UnexpectedValueException('The model returned no verdict.');
             }
 
-            return $this->mapResponse($content);
+            return $output->toResult();
         } catch (Throwable) {
+            // A provider that fails and a verdict that never validates end the same way: a person decides.
             return new ModerationResult(
                 verdict: ModerationVerdict::Uncertain,
                 confidence: 0.0,
@@ -56,25 +68,6 @@ final readonly class ModerationService
                 safeToAutoApprove: false,
             );
         }
-    }
-
-    public function mapResponse(string $content): ModerationResult
-    {
-        $parsed = $this->parseJson($content);
-
-        $verdict = ModerationVerdict::tryFromString($this->stringValue($parsed, 'verdict'));
-        $confidence = $this->floatValue($parsed, 'confidence');
-        $categories = $this->stringListValue($parsed, 'categories');
-        $reason = $this->stringValue($parsed, 'reason', 'No reason provided.');
-        $safe = $this->boolValue($parsed, 'safe_to_auto_approve');
-
-        return new ModerationResult(
-            verdict: $verdict,
-            confidence: max(0.0, min(1.0, $confidence)),
-            categories: $categories,
-            reason: $reason,
-            safeToAutoApprove: $safe,
-        );
     }
 
     private function createAgent(ModerationRequest $request): ChatAgent
@@ -86,123 +79,5 @@ final readonly class ModerationService
         }
 
         return ChatAgent::forFeature(AiModelFeature::Moderation, $request->systemPrompt);
-    }
-
-    private function retryJson(ChatAgent $agent, ModerationRequest $request): ?string
-    {
-        if (! ai_config_bool('ai.features.guardrails.retry_on_failure', true)) {
-            return null;
-        }
-
-        try {
-            $response = $agent->chat(new UserMessage(
-                $request->userPrompt . "\n\nRespond with valid JSON only.",
-            ))->getMessage();
-
-            $content = $response->getContent() ?? '';
-
-            return $this->guardrails->validateJsonOutput($content) ? $content : null;
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function parseJson(string $content): array
-    {
-        $cleaned = $content;
-
-        if (preg_match('/```(?:json)?\s*([\s\S]*?)```/', $cleaned, $matches)) {
-            $cleaned = $matches[1];
-        }
-
-        $decoded = json_decode(mb_trim($cleaned), true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     */
-    private function stringValue(array $parsed, string $key, ?string $default = null): string
-    {
-        $value = $parsed[$key] ?? $default;
-
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if ($value === null) {
-            return $default ?? '';
-        }
-
-        if (is_scalar($value)) {
-            return (string) $value;
-        }
-
-        return $default ?? '';
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     */
-    private function floatValue(array $parsed, string $key): float
-    {
-        $value = $parsed[$key] ?? 0.0;
-
-        if (is_float($value)) {
-            return $value;
-        }
-
-        if (is_int($value)) {
-            return (float) $value;
-        }
-
-        if (is_numeric($value)) {
-            return (float) $value;
-        }
-
-        return 0.0;
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     */
-    private function boolValue(array $parsed, string $key): bool
-    {
-        $value = $parsed[$key] ?? false;
-
-        return is_bool($value) ? $value : false;
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     * @return list<string>
-     */
-    private function stringListValue(array $parsed, string $key): array
-    {
-        $value = $parsed[$key] ?? null;
-
-        if (! is_array($value)) {
-            return [];
-        }
-
-        $items = [];
-
-        foreach ($value as $item) {
-            if (is_string($item)) {
-                $items[] = $item;
-
-                continue;
-            }
-
-            if (is_scalar($item)) {
-                $items[] = (string) $item;
-            }
-        }
-
-        return $items;
     }
 }

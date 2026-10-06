@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Data\Search\SearchIntentData;
+use Modules\AI\Data\Search\SearchPlanData;
 use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
@@ -13,39 +16,50 @@ use Throwable;
 /**
  * Search-specific LLM service wrapping NeuronAI via ChatAgent.
  *
- * Provides structured search plan generation and intent extraction
- * for the search orchestration pipeline.
+ * Plans a search and extracts the intent of a query for the search orchestration pipeline. The model
+ * answers through Neuron's structured output ({@see SearchPlanData}, {@see SearchIntentData}); both
+ * calls sit on the path of a search, so neither asks the model again, and a failure of either leaves
+ * the caller to the rule-based search.
  */
 class LlmSearchService
 {
+    /**
+     * Times Neuron asks the model again when the answer does not fit the schema: none, because a
+     * search waits for it.
+     */
+    public const int MAX_RETRIES = 0;
+
+    /**
+     * @param  (Closure(string): ChatAgent)|null  $chatAgentFactory  builds the agent from its system prompt
+     */
     public function __construct(
         private readonly ?string $provider = null,
+        private readonly ?Closure $chatAgentFactory = null,
     ) {}
 
     /**
      * Generate a structured search plan from an LLM.
      *
-     * @return array<string, mixed>
+     * @return SearchPlanData|null null when the call fails or the answer does not fit the plan
      */
-    public function generateSearchPlan(string $query): array
+    public function generateSearchPlan(string $query): ?SearchPlanData
     {
         try {
-            $system_prompt = $this->getSearchPlanSystemPrompt();
-            $agent = $this->createAgent($system_prompt);
+            $output = $this->createAgent($this->getSearchPlanSystemPrompt())->structured(
+                new UserMessage("Generate a search plan for: {$query}"),
+                SearchPlanData::class,
+                self::MAX_RETRIES,
+            );
 
-            $response = $agent->chat(new UserMessage(
-                "Generate a search plan for: {$query}",
-            ))->getMessage();
-
-            return $this->parseJsonResponse($response->getContent() ?? '');
+            return $output instanceof SearchPlanData ? $output : null;
         } catch (Throwable $exception) {
-            // Any LLM/agent failure must not break search: return an empty plan
-            // so the caller falls back to the rule-based planner.
+            // Any LLM/agent failure must not break search: no plan, so the caller falls back to the
+            // rule-based planner.
             Log::warning('LLM search plan generation failed; using rule-based fallback', [
                 'error' => $exception->getMessage(),
             ]);
 
-            return [];
+            return null;
         }
     }
 
@@ -56,33 +70,44 @@ class LlmSearchService
      */
     public function extractSearchIntent(string $query): array
     {
-        try {
-            $system_prompt = $this->getIntentExtractionSystemPrompt();
-            $agent = $this->createAgent($system_prompt);
+        $intent = null;
 
-            $response = $agent->chat(new UserMessage($query))->getMessage();
-            $parsed = $this->parseJsonResponse($response->getContent() ?? '');
+        try {
+            $output = $this->createAgent($this->getIntentExtractionSystemPrompt())->structured(
+                new UserMessage($query),
+                SearchIntentData::class,
+                self::MAX_RETRIES,
+            );
+            $intent = $output instanceof SearchIntentData ? $output : null;
         } catch (Throwable $exception) {
             // Degrade gracefully: an LLM/agent failure falls back to the raw
             // query (no expansion, no keywords) instead of breaking retrieval.
             Log::warning('LLM intent extraction failed; falling back to the raw query', [
                 'error' => $exception->getMessage(),
             ]);
-
-            $parsed = [];
         }
 
+        $date_range = $intent?->filters->date_range?->toArray();
+        $expanded = mb_trim($intent->query_expansion->must ?? '');
+
         return [
-            'keywords' => $this->stringListValue($parsed, 'keywords'),
-            'filters' => $this->arrayValue($parsed, 'filters'),
+            'keywords' => array_values(array_filter(
+                $intent->keywords ?? [],
+                static fn (mixed $keyword): bool => is_string($keyword) && $keyword !== '',
+            )),
+            'filters' => $date_range === null ? [] : ['date_range' => $date_range],
             'query_expansion' => [
-                'must' => $this->expandedQueryValue($parsed, $query),
+                'must' => $expanded !== '' ? $expanded : $query,
             ],
         ];
     }
 
     private function createAgent(string $system_prompt): ChatAgent
     {
+        if ($this->chatAgentFactory instanceof Closure) {
+            return ($this->chatAgentFactory)($system_prompt);
+        }
+
         return $this->provider !== null
             ? ChatAgent::make($this->provider, $system_prompt)
             : ChatAgent::forFeature(AiModelFeature::SearchOrchestration, $system_prompt);
@@ -91,7 +116,7 @@ class LlmSearchService
     private function getSearchPlanSystemPrompt(): string
     {
         return <<<'PROMPT'
-You are a search orchestration system. Given a user query, produce a structured search plan as JSON.
+You are a search orchestration system. Given a user query, produce a structured search plan.
 
 You must decide:
 - retrieval strategy (fulltext, vector, hybrid)
@@ -100,7 +125,7 @@ You must decide:
 - filters (date_range if applicable)
 - ensemble weights (keyword_weight, vector_weight, hybrid_weight)
 
-Return ONLY valid JSON with this structure:
+An example of a plan:
 {
   "strategy": "hybrid",
   "retrieval": {"use_fulltext": true, "use_vector": true, "use_ensemble": true, "size": 50},
@@ -116,9 +141,9 @@ PROMPT;
     private function getIntentExtractionSystemPrompt(): string
     {
         return <<<'PROMPT'
-You are a search intent extraction system. Given a user query, extract structured information as JSON.
+You are a search intent extraction system. Given a user query, extract structured information.
 
-Return ONLY valid JSON with:
+An example of the information:
 {
   "keywords": ["keyword1", "keyword2"],
   "filters": {"date_range": null},
@@ -130,92 +155,5 @@ Rules:
 - query_expansion.must: an expanded/reformulated version of the query for better search results
 - filters.date_range: null unless the query explicitly mentions dates
 PROMPT;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function parseJsonResponse(string $content): array
-    {
-        $cleaned = $content;
-
-        if (preg_match('/```(?:json)?\s*([\s\S]*?)```/', $cleaned, $matches)) {
-            $cleaned = $matches[1];
-        }
-
-        $cleaned = mb_trim($cleaned);
-
-        $decoded = json_decode($cleaned, true);
-
-        if (! is_array($decoded)) {
-            return [];
-        }
-
-        /** @var array<string, mixed> $decoded */
-        return $decoded;
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     * @return list<string>
-     */
-    private function stringListValue(array $parsed, string $key): array
-    {
-        $value = $parsed[$key] ?? null;
-
-        if (! is_array($value)) {
-            return [];
-        }
-
-        $items = [];
-
-        foreach ($value as $item) {
-            if (is_string($item) && $item !== '') {
-                $items[] = $item;
-
-                continue;
-            }
-
-            if (is_scalar($item)) {
-                $items[] = (string) $item;
-            }
-        }
-
-        return $items;
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     * @return array<string, mixed>
-     */
-    private function arrayValue(array $parsed, string $key): array
-    {
-        $value = $parsed[$key] ?? null;
-
-        return is_array($value) ? $value : [];
-    }
-
-    /**
-     * @param  array<string, mixed>  $parsed
-     */
-    private function expandedQueryValue(array $parsed, string $fallback): string
-    {
-        $expansion = $parsed['query_expansion'] ?? null;
-
-        if (! is_array($expansion)) {
-            return $fallback;
-        }
-
-        $must = $expansion['must'] ?? null;
-
-        if (is_string($must) && $must !== '') {
-            return $must;
-        }
-
-        if (is_scalar($must)) {
-            return (string) $must;
-        }
-
-        return $fallback;
     }
 }

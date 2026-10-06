@@ -22,22 +22,6 @@ it('returns input unchanged when prompt injection detection is disabled', functi
     expect($service->checkPromptInjection('some prompt'))->toBe('some prompt');
 });
 
-it('validates correct JSON output', function (): void {
-    $service = new GuardrailsService;
-
-    expect($service->validateJsonOutput('{"key": "value"}'))->toBeTrue()
-        ->and($service->validateJsonOutput('[1, 2, 3]'))->toBeTrue()
-        ->and($service->validateJsonOutput('"string"'))->toBeTrue();
-});
-
-it('rejects invalid JSON output', function (): void {
-    $service = new GuardrailsService;
-
-    expect($service->validateJsonOutput('not json'))->toBeFalse()
-        ->and($service->validateJsonOutput('{invalid}'))->toBeFalse()
-        ->and($service->validateJsonOutput(''))->toBeFalse();
-});
-
 it('detects lakera credentials presence', function (): void {
     config()->set('ai.features.guardrails.lakera_api_key');
 

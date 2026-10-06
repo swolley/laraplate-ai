@@ -187,7 +187,6 @@ return [
             'lakera_api_key' => env('LAKERA_API_KEY'),
             'lakera_endpoint' => env('LAKERA_ENDPOINT', 'https://api.lakera.ai/'),
             'json_validation' => env('AI_GUARDRAILS_JSON_VALIDATION', false),
-            'retry_on_failure' => env('AI_GUARDRAILS_RETRY', true),
             // In-app assistance policies are mandatory and do not use the optional flags above.
             'in_app_policy_version' => 'in-app-v1',
             'in_app_max_input_length' => 4000,

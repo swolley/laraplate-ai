@@ -296,131 +296,61 @@ it('extractFacts returns empty array for empty conversation', function (): void 
     expect($result)->toBe([]);
 });
 
-it('extractFacts returns facts from agent response', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('["User prefers dark mode", "Deadline is March 15"]'));
+/**
+ * A memory service whose model is Neuron's fake provider, answering with the given replies in order;
+ * with none, it fails like a provider that is down. What it was asked is read from $provider.
+ *
+ * @param  list<string>  $replies
+ */
+function memoryServiceAnswering(array $replies, ?NeuronAI\Testing\FakeAIProvider &$provider = null): MemoryService
+{
+    $provider = new NeuronAI\Testing\FakeAIProvider(...array_map(static fn (string $reply): NeuronAI\Chat\Messages\AssistantMessage => new NeuronAI\Chat\Messages\AssistantMessage($reply), $replies));
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
+    return new MemoryService(chatAgentFactory: static fn (string $system): ChatAgent => ChatAgent::make(systemPrompt: $system)->setAiProvider($provider));
+}
 
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
+function conversationWithAMessage(string $content = 'I prefer dark mode.'): Conversation
+{
+    $conversation = Conversation::query()->create(['user_id' => User::factory()->create()->id, 'memory_enabled' => true]);
+    Message::query()->create(['conversation_id' => $conversation->id, 'role' => 'user', 'content' => $content]);
 
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
+    return $conversation;
+}
 
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'I prefer dark mode.',
-    ]);
+it('extractFacts returns the facts the model answers, without the empty ones', function (): void {
+    $service = memoryServiceAnswering(['{"facts": ["User prefers dark mode", "", "Deadline is March 15"]}'], $provider);
 
-    $result = $service->extractFacts($conversation);
-
-    expect($result)->toBe(['User prefers dark mode', 'Deadline is March 15']);
+    expect($service->extractFacts(conversationWithAMessage()))->toBe(['User prefers dark mode', 'Deadline is March 15'])
+        ->and($provider->getRecorded()[0]->structuredClass)->toBe(Modules\AI\Data\ExtractedFacts::class)
+        ->and((string) $provider->getRecorded()[0]->messages[0]->getContent())->toContain('I prefer dark mode.');
 });
 
-it('extractFacts returns empty array on invalid json', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('not valid json'));
+it('extractFacts asks again once when the first answer does not fit', function (): void {
+    $service = memoryServiceAnswering(['Here are the facts: the user prefers dark mode.', '{"facts": ["User prefers dark mode"]}'], $provider);
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
+    expect($service->extractFacts(conversationWithAMessage()))->toBe(['User prefers dark mode']);
 
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
-
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'Test message.',
-    ]);
-
-    $result = $service->extractFacts($conversation);
-
-    expect($result)->toBe([]);
+    $provider->assertCallCount(2);
 });
 
-it('extractFacts returns empty array when json is not an array', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('"just a string"'));
-
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
-
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
-
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'Test.',
-    ]);
-
-    $result = $service->extractFacts($conversation);
-
-    expect($result)->toBe([]);
-});
+it('extractFacts returns an empty array when no answer fits or the provider fails', function (array $replies): void {
+    expect(memoryServiceAnswering($replies)->extractFacts(conversationWithAMessage()))->toBe([]);
+})->with([
+    'invalid json twice' => [['not valid json', 'still not']],
+    'a bare string' => [['"just a string"', '"again"']],
+    'a bare list instead of the object' => [['["User prefers dark mode"]']],
+    'the provider is down' => [[]],
+]);
 
 it('createSummarySnapshot updates conversation summary and creates record', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Generated summary'));
-
-    $factsHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $factsHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('["Fact one"]'));
-
-    $callCount = 0;
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')
-        ->andReturnUsing(function () use (&$callCount, $mockAgentHandler, $factsHandler) {
-            $callCount++;
-
-            return $callCount === 1 ? $mockAgentHandler : $factsHandler;
-        });
-
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
-
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'Hello there.',
-    ]);
+    $service = memoryServiceAnswering(['Generated summary', '{"facts": ["Fact one"]}']);
+    $conversation = conversationWithAMessage('Hello there.');
 
     $snapshot = $service->createSummarySnapshot($conversation);
 
     $conversation->refresh();
     expect($snapshot)->toBeInstanceOf(ConversationSummary::class)
         ->and($snapshot->summary)->toBe('Generated summary')
+        ->and($snapshot->facts)->toBe(['Fact one'])
         ->and($conversation->summary)->toBe('Generated summary');
 });
