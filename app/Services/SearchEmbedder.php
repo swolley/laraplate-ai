@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services;
 
-use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\Core\Search\Contracts\ITextEmbedder;
 
 /**
  * Bridge between the search pipeline and the AI module's EmbeddingService.
  *
  * Adapts the existing EmbeddingService to the ITextEmbedder contract
- * expected by the Core search infrastructure.
+ * expected by the Core search infrastructure. The query prefix of the active model is added by
+ * the embeddings provider itself.
  */
 final readonly class SearchEmbedder implements ITextEmbedder
 {
@@ -24,8 +24,6 @@ final readonly class SearchEmbedder implements ITextEmbedder
      */
     public function embed(string $text): array
     {
-        $profile = app(EmbeddingModelRegistry::class)->active();
-
-        return $this->embeddingService->embedText($profile->queryPrefix . $text);
+        return $this->embeddingService->embedText($text);
     }
 }

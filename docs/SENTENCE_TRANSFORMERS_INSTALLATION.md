@@ -72,8 +72,8 @@ Content-Type: application/json
 
 Some models (e5, nomic, …) need a `query:` / `passage:` prefix; others (MiniLM)
 need none. **Today Laraplate applies the prefix client-side** from the active
-model profile (`query_prefix` / `passage_prefix` in `ai.features.embeddings`),
-so the service receives already-prefixed text and this field can be omitted.
+model profile (`query_prefix` / `passage_prefix` in `ai.features.embeddings`, applied by
+`PrefixingEmbeddingsProvider`), so the service receives already-prefixed text and this field can be omitted.
 
 The service **also** knows each family's convention and accepts an optional
 `input_type` (`"query"` | `"passage"`). When present, it *ensures* the correct

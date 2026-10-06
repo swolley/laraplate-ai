@@ -23,6 +23,9 @@ use NeuronAI\RAG\Embeddings\VoyageEmbeddingsProvider;
  * the one {@see EmbeddingModelRegistry::withActive()} sets while a switch embeds), so a switch to
  * another model of the same provider embeds with that model. `ai.providers.*.model` is only the
  * fallback when a provider other than the profile's is asked for explicitly.
+ *
+ * The provider of the profile comes with the query and passage prefixes of its model
+ * ({@see PrefixingEmbeddingsProvider}), so callers hand it the raw text.
  */
 final class EmbeddingsProviderFactory
 {
@@ -33,7 +36,7 @@ final class EmbeddingsProviderFactory
         $isProfileProvider = self::canonical($provider) === self::canonical($profile->provider);
         $model = $isProfileProvider ? $profile->serviceModel : null;
 
-        return match ($provider) {
+        $embeddings = match ($provider) {
             'openai' => self::createOpenAI($model, $isProfileProvider ? $profile->dimensions : null),
             'ollama' => self::createOllama($model),
             'mistral' => self::createMistral($model),
@@ -41,6 +44,8 @@ final class EmbeddingsProviderFactory
             'sentence-transformers', 'sentence_transformers' => self::createSentenceTransformers($model),
             default => throw new InvalidArgumentException("Unsupported embeddings provider: {$provider}"),
         };
+
+        return $isProfileProvider ? PrefixingEmbeddingsProvider::forProfile($embeddings, $profile) : $embeddings;
     }
 
     /**

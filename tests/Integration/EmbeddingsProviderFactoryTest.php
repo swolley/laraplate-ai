@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
+use Modules\AI\Ai\Embeddings\PrefixingEmbeddingsProvider;
 use Modules\AI\Ai\Embeddings\SentenceTransformersEmbeddingsProvider;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
 use NeuronAI\RAG\Embeddings\MistralEmbeddingsProvider;
@@ -47,12 +48,20 @@ it('creates a VoyageAI embeddings provider', function (): void {
     expect($provider)->toBeInstanceOf(VoyageEmbeddingsProvider::class);
 });
 
+/**
+ * The provider under the prefixing decorator that the factory puts on the provider of the active profile.
+ */
+function factoryProviderBehindPrefixes(EmbeddingsProviderInterface $provider): EmbeddingsProviderInterface
+{
+    return $provider instanceof PrefixingEmbeddingsProvider ? (fn (): EmbeddingsProviderInterface => $this->inner)->call($provider) : $provider;
+}
+
 it('creates a SentenceTransformers embeddings provider', function (): void {
     config()->set('ai.providers.sentence_transformers.url', 'http://localhost:8000');
 
     $provider = EmbeddingsProviderFactory::make('sentence_transformers');
 
-    expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
+    expect(factoryProviderBehindPrefixes($provider))->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
 
 it('also accepts hyphenated sentence-transformers key', function (): void {
@@ -60,7 +69,7 @@ it('also accepts hyphenated sentence-transformers key', function (): void {
 
     $provider = EmbeddingsProviderFactory::make('sentence-transformers');
 
-    expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
+    expect(factoryProviderBehindPrefixes($provider))->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
 
 it('throws exception for unsupported embeddings provider', function (): void {
@@ -73,7 +82,7 @@ it('uses default provider from config when none specified', function (): void {
 
     $provider = EmbeddingsProviderFactory::make();
 
-    expect($provider)->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
+    expect(factoryProviderBehindPrefixes($provider))->toBeInstanceOf(SentenceTransformersEmbeddingsProvider::class);
 });
 
 it('throws when the Ollama URL is missing for embeddings', function (): void {

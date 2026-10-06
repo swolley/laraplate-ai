@@ -2,16 +2,27 @@
 
 declare(strict_types=1);
 
+use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
+use Modules\AI\Ai\Embeddings\PrefixingEmbeddingsProvider;
 use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\SearchEmbedder;
 use Modules\AI\Tests\Stubs\Embeddings\FixedChunkSplitter;
 use Modules\AI\Tests\Stubs\Embeddings\RecordingEmbeddingsProvider;
+use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
+
+/**
+ * What EmbeddingsProviderFactory::make() returns for the active profile, over a recording provider.
+ */
+function activeProfileProvider(RecordingEmbeddingsProvider $provider): EmbeddingsProviderInterface
+{
+    return PrefixingEmbeddingsProvider::forProfile($provider, app(EmbeddingModelRegistry::class)->active());
+}
 
 test('SearchEmbedder::embed prepends the active profile query prefix', function (): void {
     config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
 
     $provider = new RecordingEmbeddingsProvider;
-    $embeddingService = new EmbeddingService(fn () => $provider);
+    $embeddingService = new EmbeddingService(fn () => activeProfileProvider($provider));
     $searchEmbedder = new SearchEmbedder($embeddingService);
 
     $searchEmbedder->embed('festival');
@@ -23,7 +34,7 @@ test('EmbeddingService::embedDocument prepends the active profile passage prefix
     config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
 
     $provider = new RecordingEmbeddingsProvider;
-    $embeddingService = new EmbeddingService(fn () => $provider);
+    $embeddingService = new EmbeddingService(fn () => activeProfileProvider($provider));
 
     $embeddingService->embedDocument('some body text');
 
@@ -35,7 +46,7 @@ test('EmbeddingService::embedDocument prefixes every chunk when the body is spli
     config()->set('core.search.vector.model', 'sentence_transformers:intfloat/multilingual-e5-small');
 
     $provider = new RecordingEmbeddingsProvider;
-    $embeddingService = new EmbeddingService(fn () => $provider, new FixedChunkSplitter);
+    $embeddingService = new EmbeddingService(fn () => activeProfileProvider($provider), new FixedChunkSplitter);
 
     $embeddingService->embedDocument('first half content here and second half content there');
 
@@ -50,7 +61,7 @@ test('EmbeddingService::embedDocument does not prefix when the active profile ha
     config()->set('core.search.vector.model', 'sentence_transformers:all-MiniLM-L6-v2');
 
     $provider = new RecordingEmbeddingsProvider;
-    $embeddingService = new EmbeddingService(fn () => $provider);
+    $embeddingService = new EmbeddingService(fn () => activeProfileProvider($provider));
 
     $embeddingService->embedDocument('some body text');
 

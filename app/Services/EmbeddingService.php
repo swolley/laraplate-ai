@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Modules\AI\Services;
 
 use Closure;
-use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\EmbeddingsProviderFactory;
+use Modules\AI\Ai\Embeddings\PrefixingEmbeddingsProvider;
 use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use NeuronAI\RAG\Document;
@@ -89,10 +89,8 @@ final readonly class EmbeddingService implements IEmbeddingService
     }
 
     /**
-     * Clean, split and passage-prefix a text into the chunk documents sent to
-     * the provider. Prefixing each chunk (not the whole body) is required
-     * because splitting builds new Document instances from slices of the text,
-     * so a single up-front prefix would only survive on the first chunk.
+     * Clean and split a text into the chunk documents sent to the provider, which adds the
+     * passage prefix of its model to each of them ({@see PrefixingEmbeddingsProvider}).
      *
      * @return list<Document>
      */
@@ -107,15 +105,8 @@ final readonly class EmbeddingService implements IEmbeddingService
         $document->sourceName = 'document';
 
         $splitter = $this->splitter ?? SplitterFactory::make();
-        $chunks = $splitter->splitDocument($document);
 
-        $passage_prefix = app(EmbeddingModelRegistry::class)->active()->passagePrefix;
-
-        foreach ($chunks as $chunk) {
-            $chunk->content = $passage_prefix . $chunk->content;
-        }
-
-        return $chunks;
+        return $splitter->splitDocument($document);
     }
 
     private function getProvider(): EmbeddingsProviderInterface
