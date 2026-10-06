@@ -130,5 +130,4 @@ it('is the only writer on the routes that send a message to the assistant', func
 })->with([
     'ai.crud.messages.insert',
     'ai.crud.messages.stream',
-    'ai.crud.messages.with-tools',
 ]);

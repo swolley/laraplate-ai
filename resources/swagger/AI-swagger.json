@@ -145,52 +145,6 @@
                 ]
             }
         },
-        "\/app\/crud\/insert\/ai\/conversations\/{conversation}\/messages-with-tools": {
-            "post": {
-                "summary": "Send a message with tools support (non-streaming).",
-                "description": "Tool calls follow the assistant policy; writes are proposed and applied only after the person confirms, and moderated entities send them for approval.",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "conversation",
-                        "type": "string",
-                        "required": true,
-                        "description": ""
-                    },
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "",
-                        "schema": {
-                            "type": "object",
-                            "required": [
-                                "message"
-                            ],
-                            "properties": {
-                                "message": {
-                                    "type": "string"
-                                },
-                                "context": {
-                                    "type": "array",
-                                    "items": []
-                                }
-                            }
-                        }
-                    }
-                ],
-                "operationId": "post-app-crud-insert-ai-conversations-conversation-messages-with-tools",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
         "\/app\/crud\/insert\/ai\/suggestions": {
             "post": {
                 "summary": "Generate a new contextual suggestion.",

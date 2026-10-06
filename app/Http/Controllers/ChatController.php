@@ -157,36 +157,6 @@ final class ChatController extends Controller
     }
 
     /**
-     * Send a protected non-streaming message with contextual read-only tools.
-     */
-    public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
-    {
-        $this->authorizeInAppAssistantAccess($conversation);
-
-        $validated = $request->validated();
-
-        $message = $this->inAppAssistance->respond(
-            conversation: $conversation,
-            authenticated_user: $this->authenticatedUser(),
-            user_input: $this->requiredString($validated, 'message'),
-            request_context: $this->optionalArray($validated, 'context'),
-        );
-
-        return new ResponseBuilder($request)
-            ->setData([
-                'message' => [
-                    'id' => $message->id,
-                    'role' => $message->role,
-                    'content' => $message->content,
-                    'metadata' => $message->metadata,
-                    'created_at' => $message->created_at?->toIso8601String(),
-                ],
-            ])
-            ->setStatus(Response::HTTP_CREATED)
-            ->json();
-    }
-
-    /**
      * Verify that the authenticated user owns the conversation.
      */
     private function authorizeConversationAccess(Conversation $conversation): void

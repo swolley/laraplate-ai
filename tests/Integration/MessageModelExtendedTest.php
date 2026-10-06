@@ -30,17 +30,6 @@ it('casts metadata and token_count correctly', function (): void {
     ]);
 });
 
-it('byRole scope filters by role correctly', function (): void {
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create(['user_id' => $user->id]);
-    $conversation->addMessage('user', 'User message');
-    $conversation->addMessage('assistant', 'Assistant message');
-    $conversation->addMessage('user', 'Another user message');
-
-    expect(Message::byRole('user')->count())->toBe(2)
-        ->and(Message::byRole('assistant')->count())->toBe(1);
-});
-
 it('belongs to conversation', function (): void {
     $user = User::factory()->create();
     $conversation = Conversation::query()->create(['user_id' => $user->id]);

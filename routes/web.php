@@ -23,7 +23,6 @@ Route::prefix('crud')->name('crud.')->group(function (): void {
         Route::get('select/ai/conversations/{conversation}/messages', 'listMessages')->name('messages.list');
         Route::post('stream/ai/conversations/{conversation}/messages', 'streamMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.stream');
         Route::post('insert/ai/conversations/{conversation}/messages', 'insertMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.insert');
-        Route::post('insert/ai/conversations/{conversation}/messages-with-tools', 'sendMessageWithTools')->middleware(ResolveAssistantApplicationContext::class)->name('messages.with-tools');
     });
 
     // Contextual suggestions routes

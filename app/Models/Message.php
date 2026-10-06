@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\AI\Models;
 
-use Illuminate\Database\Eloquent\Attributes\Scope;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\AI\Enums\AITables;
 use Modules\Core\Overrides\Model;
@@ -42,15 +40,5 @@ final class Message extends Model
             'metadata' => 'array',
             'token_count' => 'integer',
         ];
-    }
-
-    /**
-     * @param  Builder<Message>  $query
-     * @return Builder<Message>
-     */
-    #[Scope]
-    protected function byRole(Builder $query, string $role): Builder
-    {
-        return $query->where('role', $role);
     }
 }

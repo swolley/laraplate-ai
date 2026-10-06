@@ -224,13 +224,13 @@ The AI Module includes built-in features such as:
 -   **AI Chat:**
     - Multi-provider support (OpenAI, Ollama, Mistral, Anthropic)
     - Conversation history with database persistence
-    - Streaming responses (Server-Sent Events)
+    - The answer is sent whole, after the protected assistant has validated it: `POST /app/ai/agent` streams the run as AG-UI events (the message is one event), and `streamMessage` answers 422
     - System message customization per conversation
 
 -   **FAQ/RAG (Retrieval-Augmented Generation):**
     - Answers from a **documentation corpus** indexed under `docs/rag/` and `Modules/*/docs/rag/` (not from general `docs/` unless copied into `rag/`)
     - **Two audiences, two server-owned profiles and separate corpora:**
-        - **End users** — in-app chat (`ChatService`): help using the application (workflows, screens, permissions). RAG runs when enabled and the message looks like a question, or when `use_rag: true` is passed in context.
+        - **End users** — in-app chat (`InAppAssistanceService`, behind `POST /app/ai/agent` and the `messages` route): help using the application (workflows, screens, permissions), from the documentation corpus and the tools the policy allows.
         - **Developers** — terminal assistant: `php artisan ai:help` (interactive REPL or `--question="..."` one-shot), with access to the developer documentation corpus and no application-content tool.
     - Citations with source attribution in answers
     - **Commands:**
@@ -429,7 +429,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 
 ### Completed Features
 
-- [x] **Chat System** - Streaming and non-streaming support
+- [x] **Chat System** - Protected in-app assistant: a JSON answer, or the run as an event stream, the answer sent whole
 - [x] **RAG/FAQ** - Documentation indexing and question answering
 - [x] **Memory/Summarization** - Automatic conversation summarization
 - [x] **Guardrails** - Prompt injection detection (Lakera integration)

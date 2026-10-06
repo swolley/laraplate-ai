@@ -9,11 +9,11 @@ Canonical English names for AI entities in this module. Use these terms in code,
 | **Conversation** | Persistent chat session owned by a user; holds ordered `Message` rows. |
 | **Message** | Single user or assistant utterance within a `Conversation`. |
 | **ConversationSummary** | Condensed history used to keep context windows manageable. |
-| **ChatService** | Orchestrates message send, streaming, tool calls, and persistence. |
-| **ChatController** | HTTP layer for chat endpoints (`streamMessage`, `insertMessage`). |
-| **streamMessage** | Primary SSE streaming path for interactive UIs. |
+| **ChatService** | Creates conversations and builds the protected agent (`buildProtectedAgent`). It does not answer: every message endpoint calls `InAppAssistanceService`. |
+| **ChatController** | HTTP layer for the conversation endpoints (`insertMessage`, `streamMessage`, listing and deleting). |
+| **streamMessage** | Answers 422 `in_app_streaming_unavailable`: the protected assistant validates the whole answer before it sends any of it. The event stream is `POST /app/ai/agent` (`AgentController`, AG-UI events), which sends the message once, whole. |
 | **insertMessage** | Non-streaming JSON response path (jobs, integrations, tests). |
-| **ChatAgent** | NeuronAI agent wrapper used by `ChatService` for LLM calls. |
+| **ChatAgent** | NeuronAI agent wrapper that every call to the model goes through (`forFeature()`, `ask()`, `structured()`); the protected agent of `ChatService` is one. |
 
 ## Tool system (ActionRequest)
 

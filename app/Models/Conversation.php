@@ -9,8 +9,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\AI\Enums\AITables;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
-use NeuronAI\Chat\Enums\MessageRole;
-use NeuronAI\Chat\Messages\Message as NeuronMessage;
 use Override;
 
 final class Conversation extends Model
@@ -86,27 +84,6 @@ final class Conversation extends Model
             'content' => $content,
             'metadata' => $metadata,
         ]);
-    }
-
-    /**
-     * Get messages formatted for NeuronAI agent chat history.
-     *
-     * @return NeuronMessage[]
-     */
-    public function getMessagesForNeuron(): array
-    {
-        $messages = [];
-
-        foreach ($this->messages as $message) {
-            $role = match ($message->role) {
-                'assistant' => MessageRole::ASSISTANT,
-                default => MessageRole::USER,
-            };
-
-            $messages[] = new NeuronMessage($role, $message->content);
-        }
-
-        return $messages;
     }
 
     protected function casts(): array

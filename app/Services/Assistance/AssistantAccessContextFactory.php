@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Assistance;
 
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Console\Command;
-use Modules\AI\Console\LaraplateHelpCommand;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\Contracts\AssistantTenantResolverInterface;
@@ -55,35 +53,6 @@ final readonly class AssistantAccessContextFactory
             locale: $this->localeFor($authenticated_user),
             effectivePermissions: $permissions,
             conversationId: $conversation_id,
-        );
-    }
-
-    /**
-     * @throws AuthorizationException
-     */
-    public function forDeveloperHelp(Command $command): AssistantAccessContext
-    {
-        if (! app()->runningInConsole() || ! $command instanceof LaraplateHelpCommand) {
-            throw new AuthorizationException('Developer help is available only from the console.');
-        }
-
-        $console_application = $command->getApplication();
-        $is_registered_help_command = $console_application !== null
-            && $console_application->has('ai:help')
-            && $command === $console_application->find('ai:help');
-
-        if (! $is_registered_help_command) {
-            throw new AuthorizationException('Developer help is available only from the console.');
-        }
-
-        return new AssistantAccessContext(
-            profile: AssistantProfile::DeveloperHelp,
-            userId: null,
-            tenantScope: null,
-            tenantId: null,
-            locale: (string) config('app.locale', 'en'),
-            effectivePermissions: [],
-            conversationId: null,
         );
     }
 

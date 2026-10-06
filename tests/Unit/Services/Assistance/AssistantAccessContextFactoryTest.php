@@ -3,10 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Artisan;
-use Modules\AI\Console\LaraplateHelpCommand;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Enums\AssistantTenantScope;
 use Modules\AI\Models\Conversation;
@@ -140,40 +137,6 @@ it('fails closed when effective permissions cannot be resolved', function (): vo
     expect(fn () => (new AssistantAccessContextFactory($resolver))->forInApp(
         assistanceConversation(),
         $user,
-    ))->toThrow(AuthorizationException::class);
-});
-
-it('creates developer help context without runtime identity or tenant access', function (): void {
-    $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
-    $resolver->shouldNotReceive('resolveFor');
-
-    $command = Artisan::all()['ai:help'] ?? null;
-
-    expect($command)->toBeInstanceOf(LaraplateHelpCommand::class);
-
-    $context = (new AssistantAccessContextFactory($resolver))->forDeveloperHelp($command);
-
-    expect($context->profile)->toBe(AssistantProfile::DeveloperHelp)
-        ->and($context->userId)->toBeNull()
-        ->and($context->conversationId)->toBeNull()
-        ->and($context->tenantScope)->toBeNull()
-        ->and($context->tenantId)->toBeNull()
-        ->and($context->effectivePermissions)->toBe([]);
-});
-
-it('rejects developer help context outside the dedicated artisan command', function (): void {
-    $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
-    $command = Mockery::mock(Command::class);
-
-    expect(fn () => (new AssistantAccessContextFactory($resolver))->forDeveloperHelp($command))
-        ->toThrow(AuthorizationException::class);
-});
-
-it('rejects an unregistered instance of the developer help command', function (): void {
-    $resolver = Mockery::mock(AssistantTenantResolverInterface::class);
-
-    expect(fn () => (new AssistantAccessContextFactory($resolver))->forDeveloperHelp(
-        new LaraplateHelpCommand,
     ))->toThrow(AuthorizationException::class);
 });
 
