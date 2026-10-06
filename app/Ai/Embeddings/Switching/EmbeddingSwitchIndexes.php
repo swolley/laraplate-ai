@@ -42,6 +42,12 @@ final readonly class EmbeddingSwitchIndexes
 
     public const int DEFAULT_CHUNK_SIZE = 250;
 
+    /**
+     * The most records one chunk takes, whatever is configured: a chunk must fit in
+     * {@see \Modules\AI\Jobs\IndexDocumentsChunkJob::TIMEOUT_SECONDS}.
+     */
+    public const int MAX_CHUNK_SIZE = 2000;
+
     public function __construct(
         private EmbeddingSwitchCorpus $corpus,
         private IRagIndexRebuilder $rag,
@@ -110,11 +116,27 @@ final readonly class EmbeddingSwitchIndexes
     }
 
     /**
-     * The number of records per chunk, `ai.features.embeddings.index_chunk_size`, at least 1.
+     * The number of records per chunk, `ai.features.embeddings.index_chunk_size`: below 1 or not a
+     * number falls back to {@see self::DEFAULT_CHUNK_SIZE}, above {@see self::MAX_CHUNK_SIZE} is capped.
      */
     public function chunkSize(): int
     {
-        return max(1, config()->integer(self::CHUNK_SIZE_CONFIG, self::DEFAULT_CHUNK_SIZE));
+        return self::configuredSize(self::CHUNK_SIZE_CONFIG, self::DEFAULT_CHUNK_SIZE, self::MAX_CHUNK_SIZE);
+    }
+
+    /**
+     * The positive whole number configured under `$key`, capped at `$max`; `$default` when it is
+     * missing, not a number or below 1.
+     */
+    private static function configuredSize(string $key, int $default, int $max): int
+    {
+        $configured = config($key);
+
+        if (! is_numeric($configured) || (int) $configured < 1) {
+            return $default;
+        }
+
+        return min((int) $configured, $max);
     }
 
     /**

@@ -154,23 +154,32 @@ final class EmbeddingsSwitchCommand extends Command
             return $this->refuse('An embedding model switch is starting: try again in a moment. Nothing was changed.');
         }
 
+        $refusal = null;
+        $state = EmbeddingSwitchState::idle();
+
         try {
-            $state = $store->get();
-            $refusal = $this->refusalToActOn($state, 'resume');
+            // Decided and written under the state lock: a chunk job of an interrupted switch may
+            // still record a completion, which must not be overwritten.
+            $resumed = $store->update(function (EmbeddingSwitchState $current) use (&$refusal, &$state): EmbeddingSwitchState {
+                $state = $current;
+                $refusal = $this->refusalToActOn($current, 'resume');
 
-            if ($refusal === null && $state->status === 'failed' && $state->phase === 'preflight') {
-                $refusal = "The switch to \"{$state->target}\" was refused before it started, so there is nothing to resume: run ai:embeddings:switch --abandon to clear it.";
-            }
+                if ($refusal === null && $current->status === 'failed' && $current->phase === 'preflight') {
+                    $refusal = "The switch to \"{$current->target}\" was refused before it started, so there is nothing to resume: run ai:embeddings:switch --abandon to clear it.";
+                }
 
-            if ($refusal !== null) {
-                return $this->refuse($refusal);
-            }
+                if ($refusal !== null) {
+                    return $current;
+                }
 
-            $phase = $this->resumePhase($state);
-            $resumed = $state->with(status: 'running', phase: $phase, error: null, rounds: 0, updatedAt: now()->toIso8601String());
-            $store->put($resumed);
+                return $current->with(status: 'running', phase: $this->resumePhase($current), error: null, rounds: 0, updatedAt: now()->toIso8601String());
+            });
         } finally {
             $release();
+        }
+
+        if ($refusal !== null) {
+            return $this->refuse($refusal);
         }
 
         if (! $this->dispatchSwitch($store, $state, $resumed)) {
@@ -229,7 +238,7 @@ final class EmbeddingsSwitchCommand extends Command
             if ($state->status === 'failed' && $state->phase === 'preflight') {
                 // The job may have failed its preflight after the start suspended vector search.
                 new Setting()->getConnection()->transaction(static function () use ($store, $active): void {
-                    $store->put(EmbeddingSwitchState::idle()->with(updatedAt: now()->toIso8601String()));
+                    $store->update(static fn (): EmbeddingSwitchState => EmbeddingSwitchState::idle()->with(updatedAt: now()->toIso8601String()));
                     $store->recordTarget($active);
                     $store->clearSuspension();
                 });
@@ -256,7 +265,7 @@ final class EmbeddingsSwitchCommand extends Command
             );
 
             new Setting()->getConnection()->transaction(static function () use ($store, $return, $previous): void {
-                $store->put($return);
+                $store->update(static fn (): EmbeddingSwitchState => $return);
                 $store->recordTarget($previous);
                 $store->suspend();
             });
@@ -323,9 +332,7 @@ final class EmbeddingsSwitchCommand extends Command
         try {
             app(Dispatcher::class)->dispatch(new SwitchEmbeddingModelJob());
         } catch (Throwable $exception) {
-            if ($store->get()->toJson() === $stored->toJson()) {
-                $store->put($before);
-            }
+            $store->update(static fn (EmbeddingSwitchState $current): EmbeddingSwitchState => $current->toJson() === $stored->toJson() ? $before : $current);
 
             $this->error("Could not queue the switch job; nothing was changed ({$exception->getMessage()}).");
 

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
@@ -113,6 +115,7 @@ it('updates the state it reads under the state lock, and writes nothing when the
     $store = new EmbeddingSwitchStore;
     $store->put(new EmbeddingSwitchState('running', 'indexes', 'a:b', 'c:d', chunksDone: 1));
     $updatedAt = Setting::query()->withoutGlobalScopes()->where('name', 'features.embeddings.switch')->value('updated_at');
+    $this->travel(2)->seconds();
 
     $unchanged = $store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state);
 
@@ -125,3 +128,32 @@ it('updates the state it reads under the state lock, and writes nothing when the
     expect($next->chunksDone)->toBe(3)
         ->and($store->get()->chunksDone)->toBe(3);
 });
+
+it('waits for the state lock held by another writer, fails after the configured wait, and updates once it is free', function (): void {
+    $this->seed(AIDatabaseSeeder::class);
+    config()->set(EmbeddingSwitchStore::STATE_LOCK_WAIT_CONFIG, 1);
+    $store = new EmbeddingSwitchStore;
+    $store->put(new EmbeddingSwitchState('running', 'indexes', 'a:b', 'c:d', chunksDone: 1));
+    $held = Cache::lock(EmbeddingSwitchStore::STATE_LOCK, 10);
+    $held->get();
+
+    expect(static fn (): EmbeddingSwitchState => $store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state->with(chunksDone: 2)))
+        ->toThrow(LockTimeoutException::class)
+        ->and($store->get()->chunksDone)->toBe(1);
+
+    $held->release();
+
+    expect($store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state->with(chunksDone: 2))->chunksDone)->toBe(2)
+        ->and($store->get()->chunksDone)->toBe(2);
+});
+
+it('waits ten seconds for the state lock unless configured otherwise, falling back on an invalid wait', function (mixed $configured, int $expected): void {
+    config()->set(EmbeddingSwitchStore::STATE_LOCK_WAIT_CONFIG, $configured);
+
+    expect((new EmbeddingSwitchStore)->stateLockWaitSeconds())->toBe($expected);
+})->with([
+    'unset' => [null, 10],
+    'configured' => [3, 3],
+    'zero' => [0, 10],
+    'not a number' => ['soon', 10],
+]);

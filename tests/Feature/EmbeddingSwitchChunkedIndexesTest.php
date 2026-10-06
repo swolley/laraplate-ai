@@ -276,3 +276,99 @@ it('ships the chunk queue with its own single-process Horizon supervisor, timed 
             ->and($supervisors['supervisor-embeddings-index']['maxProcesses'] ?? $supervisors['supervisor-embeddings-index']['processes'] ?? 1)->toBe(1);
     }
 });
+
+it('fails a chunked phase naming its queue when the queue holds jobs and no chunk completed for the stall time', function (): void {
+    config()->set(EmbeddingSwitchOrchestrator::CHUNK_STALL_CONFIG, 600);
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE, startedAt: now()->toIso8601String()));
+    Queue::fake();
+    chunked_orchestrator()->advance();
+    chunked_orchestrator()->advance();
+
+    $this->travel(500)->seconds();
+    [$id, $chunk] = chunked_chunk_of($this->records[0]);
+    app()->call([new IndexDocumentsChunkJob('indexes', Harness::TARGET, $id, $chunk), 'handle']);
+
+    $this->travel(599)->seconds();
+    $waiting = chunked_orchestrator()->advance();
+
+    expect($waiting->status)->toBe('running')
+        ->and($waiting->isInterrupted())->toBeFalse();
+
+    $this->travel(2)->seconds();
+    $state = chunked_orchestrator()->advance();
+
+    expect($state->status)->toBe('failed')
+        ->and($state->phase)->toBe('indexes')
+        ->and($state->error)->toContain('no index chunk was written for 600 s')
+        ->and($state->error)->toContain('embeddings-index')
+        ->and($state->error)->toContain('supervisor-embeddings-index');
+});
+
+it('re-reads the pending chunks before failing the last round, and moves on when the last one was written meanwhile', function (): void {
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE, startedAt: now()->toIso8601String()));
+    Queue::fake();
+    chunked_orchestrator()->advance();
+    $plan = chunked_store()->get();
+    [$lastId, $lastChunk] = chunked_chunk_of($this->records[2]);
+    $others = array_diff_key($plan->pendingChunks, [$lastId => true]);
+    chunked_store()->put($plan->with(
+        pendingChunks: [$lastId => $lastChunk],
+        chunksDone: count($others),
+        rounds: EmbeddingSwitchOrchestrator::MAX_CHUNK_ROUNDS,
+        chunkProgressAt: now()->toIso8601String(),
+    ));
+
+    // The last chunk job records its completion while the pass reads the (now empty) queue.
+    Queue::shouldReceive('size')->andReturnUsing(static function () use ($lastId, $lastChunk): int {
+        chunked_store()->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state->withChunkCompleted('indexes', Harness::TARGET, $lastId, $lastChunk, now()->toIso8601String()));
+
+        return 0;
+    });
+
+    $state = chunked_orchestrator()->advance();
+
+    expect($state->status)->toBe('running')
+        ->and($state->pendingChunks)->toBe([])
+        ->and($state->chunksDone)->toBe(3)
+        ->and(chunked_orchestrator()->advance()->phase)->toBe('verify');
+});
+
+it('clears the chunk plan when the indexes phase hands over to the verification', function (): void {
+    Harness::start(Harness::TARGET);
+    Harness::advanceUntil('indexes');
+    chunked_orchestrator()->advance();
+    chunked_orchestrator()->advance();
+
+    $state = chunked_orchestrator()->advance();
+
+    expect($state->phase)->toBe('verify')
+        ->and($state->chunkPhase)->toBeNull()
+        ->and($state->pendingChunks)->toBe([])
+        ->and($state->chunksTotal)->toBe(0)
+        ->and($state->chunksDone)->toBe(0)
+        ->and($state->rounds)->toBe(0);
+
+    // Interrupted right after the hand-over: the resume rebuilds the indexes instead of skipping them.
+    $this->travel(EmbeddingSwitchState::INTERRUPTED_AFTER_SECONDS + 60)->seconds();
+    Queue::fake();
+    $this->artisan('ai:embeddings:switch', ['--resume' => true])->assertSuccessful();
+
+    $resumed = chunked_orchestrator()->advance();
+
+    expect($resumed->phase)->toBe('indexes')
+        ->and($resumed->chunkPhase)->toBe('indexes')
+        ->and($resumed->pendingChunks)->toHaveCount(3)
+        ->and(Harness::$ragRebuilds)->toHaveCount(2);
+});
+
+it('falls back to the default chunk size when the configured one is below 1 or not a number, and caps it', function (mixed $configured, int $expected): void {
+    config()->set(EmbeddingSwitchIndexes::CHUNK_SIZE_CONFIG, $configured);
+
+    expect(app(EmbeddingSwitchIndexes::class)->chunkSize())->toBe($expected);
+})->with([
+    'zero' => [0, EmbeddingSwitchIndexes::DEFAULT_CHUNK_SIZE],
+    'negative' => [-5, EmbeddingSwitchIndexes::DEFAULT_CHUNK_SIZE],
+    'not a number' => ['many', EmbeddingSwitchIndexes::DEFAULT_CHUNK_SIZE],
+    'numeric string' => ['40', 40],
+    'too large' => [10_000_000, EmbeddingSwitchIndexes::MAX_CHUNK_SIZE],
+]);

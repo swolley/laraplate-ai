@@ -110,7 +110,9 @@ CROSS_ENCODER_URL=                   # Base URL of the service exposing POST /sc
 CROSS_ENCODER_API_KEY=               # Key for that service; falls back to SENTENCE_TRANSFORMERS_API_KEY
 
 # Embedding model switch
-AI_EMBEDDINGS_INDEX_CHUNK_SIZE=250   # Records per IndexDocumentsChunkJob when a switch writes the search indexes (embeddings-index queue)
+AI_EMBEDDINGS_INDEX_CHUNK_SIZE=250   # Records per IndexDocumentsChunkJob when a switch writes the search indexes (embeddings-index queue); below 1 or not a number: 250, capped at 2000
+AI_EMBEDDINGS_INDEX_CHUNK_STALL_SECONDS=900  # A chunked switch phase fails, naming the queue, when embeddings-index holds jobs and no chunk was written for this long; below 1 or not a number: 900
+AI_EMBEDDINGS_STATE_LOCK_WAIT_SECONDS=10     # Seconds a writer of the switch state waits for its lock before failing (the job is retried); below 1 or not a number: 10
 
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key

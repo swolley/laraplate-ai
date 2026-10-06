@@ -419,8 +419,14 @@ chunks and wait for them. Phases, in order:
    dispatches one `IndexDocumentsChunkJob` per chunk on the `embeddings-index` queue; each writes the
    searchable documents of its range and records the chunk as written. The phase waits while that
    queue holds jobs, dispatches the chunks still pending again, up to 3 rounds, then fails naming
-   them (model and key range). A chunk is idempotent; one the state no longer expects (written
-   already, another plan, a switch failed or abandoned) is skipped.
+   them (model and key range); before that last failure it reads the stored plan again, since the
+   last chunk may have been written while the step ran. While the queue holds jobs and no chunk was
+   written for `ai.features.embeddings.index_chunk_stall_seconds` (default 900 s) since the last
+   dispatch or the last chunk written, the phase fails naming the `embeddings-index` queue and its
+   supervisor: a missing or dead worker no longer keeps the switch running forever. A chunk is
+   idempotent; one the state no longer expects (written already, another plan, a switch failed or
+   abandoned) is skipped. Once every chunk is written the plan is cleared and the phase hands over
+   to `verify`.
 4. **verify**: rewrites every document with the target's vectors first, in chunks, exactly as the
    indexes phase writes them (records edited since the indexes phase were indexed with the serving
    model's vectors), then checks per model: the index holds one document per searchable record
@@ -470,7 +476,24 @@ the start is not repeated.
   a worker on each of the three a started switch stops advancing.
 - `ai.features.embeddings.index_chunk_size` (env `AI_EMBEDDINGS_INDEX_CHUNK_SIZE`, default 250) is
   the number of records per index chunk. It is plain config, not a setting. Smaller chunks give
-  finer progress and cheaper retries, larger ones fewer jobs.
+  finer progress and cheaper retries, larger ones fewer jobs. A value below 1 or not a number falls
+  back to 250; a value above 2000 is capped at 2000, so a chunk still fits in its 240 s.
+- `ai.features.embeddings.index_chunk_stall_seconds` (env `AI_EMBEDDINGS_INDEX_CHUNK_STALL_SECONDS`,
+  default 900) is how long a chunked phase waits on a non-empty `embeddings-index` queue with no
+  chunk written before it fails. The default is above the 760 s one chunk may take over its 3 tries
+  (240 s each, backoff 10 and 30 s) with the single shipped worker. Below 1 or not a number: 900.
+  The waiting steps still write the state, so a switch whose job is alive is never reported as
+  interrupted; the stall is a failure, which `--resume` and `--abandon` accept.
+- The switch state is written under the cache lock `embeddings:switch:state`. A writer waits for it
+  `ai.features.embeddings.state_lock_wait_seconds` (env `AI_EMBEDDINGS_STATE_LOCK_WAIT_SECONDS`,
+  default 10; below 1 or not a number: 10), then fails and its job is retried. The lock, like the
+  start lock `embeddings:switch`, excludes across workers only on a cache store the workers share
+  and that supports atomic locks: redis, database or memcached. On the `array` store a lock is
+  local to its process, and the shipped default store `failover` (redis, then array) falls back to
+  it when redis fails: during such a fallback concurrent writers of the state are not serialised.
+  `--resume`, `--abandon` and the rollback of a dispatch that failed write the state under the same
+  lock. When `SwitchEmbeddingModelJob` fails and cannot get the lock, it writes the failed state
+  without it rather than leave the switch `running`.
 - The queue connection's `retry_after` must exceed the longest job timeout, or a job still running
   is handed out a second time: 300 s for the chunks, and 1000 s for the switch job. The switch job
   no longer writes the documents, but its 900 s stay justified by the step that prepares the

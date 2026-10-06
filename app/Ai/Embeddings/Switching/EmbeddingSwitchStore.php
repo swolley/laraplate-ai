@@ -16,10 +16,24 @@ use Modules\Core\Services\SettingsCacheCoordinator;
  * switch starts with an atomic lock. While a switch runs, the switch job and the chunk jobs write
  * the state through {@see self::update()}, which re-reads and writes it under its own lock, so a
  * chunk completion is never overwritten by a write computed from an older state.
+ *
+ * Both locks are cache locks: they exclude across workers only on a cache store shared by them and
+ * supporting atomic locks (redis, database, memcached). On the `array` store a lock is local to its
+ * process; the default `failover` store (redis, then array) falls back to it when redis fails.
  */
 final class EmbeddingSwitchStore
 {
     public const string SUSPENDED_REASON = 'switching';
+
+    public const string STATE_LOCK = 'embeddings:switch:state';
+
+    /**
+     * The config key of how long a writer waits for the state lock before it fails and its job is
+     * retried, {@see self::DEFAULT_STATE_LOCK_WAIT_SECONDS} by default.
+     */
+    public const string STATE_LOCK_WAIT_CONFIG = 'ai.features.embeddings.state_lock_wait_seconds';
+
+    public const int DEFAULT_STATE_LOCK_WAIT_SECONDS = 10;
 
     private const string SETTING = 'features.embeddings.switch';
 
@@ -29,11 +43,9 @@ final class EmbeddingSwitchStore
 
     private const string LOCK = 'embeddings:switch';
 
-    private const string STATE_LOCK = 'embeddings:switch:state';
-
     /**
-     * An update is a read and a write of one setting: the lock is held for milliseconds, and a
-     * writer waits for it at most this long before its job fails and is retried.
+     * An update is a read and a write of one setting: the lock is held for milliseconds. A holder
+     * that dies frees it after this long.
      */
     private const int STATE_LOCK_SECONDS = 10;
 
@@ -67,7 +79,7 @@ final class EmbeddingSwitchStore
     public function update(Closure $change): EmbeddingSwitchState
     {
         $lock = Cache::lock(self::STATE_LOCK, self::STATE_LOCK_SECONDS);
-        $lock->block(self::STATE_LOCK_SECONDS);
+        $lock->block($this->stateLockWaitSeconds());
 
         try {
             $current = $this->get();
@@ -81,6 +93,17 @@ final class EmbeddingSwitchStore
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * `ai.features.embeddings.state_lock_wait_seconds`; below 1 or not a number falls back to
+     * {@see self::DEFAULT_STATE_LOCK_WAIT_SECONDS}.
+     */
+    public function stateLockWaitSeconds(): int
+    {
+        $configured = config(self::STATE_LOCK_WAIT_CONFIG);
+
+        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : self::DEFAULT_STATE_LOCK_WAIT_SECONDS;
     }
 
     /**

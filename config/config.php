@@ -30,8 +30,18 @@ return [
 
             // Records per chunk when an embedding model switch writes the search indexes
             // (`indexes` and `verify` phases): one IndexDocumentsChunkJob per model and key range
-            // of this many records, on the `embeddings-index` queue. Not a setting.
-            'index_chunk_size' => (int) env('AI_EMBEDDINGS_INDEX_CHUNK_SIZE', 250),
+            // of this many records, on the `embeddings-index` queue. Not a setting. Below 1 or not a
+            // number falls back to 250; above 2000 is capped.
+            'index_chunk_size' => env('AI_EMBEDDINGS_INDEX_CHUNK_SIZE', 250),
+
+            // Seconds a chunked switch phase waits on a non-empty `embeddings-index` queue with no
+            // chunk written before it fails naming the queue (a missing or dead worker). Default 900,
+            // above the 760 s one chunk may take over its 3 tries. Below 1 or not a number: 900.
+            'index_chunk_stall_seconds' => env('AI_EMBEDDINGS_INDEX_CHUNK_STALL_SECONDS', 900),
+
+            // Seconds a writer of the switch state waits for the state lock before it fails (and its
+            // job is retried). Below 1 or not a number: 10.
+            'state_lock_wait_seconds' => env('AI_EMBEDDINGS_STATE_LOCK_WAIT_SECONDS', 10),
 
             // The model choice is the setting `features.embeddings.model` (overlaid as
             // `ai.features.embeddings.model`); the model that serves search is Core's managed

@@ -6,6 +6,7 @@ namespace Modules\AI\Ai\Embeddings\Switching;
 
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
@@ -30,7 +31,12 @@ use Throwable;
  * plans, dispatches and waits for its refresh the same way, then checks. While the queue of the
  * phase's jobs holds work the phase waits; when it is empty and work is still missing, it dispatches
  * what is missing again, up to {@see self::MAX_EMBEDDING_ROUNDS} (records) or
- * {@see self::MAX_CHUNK_ROUNDS} (chunks) times, then fails naming it.
+ * {@see self::MAX_CHUNK_ROUNDS} (chunks) times, then fails naming it. A chunked phase also fails
+ * when its queue holds jobs and no chunk was written for {@see self::chunkStallSeconds()}: a missing
+ * or dead `embeddings-index` worker would otherwise keep the switch waiting, and since every waiting
+ * pass writes the state, the switch would never count as interrupted. The waiting passes keep
+ * writing `updatedAt`, so {@see EmbeddingSwitchState::isInterrupted()} still means that the switch
+ * job itself is lost; the stall is a failure of the phase, which `--resume` and `--abandon` accept.
  *
  * A check that does not hold fails the switch in its phase ({@see EmbeddingSwitchPhaseFailed}).
  * Any other error propagates, so the job retries it and records it once its tries are spent.
@@ -46,6 +52,19 @@ final readonly class EmbeddingSwitchOrchestrator
     public const int MAX_EMBEDDING_ROUNDS = 3;
 
     public const int MAX_CHUNK_ROUNDS = 3;
+
+    /**
+     * The config key of the longest time a chunked phase waits on a non-empty chunk queue without a
+     * chunk written before it fails.
+     */
+    public const string CHUNK_STALL_CONFIG = 'ai.features.embeddings.index_chunk_stall_seconds';
+
+    /**
+     * Above the longest one chunk may legitimately take with the single shipped worker: 3 tries of
+     * up to {@see IndexDocumentsChunkJob::TIMEOUT_SECONDS} (240 s) plus the backoff of 10 and 30 s,
+     * 760 s, is about 3 times the supervisor timeout of 300 s.
+     */
+    public const int DEFAULT_CHUNK_STALL_SECONDS = 900;
 
     public function __construct(
         private EmbeddingSwitchStore $store,
@@ -90,6 +109,17 @@ final readonly class EmbeddingSwitchOrchestrator
     public function canAdvance(EmbeddingSwitchState $state): bool
     {
         return $state->status === 'running' && in_array($state->phase, self::HANDLED_PHASES, true);
+    }
+
+    /**
+     * `ai.features.embeddings.index_chunk_stall_seconds`; below 1 or not a number falls back to
+     * {@see self::DEFAULT_CHUNK_STALL_SECONDS}.
+     */
+    public function chunkStallSeconds(): int
+    {
+        $configured = config(self::CHUNK_STALL_CONFIG);
+
+        return is_numeric($configured) && (int) $configured >= 1 ? (int) $configured : self::DEFAULT_CHUNK_STALL_SECONDS;
     }
 
     /**
@@ -211,7 +241,7 @@ final readonly class EmbeddingSwitchOrchestrator
         }
 
         if ($state->pendingChunks === []) {
-            return $state->with(phase: 'verify', rounds: 0);
+            return $state->withoutChunkPlan()->with(phase: 'verify', rounds: 0);
         }
 
         return $this->awaitChunks($state, $target);
@@ -243,19 +273,31 @@ final readonly class EmbeddingSwitchOrchestrator
     }
 
     /**
-     * Waits while the chunk queue holds jobs (after the first dispatch); otherwise dispatches every
-     * chunk still pending, up to {@see self::MAX_CHUNK_ROUNDS} rounds, then fails naming them.
+     * Waits while the chunk queue holds jobs (after the first dispatch), failing when no chunk was
+     * written for {@see self::chunkStallSeconds()}; otherwise dispatches every chunk still pending,
+     * up to {@see self::MAX_CHUNK_ROUNDS} rounds, then fails naming them. Before that failure the
+     * stored plan is read again: the last chunk may have been written after this pass read the state.
      *
      * @throws EmbeddingSwitchPhaseFailed
      */
     private function awaitChunks(EmbeddingSwitchState $state, EmbeddingModelProfile $target): EmbeddingSwitchState
     {
-        if ($state->rounds > 0 && Queue::size(IndexDocumentsChunkJob::QUEUE) > 0) {
-            return $state;
+        if ($state->rounds > 0) {
+            $queued = Queue::size(IndexDocumentsChunkJob::QUEUE);
+
+            if ($queued > 0) {
+                return $this->waitForChunks($state, $queued);
+            }
         }
 
         if ($state->rounds >= self::MAX_CHUNK_ROUNDS) {
-            throw new EmbeddingSwitchPhaseFailed(count($state->pendingChunks) . " of {$state->chunksTotal} index chunk(s) of the {$state->phase} phase were not written after " . self::MAX_CHUNK_ROUNDS . ' rounds (see the IndexDocumentsChunkJob errors in the log): ' . EmbeddingSwitchState::describeChunks($state->pendingChunks) . '. Run ai:embeddings:switch --resume to write them again');
+            $current = $state->withCompletionsSince($state, $this->store->get());
+
+            if ($current->pendingChunks === []) {
+                return $current;
+            }
+
+            throw new EmbeddingSwitchPhaseFailed(count($current->pendingChunks) . " of {$current->chunksTotal} index chunk(s) of the {$current->phase} phase were not written after " . self::MAX_CHUNK_ROUNDS . ' rounds (see the IndexDocumentsChunkJob errors in the log): ' . EmbeddingSwitchState::describeChunks($current->pendingChunks) . '. Run ai:embeddings:switch --resume to write them again');
         }
 
         foreach ($state->pendingChunks as $id => $chunk) {
@@ -271,7 +313,35 @@ final readonly class EmbeddingSwitchOrchestrator
             }
         }
 
-        return $state->with(rounds: $state->rounds + 1);
+        return $state->with(rounds: $state->rounds + 1, chunkProgressAt: now()->toIso8601String());
+    }
+
+    /**
+     * The state of a pass that waits on `$queued` chunk jobs, or a failure when no chunk was written
+     * for {@see self::chunkStallSeconds()} since the last dispatch or the last chunk written. A plan
+     * stored before that time was recorded starts counting now.
+     *
+     * @throws EmbeddingSwitchPhaseFailed
+     */
+    private function waitForChunks(EmbeddingSwitchState $state, int $queued): EmbeddingSwitchState
+    {
+        if ($state->chunkProgressAt === null) {
+            return $state->with(chunkProgressAt: now()->toIso8601String());
+        }
+
+        $stall = $this->chunkStallSeconds();
+
+        try {
+            $idle = Date::parse($state->chunkProgressAt)->diffInSeconds(Date::now(), absolute: false);
+        } catch (Throwable) {
+            return $state->with(chunkProgressAt: now()->toIso8601String());
+        }
+
+        if ($idle <= $stall) {
+            return $state;
+        }
+
+        throw new EmbeddingSwitchPhaseFailed("no index chunk was written for {$stall} s while the " . IndexDocumentsChunkJob::QUEUE . " queue holds {$queued} job(s) ({$state->chunksDone} of {$state->chunksTotal} chunk(s) of the {$state->phase} phase written): check that a worker runs on " . IndexDocumentsChunkJob::QUEUE . ' (Horizon supervisor-embeddings-index), then run ai:embeddings:switch --resume');
     }
 
     /**

@@ -15,8 +15,10 @@ use Throwable;
  *
  * The `indexes` and `verify` phases write their documents in chunks: `chunkPhase` names the phase
  * the current chunk plan belongs to, `pendingChunks` holds the chunks not written yet (by id, with
- * the model and the key range each covers), `chunksTotal` and `chunksDone` count them. A state
- * stored before these keys existed loads with no plan.
+ * the model and the key range each covers), `chunksTotal` and `chunksDone` count them, and
+ * `chunkProgressAt` is the time of the last dispatch of chunks or the last chunk written, which a
+ * waiting phase reads to tell a working chunk queue from a stalled one. A state stored before
+ * these keys existed loads with no plan.
  */
 final readonly class EmbeddingSwitchState
 {
@@ -51,6 +53,7 @@ final readonly class EmbeddingSwitchState
          * @var array<string, array{model: string, from: int|string|null, to: int|string|null}>
          */
         public array $pendingChunks = [],
+        public ?string $chunkProgressAt = null,
     ) {}
 
     public static function idle(): self
@@ -91,6 +94,7 @@ final readonly class EmbeddingSwitchState
             chunksTotal: self::count($data['chunksTotal'] ?? null),
             chunksDone: self::count($data['chunksDone'] ?? null),
             pendingChunks: self::chunks($data['pendingChunks'] ?? []),
+            chunkProgressAt: self::nullableString($data['chunkProgressAt'] ?? null),
         );
     }
 
@@ -116,7 +120,16 @@ final readonly class EmbeddingSwitchState
      */
     public function withChunkPlan(string $phase, array $chunks): self
     {
-        return $this->with(chunkPhase: $phase, pendingChunks: $chunks, chunksTotal: count($chunks), chunksDone: 0, rounds: 0);
+        return $this->with(chunkPhase: $phase, pendingChunks: $chunks, chunksTotal: count($chunks), chunksDone: 0, rounds: 0, chunkProgressAt: null);
+    }
+
+    /**
+     * A copy carrying no chunk plan: what a phase that is done with its chunks hands over, so the
+     * next phase, or a resume, never mistakes it for a plan of its own.
+     */
+    public function withoutChunkPlan(): self
+    {
+        return $this->with(chunkPhase: null, pendingChunks: [], chunksTotal: 0, chunksDone: 0, chunkProgressAt: null);
     }
 
     /**
@@ -149,14 +162,15 @@ final readonly class EmbeddingSwitchState
         $pending = $this->pendingChunks;
         unset($pending[$id]);
 
-        return $this->with(pendingChunks: $pending, chunksDone: $this->chunksDone + 1, updatedAt: $at);
+        return $this->with(pendingChunks: $pending, chunksDone: $this->chunksDone + 1, updatedAt: $at, chunkProgressAt: $at);
     }
 
     /**
      * This state (computed from `$snapshot`) with the chunks completed since `$snapshot` was read,
      * as `$fresh` records them, also completed: chunk jobs only ever remove pending chunks, so a
-     * chunk pending in the snapshot and gone from the fresh state was written meanwhile. A state
-     * carrying a new plan keeps it whole: what was completed belongs to the plan it replaced.
+     * chunk pending in the snapshot and gone from the fresh state was written meanwhile, and the
+     * later of the two `chunkProgressAt` is kept. A state carrying a new plan keeps it whole: what was
+     * completed belongs to the plan it replaced.
      */
     public function withCompletionsSince(self $snapshot, self $fresh): self
     {
@@ -176,7 +190,11 @@ final readonly class EmbeddingSwitchState
             return $this;
         }
 
-        return $this->with(pendingChunks: $stillPending, chunksDone: $this->chunksDone + $newlyDone);
+        return $this->with(
+            pendingChunks: $stillPending,
+            chunksDone: $this->chunksDone + $newlyDone,
+            chunkProgressAt: self::later($this->chunkProgressAt, $fresh->chunkProgressAt),
+        );
     }
 
     /**
@@ -242,7 +260,24 @@ final readonly class EmbeddingSwitchState
             'chunksTotal' => $this->chunksTotal,
             'chunksDone' => $this->chunksDone,
             'pendingChunks' => $this->pendingChunks === [] ? (object) [] : $this->pendingChunks,
+            'chunkProgressAt' => $this->chunkProgressAt,
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * The later of two stored times; an unreadable or missing one loses.
+     */
+    private static function later(?string $first, ?string $second): ?string
+    {
+        if ($first === null || $second === null) {
+            return $first ?? $second;
+        }
+
+        try {
+            return Date::parse($second)->greaterThan(Date::parse($first)) ? $second : $first;
+        } catch (Throwable) {
+            return $first;
+        }
     }
 
     private static function nullableString(mixed $value): ?string

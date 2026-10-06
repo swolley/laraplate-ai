@@ -56,7 +56,7 @@ it('round-trips a chunk plan through JSON and drops malformed chunks', function 
     $state = (new EmbeddingSwitchState('running', 'indexes', 't', 'p'))->withChunkPlan('indexes', [
         'App\Models\Post#0' => ['model' => 'App\Models\Post', 'from' => null, 'to' => 251],
         'App\Models\Post#1' => ['model' => 'App\Models\Post', 'from' => 251, 'to' => null],
-    ]);
+    ])->with(chunkProgressAt: '2026-10-06T10:00:00+00:00');
 
     expect(EmbeddingSwitchState::fromJson($state->toJson()))->toEqual($state)
         ->and(EmbeddingSwitchState::fromJson((new EmbeddingSwitchState('idle'))->toJson())->pendingChunks)->toBe([])
@@ -74,6 +74,7 @@ it('records a chunk once, and only for the plan, phase and target that expect it
     expect($done->pendingChunks)->toBe([])
         ->and($done->chunksDone)->toBe(1)
         ->and($done->updatedAt)->toBe('2026-10-06T10:00:00+00:00')
+        ->and($done->chunkProgressAt)->toBe('2026-10-06T10:00:00+00:00')
         ->and($done->withChunkCompleted('indexes', 't', 'M#0', $chunk, 'later'))->toBe($done)
         ->and($state->withChunkCompleted('verify', 't', 'M#0', $chunk, 'x'))->toBe($state)
         ->and($state->withChunkCompleted('indexes', 'other', 'M#0', $chunk, 'x'))->toBe($state)
@@ -98,4 +99,17 @@ it('keeps the chunks completed since a snapshot when a state computed from it is
 
     expect($replanned->withCompletionsSince($snapshot, $fresh))->toBe($replanned)
         ->and(EmbeddingSwitchState::describeChunks(['a' => $chunk(1), 'z' => ['model' => 'App\Models\Post', 'from' => null, 'to' => null]]))->toBe('M [1, 2), Post [start, end)');
+});
+
+it('keeps the later chunk progress time when it merges completions', function (): void {
+    $chunks = ['M#0' => ['model' => 'M', 'from' => null, 'to' => 5], 'M#1' => ['model' => 'M', 'from' => 5, 'to' => null]];
+    $snapshot = (new EmbeddingSwitchState('running', 'indexes', 't', 'p'))->withChunkPlan('indexes', $chunks)->with(chunkProgressAt: '2026-10-06T10:00:00+00:00');
+    $fresh = $snapshot->withChunkCompleted('indexes', 't', 'M#0', $chunks['M#0'], '2026-10-06T10:05:00+00:00');
+
+    $merged = $snapshot->with(rounds: 1)->withCompletionsSince($snapshot, $fresh);
+
+    expect($merged->pendingChunks)->toBe(['M#1' => $chunks['M#1']])
+        ->and($merged->chunkProgressAt)->toBe('2026-10-06T10:05:00+00:00')
+        ->and($snapshot->withoutChunkPlan()->chunkPhase)->toBeNull()
+        ->and($snapshot->withoutChunkPlan()->chunkProgressAt)->toBeNull();
 });

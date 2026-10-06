@@ -268,3 +268,22 @@ it('fails the switch when its job times out, naming the timeout', function (): v
         ->and($state->phase)->toBe('indexes')
         ->and($state->error)->toContain('timed out after 900 s');
 });
+
+it('records the failure even when the state lock cannot be had', function (): void {
+    config()->set(EmbeddingSwitchStore::STATE_LOCK_WAIT_CONFIG, 1);
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE));
+    $held = Cache::lock(EmbeddingSwitchStore::STATE_LOCK, 10);
+    $held->get();
+
+    try {
+        (new SwitchEmbeddingModelJob)->failed(new RuntimeException('worker lost'));
+    } finally {
+        $held->release();
+    }
+
+    $state = app(EmbeddingSwitchStore::class)->get();
+
+    expect($state->status)->toBe('failed')
+        ->and($state->phase)->toBe('indexes')
+        ->and($state->error)->toBe('worker lost');
+});

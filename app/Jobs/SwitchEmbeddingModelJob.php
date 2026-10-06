@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -14,6 +15,7 @@ use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchOrchestrator;
+use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Throwable;
 
 /**
@@ -131,7 +133,11 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
     }
 
     /**
-     * Records the failure in the switch state, so the panel and `ai:embeddings:status` show it.
+     * Records the failure in the switch state, so the panel and `ai:embeddings:status` show it. This
+     * is the last chance to record it: when the state lock cannot be had (a writer holding it, a lock
+     * timeout being what failed the job), the failed state is written without the lock. A chunk
+     * completion racing that write can be lost; the chunk then stays pending and is written again
+     * on `--resume`.
      */
     public function failed(Throwable $exception): void
     {
@@ -141,6 +147,15 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
             ? 'the switch job timed out after ' . self::TIMEOUT_SECONDS . " s; run ai:embeddings:switch --resume ({$exception->getMessage()})"
             : $exception->getMessage();
 
-        app(EmbeddingSwitchOrchestrator::class)->fail($error);
+        try {
+            app(EmbeddingSwitchOrchestrator::class)->fail($error);
+        } catch (LockTimeoutException) {
+            $store = app(EmbeddingSwitchStore::class);
+            $state = $store->get();
+
+            if ($state->status === 'running') {
+                $store->put($state->with(status: 'failed', error: $error, updatedAt: now()->toIso8601String()));
+            }
+        }
     }
 }
