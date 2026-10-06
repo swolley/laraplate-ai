@@ -396,8 +396,10 @@ or names another one (the `/embed` answer decides, `/health` is the fallback). O
 `running`/`preflight`, sets `search.vector.suspended_reason = switching` in the same transaction and
 dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is rolled back.
 
-`SwitchEmbeddingModelJob` carries no data. It advances one phase, then dispatches itself again after
-5 seconds while the switch runs; runs never overlap (`WithoutOverlapping`). Phases, in order:
+`SwitchEmbeddingModelJob` carries no data. It advances one step, then dispatches itself again after
+5 seconds while the switch runs; runs never overlap (`WithoutOverlapping`). It writes no search
+document itself: the `indexes` and `verify` phases hand the documents to `IndexDocumentsChunkJob`
+chunks and wait for them. Phases, in order:
 
 1. **preflight**: the command already checked the target; the job counts the work.
 2. **embeddings**: dispatches `GenerateEmbeddingsJob` with the target for every record still missing
@@ -405,18 +407,26 @@ dispatches `SwitchEmbeddingModelJob`; when the job cannot be queued the start is
    `embeddings` queue is not empty and dispatches what is still missing again, up to 3 rounds, then
    fails naming the records. Rows of the previous model are kept, so a failed switch leaves the
    serving model intact. Records created or edited during the switch are embedded with the target.
-3. **indexes**: runs with the target as `VectorModelContext` and with the target's dimensions and
-   similarity in this process only, so every document carries only the target's vectors. On pgvector
-   the target's partial index is created. For each embeddable model, an index whose vectors have
-   other dimensions (as Elasticsearch reports them) is recreated; otherwise it is emptied; then every
-   searchable document is written again. The Elasticsearch documentation indexes are recreated
-   (`ai:create-rag-index --force`, `ai:index-rag-docs --full`) with the target in force, when FAQ is
-   on and `ai.features.faq.vector_store` is `elasticsearch`.
-4. **verify**: rewrites every document with the target's vectors first (records edited since the
-   indexes phase were indexed with the serving model's vectors), then checks per model: the index
-   holds one document per searchable record (engines with their own index; not the database
-   engine), every record has target rows, and with vector search on, the mapping reports the target's
-   dimensions and a vector query of the embedded text `test` runs.
+3. **indexes**: every step runs with the target as `VectorModelContext` and with the target's
+   dimensions and similarity in that process only, so every document carries only the target's
+   vectors. The first step does the once-only work: on pgvector the target's partial index is
+   created; for each embeddable model, an index whose vectors have other dimensions (as Elasticsearch
+   reports them) is recreated, otherwise it is emptied; the Elasticsearch documentation indexes are
+   recreated (`ai:create-rag-index --force`, `ai:index-rag-docs --full`) with the target in force,
+   when FAQ is on and `ai.features.faq.vector_store` is `elasticsearch`. It then stores a chunk plan in
+   the switch state: per model, key ranges of `ai.features.embeddings.index_chunk_size` records
+   (default 250), the first and last range open so that every record falls in one. The next step
+   dispatches one `IndexDocumentsChunkJob` per chunk on the `embeddings-index` queue; each writes the
+   searchable documents of its range and records the chunk as written. The phase waits while that
+   queue holds jobs, dispatches the chunks still pending again, up to 3 rounds, then fails naming
+   them (model and key range). A chunk is idempotent; one the state no longer expects (written
+   already, another plan, a switch failed or abandoned) is skipped.
+4. **verify**: rewrites every document with the target's vectors first, in chunks, exactly as the
+   indexes phase writes them (records edited since the indexes phase were indexed with the serving
+   model's vectors), then checks per model: the index holds one document per searchable record
+   (engines with their own index; not the database engine), every record has target rows, and with
+   vector search on, the mapping reports the target's dimensions and a vector query of the embedded
+   text `test` runs.
 5. **activate**: in one transaction writes `search.vector.dimensions`,
    `search.vector.similarity`, `search.vector.model` and sets `features.embeddings.model` to the
    target; then clears the suspension, sets the state `idle`, forgets the guard's cached dimension
@@ -430,7 +440,12 @@ run killed by the 900-second timeout. `search.vector.model`, the previous model'
 search are left as they are. `--resume` continues; repeating the activation is harmless. A failed
 `indexes` or `verify` resumes at `embeddings`: a record edited while the switch was failed, or one
 whose `GenerateEmbeddingsJob` failed, is embedded again (when nothing is missing the phase moves
-straight on to `indexes`), so the verification cannot fail on it forever.
+straight on), so the verification cannot fail on it forever. The chunk plan survives the resume: a
+failed or interrupted `indexes` writes only the chunks still pending, without emptying the indexes
+again; a `verify` whose refresh ran out of rounds goes back to `verify` and refreshes every document
+again; a `verify` that failed a check, or was interrupted, empties and rebuilds the indexes.
+`ai:embeddings:status` shows the chunks written, pending and the round; the settings page and the
+refusal of `--resume`/`--abandon` on a running switch show the chunks written.
 
 **Abandon.** A start refused in its preflight is cleared: state `idle`, `features.embeddings.model`
 set back to the active model, suspension lifted, nothing re-embedded. After a later failure, or when a
@@ -443,23 +458,37 @@ the start is not repeated.
 
 ### Operating notes
 
-- `SwitchEmbeddingModelJob` (`SwitchEmbeddingModelJob::QUEUE`) and the command queued by the
-  settings confirmation go to the `embeddings-switch` queue. The shipped Horizon supervisor
-  `supervisor-embeddings-switch` (`config/horizon.php`) watches it with 1 process and a timeout of
-  960 s, above the job's 900 s. Not the `embeddings` queue: the embeddings phase waits while that
-  queue holds jobs. Without a worker on `embeddings-switch` a started switch never advances.
-- The queue connection's `retry_after` must be at least 1000 s (above the 960 s supervisor timeout),
-  or a long `indexes` phase is handed out a second time. The shipped `redis` connection reads
-  `REDIS_QUEUE_RETRY_AFTER` with a default of 90: raise it where switches run. No dedicated
-  connection is shipped.
+- A switch uses three queues. `SwitchEmbeddingModelJob` (`SwitchEmbeddingModelJob::QUEUE`) and the
+  command queued by the settings confirmation go to `embeddings-switch`, watched by the shipped
+  Horizon supervisor `supervisor-embeddings-switch` (`config/horizon.php`) with 1 process and a
+  timeout of 960 s, above the job's 900 s. `GenerateEmbeddingsJob` goes to `embeddings`
+  (`supervisor-embeddings`). `IndexDocumentsChunkJob` (`IndexDocumentsChunkJob::QUEUE`) goes to
+  `embeddings-index`, watched by `supervisor-embeddings-index` with 1 process (pgvector index writes
+  are not parallel; more processes are safe for the switch state, whose writes are serialised by the
+  cache lock `embeddings:switch:state`) and a timeout of 300 s, above the chunk's 240 s. The switch
+  job is on neither of the other two queues because the phases wait while those hold jobs. Without
+  a worker on each of the three a started switch stops advancing.
+- `ai.features.embeddings.index_chunk_size` (env `AI_EMBEDDINGS_INDEX_CHUNK_SIZE`, default 250) is
+  the number of records per index chunk. It is plain config, not a setting. Smaller chunks give
+  finer progress and cheaper retries, larger ones fewer jobs.
+- The queue connection's `retry_after` must exceed the longest job timeout, or a job still running
+  is handed out a second time: 300 s for the chunks, and 1000 s for the switch job. The switch job
+  no longer writes the documents, but its 900 s stay justified by the step that prepares the
+  `indexes` phase, which rebuilds the Elasticsearch documentation indexes in one run when FAQ keeps
+  them there (every documentation document is embedded with the target); its other steps take
+  seconds to a minute. The shipped `redis` connection reads `REDIS_QUEUE_RETRY_AFTER` with a default
+  of 90: raise it to at least 1000 where switches run. No dedicated connection is shipped.
+- The switch state (`features.embeddings.switch`) holds the pending chunks while a chunked phase
+  runs, about a hundred bytes per chunk.
 - During the indexes phase an index is recreated or emptied before its documents are written again:
   for that window keyword search on the model returns fewer results or none.
 - RAG answers are inconsistent during a switch: the Elasticsearch documentation indexes are rebuilt
   for the target while questions are still embedded with the serving model, until activation. A
   `filesystem` or `memory` documentation store is not rebuilt by the switch: run
   `php artisan ai:index-rag-docs --full` after it.
-- A record edited between the verify refresh and the activation (seconds) keeps a document with the
-  previous model's vectors until it is saved again.
+- A record edited between the moment its chunk of the verify refresh is written and the activation
+  keeps a document with the previous model's vectors until it is saved again. With chunks the
+  window is the rest of the refresh plus the checks, no longer seconds.
 - Embeddings from `openai`, `ollama`, `mistral` and `voyageai` use the service model of the profile
   in force (the part after `provider:` in the key); `ai.providers.*.model` is only the fallback when a
   provider other than the profile's is asked for explicitly.

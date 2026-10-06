@@ -46,11 +46,30 @@ final class RecordingSwitchSearchEngine extends Engine implements IReportsVector
      */
     public ?string $failVectorQueries = null;
 
+    /**
+     * Scout keys whose document write throws, as a search engine refusing a bulk request would.
+     *
+     * @var list<string>
+     */
+    public array $refusedDocuments = [];
+
+    /**
+     * The number of documents written, over every call.
+     */
+    public int $writes = 0;
+
     public function __construct(public int $initialDimensions = 384) {}
 
     public function update($models): void
     {
         foreach ($models as $model) {
+            if (in_array((string) $model->getScoutKey(), $this->refusedDocuments, true)) {
+                throw new RuntimeException("refused to index document {$model->getScoutKey()}");
+            }
+        }
+
+        foreach ($models as $model) {
+            $this->writes++;
             $this->documents[$model->searchableAs()][(string) $model->getScoutKey()] = $model->toSearchableArray();
         }
     }

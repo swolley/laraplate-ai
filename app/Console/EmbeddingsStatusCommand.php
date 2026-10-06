@@ -35,6 +35,7 @@ final class EmbeddingsStatusCommand extends Command
             ['target', $state->target ?? '-'],
             ['previous', $state->previous ?? '-'],
             ['progress', "{$state->done}/{$state->total}"],
+            ['index chunks', $state->chunkPhase === null ? '-' : "{$state->chunksDone}/{$state->chunksTotal} written ({$state->chunkPhase} phase, " . count($state->pendingChunks) . ' pending, round ' . $state->rounds . ')'],
             ['started at', $state->startedAt ?? '-'],
             ['error', $state->error ?? '-'],
         ]);

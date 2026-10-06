@@ -8,7 +8,6 @@ use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Laravel\Scout\Engines\Engine;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Contracts\IRagIndexRebuilder;
 use Modules\Core\Models\ModelEmbedding;
@@ -18,34 +17,49 @@ use Modules\Core\Search\Contracts\ISearchEngine;
 use Modules\Core\Search\Support\VectorModelContext;
 
 /**
- * The `indexes` phase of an embedding model switch: every embeddable model's index is filled again
- * with the target's vectors, and the documentation indexes are rebuilt for it.
+ * The index work of an embedding model switch: every embeddable model's index is filled again with
+ * the target's vectors, and the documentation indexes are rebuilt for it.
  *
- * It runs inside {@see VectorModelContext::using()} with the target key, so each document carries
- * only the target's vectors. The engines size the vector mapping from `core.search.vector.dimensions`
- * (and `similarity`) when they create an index, so both are set to the target's for the duration of
- * the phase, in this process only, and restored afterwards. An index whose vectors already have the
- * target's dimensions keeps its mapping but is emptied before its documents are written again, so
- * documents of records that are no longer searchable cannot survive; any other index is recreated.
- * {@see self::refresh()} rewrites the documents only, for the `verify` phase.
+ * {@see self::prepare()} is the once-only part of the `indexes` phase, run by the switch job: on
+ * pgvector the target's partial index is created, an index whose vectors already have the target's
+ * dimensions keeps its mapping but is emptied (documents of records that are no longer searchable
+ * must not survive), any other index is recreated, and the RAG indexes are rebuilt. The documents
+ * themselves are written afterwards in chunks ({@see self::plan()}), each by an
+ * `IndexDocumentsChunkJob` calling {@see self::writeChunk()}; the `verify` phase writes them all
+ * once more the same way, without touching the indexes.
+ *
+ * Everything runs inside {@see VectorModelContext::using()} with the target key, so each document
+ * carries only the target's vectors. The engines size the vector mapping from
+ * `core.search.vector.dimensions` (and `similarity`) when they create an index, so both are set to
+ * the target's for the duration of the work, in that process only, and restored afterwards.
  */
 final readonly class EmbeddingSwitchIndexes
 {
+    /**
+     * The config key of the number of records per chunk.
+     */
+    public const string CHUNK_SIZE_CONFIG = 'ai.features.embeddings.index_chunk_size';
+
+    public const int DEFAULT_CHUNK_SIZE = 250;
+
     public function __construct(
         private EmbeddingSwitchCorpus $corpus,
         private IRagIndexRebuilder $rag,
     ) {}
 
     /**
+     * Creates the pgvector profile index, recreates or empties each embeddable model's index and
+     * rebuilds the RAG indexes for the target; writes no document of the models.
+     *
      * @param  int|null  $currentDimensions  The dimensions of an index whose engine cannot report them
      */
-    public function rebuild(EmbeddingModelProfile $target, ?int $currentDimensions): void
+    public function prepare(EmbeddingModelProfile $target, ?int $currentDimensions): void
     {
         $this->ensureProfileIndex($target);
 
         $this->asTarget($target, function () use ($target, $currentDimensions): void {
             foreach ($this->corpus->models() as $modelClass) {
-                $this->rebuildModel($modelClass, $target, $currentDimensions);
+                $this->resetIndex($modelClass, $target, $currentDimensions);
             }
 
             $this->rag->rebuild($target);
@@ -53,20 +67,54 @@ final readonly class EmbeddingSwitchIndexes
     }
 
     /**
-     * Writes every searchable document again with the target's vectors, without touching the index
-     * or its mapping: the documents of records edited since the `indexes` phase were written by the
-     * normal pipeline with the serving model's vectors.
+     * The chunks that write every searchable document once: per embeddable model, ranges of
+     * {@see self::chunkSize()} keys covering the whole key space, by an id unique in the plan.
+     *
+     * @return array<string, array{model: string, from: int|string|null, to: int|string|null}>
      */
-    public function refresh(EmbeddingModelProfile $target): void
+    public function plan(): array
     {
-        $this->asTarget($target, function () use ($target): void {
-            foreach ($this->corpus->models() as $modelClass) {
-                /** @var Model $instance */
-                $instance = new $modelClass();
+        $chunks = [];
 
-                $this->writeDocuments($modelClass, $instance, $instance->searchableUsing(), $target);
+        foreach ($this->corpus->models() as $modelClass) {
+            foreach ($this->corpus->keyRanges($modelClass, $this->chunkSize()) as $index => $range) {
+                $chunks["{$modelClass}#{$index}"] = ['model' => $modelClass, 'from' => $range['from'], 'to' => $range['to']];
             }
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * Writes the searchable documents of one chunk with the target's vectors, without touching the
+     * index or its mapping. Writing a chunk again writes the same documents again.
+     *
+     * @param  array{model: string, from: int|string|null, to: int|string|null}  $chunk
+     */
+    public function writeChunk(EmbeddingModelProfile $target, array $chunk): void
+    {
+        /** @var class-string<Model> $modelClass */
+        $modelClass = $chunk['model'];
+
+        $this->asTarget($target, function () use ($modelClass, $target, $chunk): void {
+            /** @var Model $instance */
+            $instance = new $modelClass();
+            $engine = $instance->searchableUsing();
+
+            $this->corpus->eachSearchableChunk($modelClass, static function (Collection $records) use ($engine, $instance): void {
+                $engine->update($instance->makeSearchableUsing($records));
+            }, ['embeddings' => static function (Relation $query) use ($target): void {
+                $query->where('model_key', $target->key);
+            }], $chunk['from'], $chunk['to']);
         });
+    }
+
+    /**
+     * The number of records per chunk, `ai.features.embeddings.index_chunk_size`, at least 1.
+     */
+    public function chunkSize(): int
+    {
+        return max(1, config()->integer(self::CHUNK_SIZE_CONFIG, self::DEFAULT_CHUNK_SIZE));
     }
 
     /**
@@ -111,12 +159,12 @@ final readonly class EmbeddingSwitchIndexes
     }
 
     /**
-     * Recreates the index when its vectors have other dimensions, empties it otherwise (documents of
-     * records that are no longer searchable must not survive), then writes every searchable document.
+     * Recreates the index when its vectors have other dimensions, empties it otherwise: documents of
+     * records that are no longer searchable must not survive.
      *
      * @param  class-string<Model>  $modelClass
      */
-    private function rebuildModel(string $modelClass, EmbeddingModelProfile $target, ?int $currentDimensions): void
+    private function resetIndex(string $modelClass, EmbeddingModelProfile $target, ?int $currentDimensions): void
     {
         /** @var Model $instance */
         $instance = new $modelClass();
@@ -131,19 +179,5 @@ final readonly class EmbeddingSwitchIndexes
         } else {
             $engine->flush($instance);
         }
-
-        $this->writeDocuments($modelClass, $instance, $engine, $target);
-    }
-
-    /**
-     * @param  class-string<Model>  $modelClass
-     */
-    private function writeDocuments(string $modelClass, Model $instance, Engine $engine, EmbeddingModelProfile $target): void
-    {
-        $this->corpus->eachSearchableChunk($modelClass, static function (Collection $chunk) use ($engine, $instance): void {
-            $engine->update($instance->makeSearchableUsing($chunk));
-        }, ['embeddings' => static function (Relation $query) use ($target): void {
-            $query->where('model_key', $target->key);
-        }]);
     }
 }

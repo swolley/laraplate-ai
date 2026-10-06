@@ -109,6 +109,9 @@ SENTENCE_TRANSFORMERS_BATCH_SIZE=32  # Documents per /embed batch (lower it if o
 CROSS_ENCODER_URL=                   # Base URL of the service exposing POST /score; falls back to SENTENCE_TRANSFORMERS_URL (no built-in address)
 CROSS_ENCODER_API_KEY=               # Key for that service; falls back to SENTENCE_TRANSFORMERS_API_KEY
 
+# Embedding model switch
+AI_EMBEDDINGS_INDEX_CHUNK_SIZE=250   # Records per IndexDocumentsChunkJob when a switch writes the search indexes (embeddings-index queue)
+
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key
 
@@ -194,7 +197,7 @@ The AI Module includes built-in features such as:
     - Vector search integration with Elasticsearch and Typesense
     - Batch processing for large documents
     - Graceful degradation: a permanent embedding failure indexes the document keyword-only instead of dropping it; backfill missing embeddings with `php artisan ai:embeddings:repair "<Model FQCN>"`. See [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md).
-    - Model switch: the model is the setting `features.embeddings.model` (`provider:model`); changing it asks for confirmation and runs `ai:embeddings:switch`, which re-embeds, rebuilds the indexes, verifies and activates the new model while vector search is off. Each profile declares its `dimensions`, measured with `ai:embeddings:probe {profile}`. Follow a switch with `ai:embeddings:status`, continue or give it up with `--resume` / `--abandon`, delete unused rows with `ai:embeddings:prune --model-key=<key>`. The switch job runs on the `embeddings-switch` queue (Horizon supervisor `supervisor-embeddings-switch`, timeout 960 s); the queue connection's `retry_after` must be at least 1000 s. See [docs/rag/MODULE.md](docs/rag/MODULE.md), section *Embedding model and model switch*.
+    - Model switch: the model is the setting `features.embeddings.model` (`provider:model`); changing it asks for confirmation and runs `ai:embeddings:switch`, which re-embeds, rebuilds the indexes, verifies and activates the new model while vector search is off. Each profile declares its `dimensions`, measured with `ai:embeddings:probe {profile}`. Follow a switch with `ai:embeddings:status`, continue or give it up with `--resume` / `--abandon`, delete unused rows with `ai:embeddings:prune --model-key=<key>`. The switch job runs on the `embeddings-switch` queue (Horizon supervisor `supervisor-embeddings-switch`, timeout 960 s) and writes the search documents through `IndexDocumentsChunkJob` chunks on the `embeddings-index` queue (supervisor `supervisor-embeddings-index`, 1 process, timeout 300 s; `AI_EMBEDDINGS_INDEX_CHUNK_SIZE` records per chunk); the queue connection's `retry_after` must be at least 1000 s, for the step that rebuilds the documentation indexes. See [docs/rag/MODULE.md](docs/rag/MODULE.md), section *Embedding model and model switch*.
 
 -   **Automatic Translation:**
     - Automatic translation on model creation/update

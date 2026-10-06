@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Embeddings\Switching;
 
 use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Collection as BaseCollection;
 use Modules\AI\Contracts\IEmbeddableModels;
 use Modules\AI\Services\ModelEmbeddingSynchronizer;
 use Modules\Core\Models\Concerns\HasTranslations;
@@ -47,19 +49,23 @@ final readonly class EmbeddingSwitchCorpus
     }
 
     /**
-     * Calls `$callback` with each chunk of the searchable records of `$modelClass`.
+     * Calls `$callback` with each chunk of the searchable records of `$modelClass`, only those whose
+     * key is at least `$from` and below `$to` when they are given.
      *
      * @param  class-string<Model>  $modelClass
      * @param  Closure(Collection<int, Model>): void  $callback
-     * @param  array<int|string, mixed>  $with  Relations to eager-load on each chunk
+     * @param  array<int|string, string|(Closure(Relation<*, *, *>): mixed)>  $with  Relations to eager-load on each chunk
      */
-    public function eachSearchableChunk(string $modelClass, Closure $callback, array $with = []): void
+    public function eachSearchableChunk(string $modelClass, Closure $callback, array $with = [], int|string|null $from = null, int|string|null $to = null): void
     {
         /** @var Model $instance */
         $instance = new $modelClass();
+        $key = $instance->getQualifiedKeyName();
 
-        $modelClass::makeAllSearchableQuery()
+        $this->importQuery($modelClass)
             ->with($with)
+            ->when($from !== null, static fn (Builder $query) => $query->where($key, '>=', $from))
+            ->when($to !== null, static fn (Builder $query) => $query->where($key, '<', $to))
             ->chunkById(self::CHUNK, static function (Collection $chunk) use ($callback): void {
                 $searchable = $chunk
                     ->filter(static fn (Model $model): bool => ! method_exists($model, 'shouldBeSearchable') || $model->shouldBeSearchable())
@@ -69,6 +75,42 @@ final readonly class EmbeddingSwitchCorpus
                     $callback($searchable);
                 }
             }, $instance->getQualifiedKeyName(), $instance->getKeyName());
+    }
+
+    /**
+     * Splits the key space of `$modelClass` into ranges of about `$size` records of the population
+     * `scout:import` indexes, in key order: `from` is the first key of a range (inclusive), `to` the
+     * first key of the next one (exclusive). The first range has no lower bound and the last no upper
+     * bound, so every record, also one created after the split, falls in exactly one range; a model
+     * with no records has one unbounded range.
+     *
+     * @param  class-string<Model>  $modelClass
+     * @return list<array{from: int|string|null, to: int|string|null}>
+     */
+    public function keyRanges(string $modelClass, int $size): array
+    {
+        /** @var Model $instance */
+        $instance = new $modelClass();
+        $starts = [];
+
+        $this->importQuery($modelClass)
+            ->toBase()
+            ->select($instance->getQualifiedKeyName())
+            ->chunkById(max(1, $size), static function (BaseCollection $rows) use (&$starts, $instance): void {
+                $starts[] = $rows->first()->{$instance->getKeyName()};
+            }, $instance->getQualifiedKeyName(), $instance->getKeyName());
+
+        $ranges = [];
+        $count = max(1, count($starts));
+
+        for ($index = 0; $index < $count; $index++) {
+            $ranges[] = [
+                'from' => $index === 0 ? null : $starts[$index],
+                'to' => $starts[$index + 1] ?? null,
+            ];
+        }
+
+        return $ranges;
     }
 
     /**
@@ -117,7 +159,7 @@ final readonly class EmbeddingSwitchCorpus
                         continue;
                     }
 
-                    /** @var \Illuminate\Support\Collection<int, ModelEmbedding> $rows */
+                    /** @var BaseCollection<int, ModelEmbedding> $rows */
                     $rows = $model->getRelation('embeddings');
                     $embedded = array_filter($expected, static fn (array $row): bool => $rows->contains(
                         static fn (ModelEmbedding $stored): bool => $stored->model_key === $modelKey
@@ -136,6 +178,17 @@ final readonly class EmbeddingSwitchCorpus
         }
 
         return ['total' => $total, 'done' => $done, 'pending' => $pending];
+    }
+
+    /**
+     * The query `scout:import` indexes `$modelClass` with.
+     *
+     * @param  class-string<Model>  $modelClass
+     * @return Builder<Model>
+     */
+    private function importQuery(string $modelClass): Builder
+    {
+        return $modelClass::makeAllSearchableQuery();
     }
 
     /**

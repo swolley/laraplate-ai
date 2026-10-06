@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Embeddings\Switching;
 
 use Closure;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Modules\Core\Models\Setting;
 use Modules\Core\Services\SettingsCacheCoordinator;
@@ -12,7 +13,9 @@ use Modules\Core\Services\SettingsCacheCoordinator;
 /**
  * Persists the {@see EmbeddingSwitchState} in the managed setting `features.embeddings.switch`,
  * suspends and resumes vector search through `search.vector.suspended_reason`, and serialises
- * switch starts with an atomic lock.
+ * switch starts with an atomic lock. While a switch runs, the switch job and the chunk jobs write
+ * the state through {@see self::update()}, which re-reads and writes it under its own lock, so a
+ * chunk completion is never overwritten by a write computed from an older state.
  */
 final class EmbeddingSwitchStore
 {
@@ -25,6 +28,14 @@ final class EmbeddingSwitchStore
     private const string TARGET_SETTING = 'features.embeddings.model';
 
     private const string LOCK = 'embeddings:switch';
+
+    private const string STATE_LOCK = 'embeddings:switch:state';
+
+    /**
+     * An update is a read and a write of one setting: the lock is held for milliseconds, and a
+     * writer waits for it at most this long before its job fails and is retried.
+     */
+    private const int STATE_LOCK_SECONDS = 10;
 
     /**
      * The lock covers only the start (the preflight's network calls, about 35 seconds at most); the
@@ -43,6 +54,33 @@ final class EmbeddingSwitchStore
     public function put(EmbeddingSwitchState $state): void
     {
         Setting::writeManaged(self::SETTING, $state->toJson());
+    }
+
+    /**
+     * Reads the state, applies `$change` and stores the result, under a lock shared by every writer
+     * of a running switch; nothing is written when `$change` returns the state unchanged.
+     *
+     * @param  Closure(EmbeddingSwitchState): EmbeddingSwitchState  $change
+     *
+     * @throws LockTimeoutException when another writer holds the lock for longer than the wait
+     */
+    public function update(Closure $change): EmbeddingSwitchState
+    {
+        $lock = Cache::lock(self::STATE_LOCK, self::STATE_LOCK_SECONDS);
+        $lock->block(self::STATE_LOCK_SECONDS);
+
+        try {
+            $current = $this->get();
+            $next = $change($current);
+
+            if ($next->toJson() !== $current->toJson()) {
+                $this->put($next);
+            }
+
+            return $next;
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

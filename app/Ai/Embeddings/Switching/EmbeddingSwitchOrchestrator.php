@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use Modules\AI\Ai\Embeddings\EmbeddingModelProfile;
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
+use Modules\AI\Jobs\IndexDocumentsChunkJob;
 use Throwable;
 
 /**
@@ -19,12 +20,17 @@ use Throwable;
  * `embeddings`, `indexes`, `verify`, `activate`. The persisted state is the only memory between
  * steps, so a worker restart loses nothing: `SwitchEmbeddingModelJob` calls {@see self::advance()}
  * and dispatches itself again while {@see self::canAdvance()} holds. Every step writes the state,
- * which is also the heartbeat {@see EmbeddingSwitchState::isInterrupted()} reads.
+ * which is also the heartbeat {@see EmbeddingSwitchState::isInterrupted()} reads. The write goes
+ * through {@see EmbeddingSwitchStore::update()} and keeps the chunks completed while the step ran.
  *
- * Only `embeddings` waits on queued work: it dispatches `GenerateEmbeddingsJob` with the target for
- * every record still missing a row of it, then stays in the phase until every record has one. When
- * the queue is empty and records are still missing, it dispatches them again, up to
- * {@see self::MAX_EMBEDDING_ROUNDS} times, then fails.
+ * Three phases wait on queued work. `embeddings` dispatches `GenerateEmbeddingsJob` with the target
+ * for every record still missing a row of it, then stays in the phase until every record has one.
+ * `indexes` prepares the indexes in one step and stores a chunk plan, then dispatches one
+ * `IndexDocumentsChunkJob` per pending chunk and stays in the phase until none is pending; `verify`
+ * plans, dispatches and waits for its refresh the same way, then checks. While the queue of the
+ * phase's jobs holds work the phase waits; when it is empty and work is still missing, it dispatches
+ * what is missing again, up to {@see self::MAX_EMBEDDING_ROUNDS} (records) or
+ * {@see self::MAX_CHUNK_ROUNDS} (chunks) times, then fails naming it.
  *
  * A check that does not hold fails the switch in its phase ({@see EmbeddingSwitchPhaseFailed}).
  * Any other error propagates, so the job retries it and records it once its tries are spent.
@@ -38,6 +44,8 @@ final readonly class EmbeddingSwitchOrchestrator
     public const array HANDLED_PHASES = ['preflight', 'embeddings', 'indexes', 'verify', 'activate'];
 
     public const int MAX_EMBEDDING_ROUNDS = 3;
+
+    public const int MAX_CHUNK_ROUNDS = 3;
 
     public function __construct(
         private EmbeddingSwitchStore $store,
@@ -76,10 +84,7 @@ final readonly class EmbeddingSwitchOrchestrator
             return $this->fail($failure->getMessage());
         }
 
-        $next = $next->with(updatedAt: now()->toIso8601String());
-        $this->store->put($next);
-
-        return $next;
+        return $this->commit($state, $next->with(updatedAt: now()->toIso8601String()));
     }
 
     public function canAdvance(EmbeddingSwitchState $state): bool
@@ -93,16 +98,25 @@ final readonly class EmbeddingSwitchOrchestrator
      */
     public function fail(string $error): EmbeddingSwitchState
     {
-        $state = $this->store->get();
+        return $this->store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state->status === 'running'
+            ? $state->with(status: 'failed', error: $error, updatedAt: now()->toIso8601String())
+            : $state);
+    }
 
-        if ($state->status !== 'running') {
-            return $state;
-        }
+    /**
+     * Stores `$next`, computed from `$snapshot`, keeping the chunks completed since the snapshot was
+     * read. When the stored switch is no longer the one the step ran for (resumed, abandoned, failed
+     * meanwhile), the stored state wins and `$next` is dropped.
+     */
+    private function commit(EmbeddingSwitchState $snapshot, EmbeddingSwitchState $next): EmbeddingSwitchState
+    {
+        return $this->store->update(static function (EmbeddingSwitchState $fresh) use ($snapshot, $next): EmbeddingSwitchState {
+            if ($fresh->status !== 'running' || $fresh->phase !== $snapshot->phase || $fresh->target !== $snapshot->target || $fresh->startedAt !== $snapshot->startedAt) {
+                return $fresh;
+            }
 
-        $failed = $state->with(status: 'failed', error: $error, updatedAt: now()->toIso8601String());
-        $this->store->put($failed);
-
-        return $failed;
+            return $next->withCompletionsSince($snapshot, $fresh);
+        });
     }
 
     /**
@@ -127,7 +141,7 @@ final readonly class EmbeddingSwitchOrchestrator
         $counted = $state->with(total: $progress['total'], done: $progress['done']);
 
         if ($progress['pending'] === []) {
-            return $counted->with(phase: 'indexes', rounds: 0);
+            return $this->afterEmbeddings($counted);
         }
 
         if ($state->rounds > 0 && Queue::size(GenerateEmbeddingsJob::QUEUE) > 0) {
@@ -166,29 +180,98 @@ final readonly class EmbeddingSwitchOrchestrator
         }
     }
 
-    private function rebuildIndexes(EmbeddingSwitchState $state): EmbeddingSwitchState
+    /**
+     * The phase after the embeddings. Normally `indexes`; a switch resumed after its `verify` refresh
+     * ran out of rounds goes back to `verify`, which plans the refresh again: the indexes are not
+     * the problem there, and a full refresh also rewrites documents of records edited while the
+     * switch was failed.
+     */
+    private function afterEmbeddings(EmbeddingSwitchState $state): EmbeddingSwitchState
     {
-        $this->indexes->rebuild($this->target($state), $this->activeDimensions());
+        if ($state->chunkPhase === 'verify' && $state->pendingChunks !== []) {
+            return $state->with(phase: 'verify', rounds: 0, chunkPhase: null, pendingChunks: [], chunksTotal: 0, chunksDone: 0);
+        }
 
-        return $state->with(phase: 'verify', rounds: 0);
+        return $state->with(phase: 'indexes', rounds: 0);
     }
 
     /**
-     * Rewrites every document with the target's vectors first, then checks. A record edited after
-     * the `indexes` phase is embedded with the target (the switch runs), but the normal pipeline
-     * writes its document with the rows of the serving model, which is still the previous one; the
-     * refresh replaces those documents, also when a switch left failed in `verify` is resumed days
-     * later. A record edited between this refresh and the activation (the checks and the settings
-     * write, seconds) keeps such a document until it is saved again.
+     * Without a plan of its own, prepares the indexes (once-only work, in this step) and stores the
+     * chunk plan; with one, dispatches and waits for its chunks. A plan left by a failed or
+     * interrupted run is kept, so a resumed switch writes only the chunks still pending.
+     */
+    private function rebuildIndexes(EmbeddingSwitchState $state): EmbeddingSwitchState
+    {
+        $target = $this->target($state);
+
+        if ($state->chunkPhase !== 'indexes') {
+            $this->indexes->prepare($target, $this->activeDimensions());
+
+            return $state->withChunkPlan('indexes', $this->indexes->plan());
+        }
+
+        if ($state->pendingChunks === []) {
+            return $state->with(phase: 'verify', rounds: 0);
+        }
+
+        return $this->awaitChunks($state, $target);
+    }
+
+    /**
+     * Rewrites every document with the target's vectors first, in chunks, then checks. A record
+     * edited after the `indexes` phase is embedded with the target (the switch runs), but the normal
+     * pipeline writes its document with the rows of the serving model, which is still the previous
+     * one; the refresh replaces those documents, also when a switch left failed in `verify` is
+     * resumed days later. A record edited between its chunk of the refresh and the activation keeps
+     * such a document until it is saved again.
      */
     private function verify(EmbeddingSwitchState $state): EmbeddingSwitchState
     {
         $target = $this->target($state);
 
-        $this->indexes->refresh($target);
+        if ($state->chunkPhase !== 'verify') {
+            return $state->withChunkPlan('verify', $this->indexes->plan());
+        }
+
+        if ($state->pendingChunks !== []) {
+            return $this->awaitChunks($state, $target);
+        }
+
         $this->verifier->verify($target);
 
         return $state->with(phase: 'activate');
+    }
+
+    /**
+     * Waits while the chunk queue holds jobs (after the first dispatch); otherwise dispatches every
+     * chunk still pending, up to {@see self::MAX_CHUNK_ROUNDS} rounds, then fails naming them.
+     *
+     * @throws EmbeddingSwitchPhaseFailed
+     */
+    private function awaitChunks(EmbeddingSwitchState $state, EmbeddingModelProfile $target): EmbeddingSwitchState
+    {
+        if ($state->rounds > 0 && Queue::size(IndexDocumentsChunkJob::QUEUE) > 0) {
+            return $state;
+        }
+
+        if ($state->rounds >= self::MAX_CHUNK_ROUNDS) {
+            throw new EmbeddingSwitchPhaseFailed(count($state->pendingChunks) . " of {$state->chunksTotal} index chunk(s) of the {$state->phase} phase were not written after " . self::MAX_CHUNK_ROUNDS . ' rounds (see the IndexDocumentsChunkJob errors in the log): ' . EmbeddingSwitchState::describeChunks($state->pendingChunks) . '. Run ai:embeddings:switch --resume to write them again');
+        }
+
+        foreach ($state->pendingChunks as $id => $chunk) {
+            try {
+                app(Dispatcher::class)->dispatch(new IndexDocumentsChunkJob((string) $state->phase, $target->key, $id, $chunk));
+            } catch (Throwable $exception) {
+                Log::warning('Embedding model switch: could not write an index chunk', [
+                    'phase' => $state->phase,
+                    'chunk' => $id,
+                    'target' => $target->key,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return $state->with(rounds: $state->rounds + 1);
     }
 
     /**

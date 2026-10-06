@@ -88,7 +88,7 @@ final readonly class EmbeddingModelSettingConfirmation implements ISettingChange
         $state = $this->store->get();
 
         return match ($state->status) {
-            'running' => "An embedding model switch to {$state->target} is running (phase {$state->phase}, {$state->done}/{$state->total}): the model can be changed when it ends.",
+            'running' => "An embedding model switch to {$state->target} is running (phase {$state->phase}, " . $state->progressLabel() . '): the model can be changed when it ends.',
             'failed' => "The embedding model switch to {$state->target} failed in phase {$state->phase}: {$state->error}. Resume or abandon it before choosing another model.",
             default => null,
         };

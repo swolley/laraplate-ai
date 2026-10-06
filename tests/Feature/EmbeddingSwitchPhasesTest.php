@@ -224,7 +224,7 @@ it('rewrites at the start of the verification the documents written meanwhile wi
     $this->engine->update(collect([$record->fresh()]));
     expect($this->engine->documentsOf($this->index)[$key]['embeddings'][0]['vector'][0])->toBe(Harness::vectorValue(Harness::ACTIVE));
 
-    app(EmbeddingSwitchOrchestrator::class)->advance();
+    Harness::advanceUntil('activate');
 
     $vectors = collect($this->engine->documentsOf($this->index)[$key]['embeddings'])->pluck('vector');
 

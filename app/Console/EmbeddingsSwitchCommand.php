@@ -38,7 +38,8 @@ use Throwable;
  * `--resume` continues a failed switch, or a running one that stopped making progress
  * ({@see EmbeddingSwitchState::isInterrupted()}), from its stored phase (a failed index build or
  * verification from the embeddings, which re-embed what changed; an interrupted verification from
- * the indexes, which are rebuilt). `--abandon` clears a start
+ * the indexes, which are rebuilt; an index build keeps its chunk plan and writes only the chunks
+ * still pending). `--abandon` clears a start
  * refused by its preflight, and after a later failure runs the same procedure back to the previous
  * model. Neither acts on a switch that is running normally.
  */
@@ -184,9 +185,11 @@ final class EmbeddingsSwitchCommand extends Command
     /**
      * The phase a resumed switch restarts at. A failed index build or verification restarts at the
      * embeddings: a record edited while the switch was failed (or whose embedding job failed) is
-     * embedded again, and the embeddings phase moves straight on to the indexes when nothing is
-     * pending. An interrupted verification restarts at the indexes. The indexes are emptied and
-     * rebuilt either way, so a leftover document or one with the wrong vectors is gone too.
+     * embedded again, and the embeddings phase moves straight on when nothing is pending. An
+     * interrupted verification restarts at the indexes. The resumed state keeps its chunk plan:
+     * an index build writes only the chunks still pending; a verification whose refresh ran out of
+     * rounds goes back to `verify` and refreshes every document again; any other verification
+     * empties and rebuilds the indexes, so a leftover document or one with the wrong vectors is gone.
      */
     private function resumePhase(EmbeddingSwitchState $state): string
     {
@@ -303,7 +306,7 @@ final class EmbeddingsSwitchCommand extends Command
         if ($state->status === 'running' && ! $state->isInterrupted()) {
             $since = $state->updatedAt ?? $state->startedAt ?? 'unknown';
 
-            return "The switch to \"{$state->target}\" is running (phase {$state->phase}, last progress at {$since}): it cannot be resumed or abandoned while it runs. Nothing was changed.";
+            return "The switch to \"{$state->target}\" is running (phase {$state->phase}, {$state->progressLabel()}, last progress at {$since}): it cannot be resumed or abandoned while it runs. Nothing was changed.";
         }
 
         return null;

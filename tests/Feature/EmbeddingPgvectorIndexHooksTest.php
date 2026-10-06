@@ -34,7 +34,7 @@ it('creates the index of the target in the indexes phase on pgvector only', func
     $fake = pgvector_hooks_fake($supported);
     $target = app(EmbeddingModelRegistry::class)->get(Harness::TARGET);
 
-    app(EmbeddingSwitchIndexes::class)->rebuild($target, 384);
+    app(EmbeddingSwitchIndexes::class)->prepare($target, 384);
 
     expect($fake->calls)->toBe($supported ? [['ensure', Harness::TARGET, $target->dimensions, $target->similarity]] : []);
 })->with([true, false]);

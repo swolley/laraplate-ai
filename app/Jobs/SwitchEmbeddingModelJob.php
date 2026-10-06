@@ -28,8 +28,11 @@ use Throwable;
  *
  * Every run goes to its own queue, {@see self::QUEUE}, watched by the Horizon supervisor
  * `supervisor-embeddings-switch` with a timeout above {@see self::TIMEOUT_SECONDS}. Not the
- * `embeddings` queue: the embeddings phase waits while that queue holds jobs, so a run queued
- * there would wait for itself.
+ * `embeddings` queue nor `embeddings-index`: the embeddings phase waits while the first holds jobs
+ * and the chunked phases while the second does, so a run queued there would wait for itself.
+ *
+ * A run does not write the search documents: the `indexes` and `verify` phases hand them to
+ * `IndexDocumentsChunkJob` chunks and only wait for them.
  */
 final class SwitchEmbeddingModelJob implements ShouldQueue
 {
@@ -42,7 +45,12 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
     public const int REDISPATCH_DELAY_SECONDS = 5;
 
     /**
-     * The longest a phase may take: the `indexes` phase rewrites every index in one run.
+     * The longest one run may take. The longest run left is the step that prepares the `indexes`
+     * phase: it recreates or empties each index and, when FAQ keeps its documents in Elasticsearch,
+     * rebuilds the documentation indexes in one go (`ai:index-rag-docs --full` embeds every
+     * documentation document with the target), which depends on the documentation size and on the
+     * provider and is not bounded by the corpus chunking. Every other run walks the corpus or
+     * deletes the previous model's rows, seconds to a minute.
      */
     public const int TIMEOUT_SECONDS = 900;
 

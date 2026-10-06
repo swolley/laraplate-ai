@@ -107,3 +107,21 @@ it('treats a missing suspended reason row as nothing to clear', function (): voi
 
     expect(Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.suspended_reason')->exists())->toBeFalse();
 });
+
+it('updates the state it reads under the state lock, and writes nothing when the change keeps it', function (): void {
+    $this->seed(AIDatabaseSeeder::class);
+    $store = new EmbeddingSwitchStore;
+    $store->put(new EmbeddingSwitchState('running', 'indexes', 'a:b', 'c:d', chunksDone: 1));
+    $updatedAt = Setting::query()->withoutGlobalScopes()->where('name', 'features.embeddings.switch')->value('updated_at');
+
+    $unchanged = $store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state);
+
+    expect($unchanged->chunksDone)->toBe(1)
+        ->and(Setting::query()->withoutGlobalScopes()->where('name', 'features.embeddings.switch')->value('updated_at'))->toEqual($updatedAt);
+
+    $store->put($store->get()->with(chunksDone: 2));
+    $next = $store->update(static fn (EmbeddingSwitchState $state): EmbeddingSwitchState => $state->with(chunksDone: $state->chunksDone + 1));
+
+    expect($next->chunksDone)->toBe(3)
+        ->and($store->get()->chunksDone)->toBe(3);
+});

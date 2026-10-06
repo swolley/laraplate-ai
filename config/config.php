@@ -28,6 +28,11 @@ return [
             // e.g. ['cms']. Matched case-insensitively against the model's Modules\{Name}\ namespace.
             'modules' => [],
 
+            // Records per chunk when an embedding model switch writes the search indexes
+            // (`indexes` and `verify` phases): one IndexDocumentsChunkJob per model and key range
+            // of this many records, on the `embeddings-index` queue. Not a setting.
+            'index_chunk_size' => (int) env('AI_EMBEDDINGS_INDEX_CHUNK_SIZE', 250),
+
             // The model choice is the setting `features.embeddings.model` (overlaid as
             // `ai.features.embeddings.model`); the model that serves search is Core's managed
             // `search.vector.model`. EmbeddingModelRegistry falls back to the first configured profile below.

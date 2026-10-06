@@ -12,6 +12,11 @@ use Throwable;
 /**
  * Where an embedding model switch stands: idle, running a phase, or failed. Kept as JSON in the
  * managed setting `features.embeddings.switch`, so the panel and the command read the same progress.
+ *
+ * The `indexes` and `verify` phases write their documents in chunks: `chunkPhase` names the phase
+ * the current chunk plan belongs to, `pendingChunks` holds the chunks not written yet (by id, with
+ * the model and the key range each covers), `chunksTotal` and `chunksDone` count them. A state
+ * stored before these keys existed loads with no plan.
  */
 final readonly class EmbeddingSwitchState
 {
@@ -19,10 +24,12 @@ final readonly class EmbeddingSwitchState
 
     public const array PHASES = ['preflight', 'embeddings', 'indexes', 'verify', 'activate'];
 
+    public const array CHUNKED_PHASES = ['indexes', 'verify'];
+
     /**
-     * A running switch whose state has not been written for this long has lost its job: no phase
-     * runs longer than {@see \Modules\AI\Jobs\SwitchEmbeddingModelJob::TIMEOUT_SECONDS}, and the
-     * waiting embeddings phase writes its progress on every pass.
+     * A running switch whose state has not been written for this long has lost its job: no pass of
+     * the switch job runs longer than {@see \Modules\AI\Jobs\SwitchEmbeddingModelJob::TIMEOUT_SECONDS},
+     * a waiting phase writes the state on every pass, and every chunk written writes it too.
      */
     public const int INTERRUPTED_AFTER_SECONDS = 1800;
 
@@ -37,6 +44,13 @@ final readonly class EmbeddingSwitchState
         public ?string $startedAt = null,
         public int $rounds = 0,
         public ?string $updatedAt = null,
+        public ?string $chunkPhase = null,
+        public int $chunksTotal = 0,
+        public int $chunksDone = 0,
+        /**
+         * @var array<string, array{model: string, from: int|string|null, to: int|string|null}>
+         */
+        public array $pendingChunks = [],
     ) {}
 
     public static function idle(): self
@@ -67,13 +81,115 @@ final readonly class EmbeddingSwitchState
             phase: in_array($phase, self::PHASES, true) ? $phase : null,
             target: self::nullableString($data['target'] ?? null),
             previous: self::nullableString($data['previous'] ?? null),
-            total: (int) ($data['total'] ?? 0),
-            done: (int) ($data['done'] ?? 0),
+            total: self::count($data['total'] ?? null),
+            done: self::count($data['done'] ?? null),
             error: self::nullableString($data['error'] ?? null),
             startedAt: self::nullableString($data['startedAt'] ?? null),
-            rounds: (int) ($data['rounds'] ?? 0),
+            rounds: self::count($data['rounds'] ?? null),
             updatedAt: self::nullableString($data['updatedAt'] ?? null),
+            chunkPhase: in_array($data['chunkPhase'] ?? null, self::CHUNKED_PHASES, true) ? $data['chunkPhase'] : null,
+            chunksTotal: self::count($data['chunksTotal'] ?? null),
+            chunksDone: self::count($data['chunksDone'] ?? null),
+            pendingChunks: self::chunks($data['pendingChunks'] ?? []),
         );
+    }
+
+    /**
+     * Readable references to chunks, as `Class [from, to)`, at most ten of them.
+     *
+     * @param  array<string, array{model: string, from: int|string|null, to: int|string|null}>  $chunks
+     */
+    public static function describeChunks(array $chunks): string
+    {
+        $references = array_map(
+            static fn (array $chunk): string => class_basename($chunk['model']) . ' [' . ($chunk['from'] ?? 'start') . ', ' . ($chunk['to'] ?? 'end') . ')',
+            array_slice(array_values($chunks), 0, 10),
+        );
+
+        return implode(', ', $references) . (count($chunks) > 10 ? ', ...' : '');
+    }
+
+    /**
+     * A copy carrying a new chunk plan for `$phase`: every chunk pending, none done, no round yet.
+     *
+     * @param  array<string, array{model: string, from: int|string|null, to: int|string|null}>  $chunks
+     */
+    public function withChunkPlan(string $phase, array $chunks): self
+    {
+        return $this->with(chunkPhase: $phase, pendingChunks: $chunks, chunksTotal: count($chunks), chunksDone: 0, rounds: 0);
+    }
+
+    /**
+     * Whether a chunk job for `$phase` and `$target` is still expected to write `$chunk` under `$id`:
+     * the switch runs that phase with that plan and the chunk is pending with the same key range.
+     *
+     * @param  array{model: string, from: int|string|null, to: int|string|null}  $chunk
+     */
+    public function expectsChunk(string $phase, string $target, string $id, array $chunk): bool
+    {
+        return $this->status === 'running'
+            && $this->phase === $phase
+            && $this->chunkPhase === $phase
+            && $this->target === $target
+            && ($this->pendingChunks[$id] ?? null) === $chunk;
+    }
+
+    /**
+     * A copy with the chunk recorded as written, or this state unchanged when it no longer expects
+     * the chunk (written already, another plan, another switch): completing twice counts once.
+     *
+     * @param  array{model: string, from: int|string|null, to: int|string|null}  $chunk
+     */
+    public function withChunkCompleted(string $phase, string $target, string $id, array $chunk, string $at): self
+    {
+        if (! $this->expectsChunk($phase, $target, $id, $chunk)) {
+            return $this;
+        }
+
+        $pending = $this->pendingChunks;
+        unset($pending[$id]);
+
+        return $this->with(pendingChunks: $pending, chunksDone: $this->chunksDone + 1, updatedAt: $at);
+    }
+
+    /**
+     * This state (computed from `$snapshot`) with the chunks completed since `$snapshot` was read,
+     * as `$fresh` records them, also completed: chunk jobs only ever remove pending chunks, so a
+     * chunk pending in the snapshot and gone from the fresh state was written meanwhile. A state
+     * carrying a new plan keeps it whole: what was completed belongs to the plan it replaced.
+     */
+    public function withCompletionsSince(self $snapshot, self $fresh): self
+    {
+        if ($this->chunkPhase !== $snapshot->chunkPhase) {
+            return $this;
+        }
+
+        $completed = array_diff_key($snapshot->pendingChunks, $fresh->pendingChunks);
+        $stillPending = array_filter(
+            $this->pendingChunks,
+            static fn (array $chunk, string $id): bool => ! isset($completed[$id]) || $completed[$id] !== $chunk,
+            ARRAY_FILTER_USE_BOTH,
+        );
+        $newlyDone = count($this->pendingChunks) - count($stillPending);
+
+        if ($newlyDone === 0) {
+            return $this;
+        }
+
+        return $this->with(pendingChunks: $stillPending, chunksDone: $this->chunksDone + $newlyDone);
+    }
+
+    /**
+     * The progress of the current phase: index chunks written in a chunked phase with its plan,
+     * otherwise the embedded (record, locale) pairs, as `done/total`.
+     */
+    public function progressLabel(): string
+    {
+        if ($this->phase !== null && $this->phase === $this->chunkPhase) {
+            return "{$this->chunksDone}/{$this->chunksTotal} index chunks";
+        }
+
+        return "{$this->done}/{$this->total}";
     }
 
     /**
@@ -122,11 +238,53 @@ final readonly class EmbeddingSwitchState
             'startedAt' => $this->startedAt,
             'rounds' => $this->rounds,
             'updatedAt' => $this->updatedAt,
+            'chunkPhase' => $this->chunkPhase,
+            'chunksTotal' => $this->chunksTotal,
+            'chunksDone' => $this->chunksDone,
+            'pendingChunks' => $this->pendingChunks === [] ? (object) [] : $this->pendingChunks,
         ], JSON_THROW_ON_ERROR);
     }
 
     private static function nullableString(mixed $value): ?string
     {
         return is_string($value) ? $value : null;
+    }
+
+    /**
+     * The well-formed chunks of a decoded plan; anything else is dropped.
+     *
+     * @return array<string, array{model: string, from: int|string|null, to: int|string|null}>
+     */
+    private static function chunks(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $chunks = [];
+
+        foreach ($value as $id => $chunk) {
+            if (! is_string($id) || ! is_array($chunk) || ! is_string($chunk['model'] ?? null)) {
+                continue;
+            }
+
+            $chunks[$id] = [
+                'model' => $chunk['model'],
+                'from' => self::key($chunk['from'] ?? null),
+                'to' => self::key($chunk['to'] ?? null),
+            ];
+        }
+
+        return $chunks;
+    }
+
+    private static function count(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private static function key(mixed $value): int|string|null
+    {
+        return is_int($value) || is_string($value) ? $value : null;
     }
 }
