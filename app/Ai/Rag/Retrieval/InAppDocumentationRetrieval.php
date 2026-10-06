@@ -8,7 +8,6 @@ use function ai_config_string;
 
 use Closure;
 use InvalidArgumentException;
-use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Contracts\IEmbeddingService;
@@ -21,6 +20,8 @@ use Throwable;
 
 final readonly class InAppDocumentationRetrieval
 {
+    use EmbedsDocumentationQuery;
+
     /**
      * @param  (Closure(array<float>, DocumentationRetrievalContext): array<Document>)|null  $search
      */
@@ -45,18 +46,13 @@ final readonly class InAppDocumentationRetrieval
             : DocumentationRetrievalContext::fromAccessContextAndScope($access, $scope);
 
         try {
-            $query_prefix = app(EmbeddingModelRegistry::class)->active()->queryPrefix;
-            $embedding = $this->embedding_service->embedText($query_prefix . $question);
-
-            if ($embedding === []) {
-                throw new RuntimeException;
-            }
+            $embedding = $this->embedQuestion($question);
 
             $documents = $this->search !== null
                 ? ($this->search)($embedding, $context)
                 : $this->searchUserIndex($embedding, $context);
 
-            return $this->aboveMinimumSimilarity($this->safeDocuments($documents));
+            return MinimumSimilarity::filter($this->safeDocuments($documents));
         } catch (Throwable) {
             throw new RuntimeException('In-app documentation retrieval is unavailable.');
         }
@@ -73,32 +69,13 @@ final readonly class InAppDocumentationRetrieval
             $context->topK,
         );
 
-        if (! $store->hasDocuments()) {
+        $documents = $store->similaritySearchForContext($embedding, $context);
+
+        if ($documents === [] && ! $store->hasDocuments()) {
             throw new RuntimeException;
         }
 
-        return $store->similaritySearchForContext($embedding, $context);
-    }
-
-    /**
-     * @param  list<Document>  $documents
-     * @return list<Document>
-     */
-    private function aboveMinimumSimilarity(array $documents): array
-    {
-        // config() returns mixed; a non-numeric threshold means the setting is malformed,
-        // and no filtering is the safe reading.
-        $configured_threshold = config('ai.features.faq.min_similarity', 0.0);
-        $threshold = is_numeric($configured_threshold) ? (float) $configured_threshold : 0.0;
-
-        if ($threshold <= 0.0) {
-            return $documents;
-        }
-
-        return array_values(array_filter(
-            $documents,
-            fn (Document $document): bool => $threshold <= $document->getScore(),
-        ));
+        return $documents;
     }
 
     /**

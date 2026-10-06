@@ -5,9 +5,12 @@ declare(strict_types=1);
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Services\DocumentationService;
-use NeuronAI\Chat\Messages\UserMessage;
+use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Splitter\SplitterInterface;
+use NeuronAI\Testing\FakeAIProvider;
+use NeuronAI\Testing\FakeEmbeddingsProvider;
+use NeuronAI\Testing\FakeVectorStore;
 
 it('never splits one source across two reindexBySource batches', function (): void {
     $tmp_dir = sys_get_temp_dir() . '/ai-docs-batches-' . uniqid();
@@ -428,79 +431,86 @@ it('indexDocuments with full rebuild removes filesystem vector store file before
     }
 });
 
-it('answerQuestion returns answer and citations from mocked agent', function (): void {
+/**
+ * A real DocumentationAgent answering from a store that returns $hits, with the model, the store and
+ * the embeddings replaced by Neuron's fakes.
+ *
+ * @param  list<Document>  $hits
+ */
+function documentationServiceOver(array $hits, string $answer = 'The answer.', ?FakeAIProvider &$provider = null): DocumentationService
+{
+    $provider = new FakeAIProvider(new AssistantMessage($answer));
+
+    return new DocumentationService(
+        static fn (): DocumentationAgent => DocumentationAgent::make()
+            ->setAiProvider($provider)
+            ->setVectorStore(new FakeVectorStore($hits))
+            ->setEmbeddingsProvider(new FakeEmbeddingsProvider),
+    );
+}
+
+function retrievedDocument(string $source, string $content, float $score): Document
+{
+    $document = new Document($content);
+    $document->sourceName = $source;
+    $document->setScore($score);
+
+    return $document;
+}
+
+it('answerQuestion answers without sources when nothing was retrieved', function (): void {
     config()->set('ai.features.faq.format_citations', true);
 
-    $messageMock = Mockery::mock(NeuronAI\Chat\Messages\Message::class);
-    $messageMock->shouldReceive('getContent')->andReturn('The answer is X.');
-    $messageMock->shouldReceive('getCitations')->andReturn([]);
+    $result = documentationServiceOver([], 'The answer is X.')->answerQuestion('What is X?');
 
-    $responseMock = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $responseMock->shouldReceive('getMessage')->andReturn($messageMock);
-
-    $agentMock = Mockery::mock(DocumentationAgent::class);
-    $agentMock->shouldReceive('chat')->with(Mockery::type(UserMessage::class))->andReturn($responseMock);
-
-    $service = new DocumentationService(fn () => $agentMock);
-
-    $result = $service->answerQuestion('What is X?');
-
-    expect($result)->toHaveKeys(['answer', 'citations'])
-        ->and($result['answer'])->toBe('The answer is X.')
-        ->and($result['citations'])->toBe([]);
+    expect($result)->toBe(['answer' => 'The answer is X.', 'citations' => []]);
 });
 
-it('answerQuestion appends citations when format_citations enabled', function (): void {
+it('answerQuestion cites the documents that reached the model', function (): void {
     config()->set('ai.features.faq.format_citations', true);
+    config()->set('ai.features.faq.min_similarity', 0.0);
 
-    $citation = new class
-    {
-        public function getSourceName(): string
-        {
-            return 'doc.md';
-        }
+    $result = documentationServiceOver([
+        retrievedDocument('doc.md', 'Excerpt from doc.', 0.95),
+        retrievedDocument('other.md', str_repeat('long ', 100), 0.5),
+    ], 'The answer.', $provider)->answerQuestion('Question?');
 
-        public function getContent(): string
-        {
-            return 'Excerpt from doc.';
-        }
+    expect($result['citations'])->toHaveCount(2)
+        ->and($result['citations'][0])->toBe(['source' => 'doc.md', 'excerpt' => 'Excerpt from doc.', 'score' => 0.95])
+        ->and(mb_strlen($result['citations'][1]['excerpt']))->toBeLessThanOrEqual(303)
+        ->and($result['answer'])->toContain('The answer.')->toContain('**Sources:**')->toContain('[1] doc.md')->toContain('[2] other.md')
+        ->and($provider->getRecorded()[0]->systemPrompt)->toContain('Source Name: doc.md');
+});
 
-        public function getScore(): float
-        {
-            return 0.95;
-        }
-    };
+it('answerQuestion does not cite, or show the model, a document below the minimum similarity', function (): void {
+    config()->set('ai.features.faq.min_similarity', 0.9);
 
-    $message = new class($citation) extends NeuronAI\Chat\Messages\AssistantMessage
-    {
-        public function __construct(
-            private readonly object $citation,
-        ) {
-            parent::__construct('The answer.');
-        }
+    $result = documentationServiceOver([
+        retrievedDocument('relevant.md', 'Relevant.', 0.95),
+        retrievedDocument('barely.md', 'Barely related.', 0.80),
+    ], 'The answer.', $provider)->answerQuestion('Question?');
 
-        public function getCitations(): array
-        {
-            return [$this->citation];
-        }
-    };
+    expect(array_column($result['citations'], 'source'))->toBe(['relevant.md'])
+        ->and($provider->getRecorded()[0]->systemPrompt)->not->toContain('barely.md');
+});
 
-    $responseMock = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $responseMock->shouldReceive('getMessage')->andReturn($message);
+it('answerQuestion keeps the sources of each question apart', function (): void {
+    config()->set('ai.features.faq.min_similarity', 0.0);
+    $provider = new FakeAIProvider(new AssistantMessage('First.'), new AssistantMessage('Second.'));
+    $store = new FakeVectorStore([retrievedDocument('first.md', 'First.', 0.9)]);
+    $service = new DocumentationService(
+        static fn (): DocumentationAgent => DocumentationAgent::make()
+            ->setAiProvider($provider)
+            ->setVectorStore($store)
+            ->setEmbeddingsProvider(new FakeEmbeddingsProvider),
+    );
 
-    $agentMock = Mockery::mock(DocumentationAgent::class);
-    $agentMock->shouldReceive('chat')->with(Mockery::type(UserMessage::class))->andReturn($responseMock);
+    $first = $service->answerQuestion('One?');
+    $store->setSearchResults([]);
+    $second = $service->answerQuestion('Two?');
 
-    $service = new DocumentationService(fn () => $agentMock);
-
-    $result = $service->answerQuestion('Question?');
-
-    expect($result['answer'])->toContain('The answer.')
-        ->toContain('---')
-        ->toContain('**Sources:**')
-        ->toContain('[1] doc.md')
-        ->and($result['citations'])->toHaveCount(1)
-        ->and($result['citations'][0]['source'])->toBe('doc.md');
+    expect(array_column($first['citations'], 'source'))->toBe(['first.md'])
+        ->and($second['citations'])->toBe([]);
 });
 
 it('includes configured absolute paths when resolving helper roots', function (): void {

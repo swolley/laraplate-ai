@@ -8,7 +8,6 @@ use function ai_config_int;
 
 use Closure;
 use InvalidArgumentException;
-use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Contracts\IEmbeddingService;
@@ -26,6 +25,8 @@ use Throwable;
  */
 final readonly class DeveloperDocumentationRetrieval
 {
+    use EmbedsDocumentationQuery;
+
     /**
      * @param  (Closure(array<float>): array<Document>)|null  $search
      */
@@ -46,18 +47,13 @@ final readonly class DeveloperDocumentationRetrieval
         }
 
         try {
-            $query_prefix = app(EmbeddingModelRegistry::class)->active()->queryPrefix;
-            $embedding = $this->embedding_service->embedText($query_prefix . $question);
-
-            if ($embedding === []) {
-                throw new RuntimeException;
-            }
+            $embedding = $this->embedQuestion($question);
 
             $documents = $this->search !== null
                 ? ($this->search)($embedding)
                 : $this->searchDeveloperIndex($embedding);
 
-            return $this->aboveMinimumSimilarity($this->onlyValidDocuments($documents));
+            return MinimumSimilarity::filter($this->onlyValidDocuments($documents));
         } catch (Throwable) {
             throw new RuntimeException('Developer documentation retrieval is unavailable.');
         }
@@ -72,34 +68,15 @@ final readonly class DeveloperDocumentationRetrieval
         $top_k = min(max(ai_config_int('ai.features.faq.max_documents', 5), 1), 10);
         $store = ElasticsearchRagVectorStore::fromConfig(DocumentationIndexProfile::Developer, $top_k);
 
-        if (! $store->hasDocuments()) {
+        // similaritySearch() is declared iterable: the caller wants a list, and a
+        // generator would satisfy the interface while breaking every array use below.
+        $documents = iterator_to_array($store->similaritySearch($embedding), false);
+
+        if ($documents === [] && ! $store->hasDocuments()) {
             throw new RuntimeException;
         }
 
-        // similaritySearch() is declared iterable: the caller wants a list, and a
-        // generator would satisfy the interface while breaking every array use below.
-        return iterator_to_array($store->similaritySearch($embedding), false);
-    }
-
-    /**
-     * @param  list<Document>  $documents
-     * @return list<Document>
-     */
-    private function aboveMinimumSimilarity(array $documents): array
-    {
-        // config() returns mixed; a non-numeric threshold means the setting is malformed,
-        // and no filtering is the safe reading.
-        $configured_threshold = config('ai.features.faq.min_similarity', 0.0);
-        $threshold = is_numeric($configured_threshold) ? (float) $configured_threshold : 0.0;
-
-        if ($threshold <= 0.0) {
-            return $documents;
-        }
-
-        return array_values(array_filter(
-            $documents,
-            fn (Document $document): bool => $threshold <= $document->getScore(),
-        ));
+        return $documents;
     }
 
     /**

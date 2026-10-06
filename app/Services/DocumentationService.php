@@ -129,7 +129,7 @@ final readonly class DocumentationService
 
         $response = $agent->chat(new UserMessage($question));
         $answer = $response->getMessage()->getContent() ?? '';
-        $citations = $this->buildCitations($response->getMessage());
+        $citations = $this->buildCitations($agent->retrievedDocuments());
 
         $formatted_answer = $answer;
 
@@ -223,25 +223,20 @@ final readonly class DocumentationService
     }
 
     /**
+     * @param  list<Document>  $documents  the documents that reached the model
      * @return list<array{source: string, excerpt: string, score: float|null}>
      */
-    private function buildCitations(object $message): array
+    private function buildCitations(array $documents): array
     {
-        if (! method_exists($message, 'getCitations')) {
-            return [];
-        }
-
         $citations = [];
 
-        foreach ($message->getCitations() as $citation) {
-            $source = $citation->getSourceName();
-            $score = $citation->getScore();
-            $content = $citation->getContent();
+        foreach ($documents as $document) {
+            $source = $document->getSourceName();
 
             $citations[] = [
-                'source' => is_string($source) && $source !== '' ? $source : 'Unknown',
-                'excerpt' => Str::limit(is_string($content) ? $content : '', 300),
-                'score' => is_float($score) || is_int($score) ? (float) $score : null,
+                'source' => $source !== '' ? $source : 'Unknown',
+                'excerpt' => Str::limit($document->getContent(), 300),
+                'score' => $document->getScore(),
             ];
         }
 

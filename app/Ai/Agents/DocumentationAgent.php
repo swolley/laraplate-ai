@@ -10,13 +10,18 @@ use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
+use Modules\AI\Ai\Rag\RecordingPostProcessor;
+use Modules\AI\Ai\Rag\Retrieval\MinimumSimilarity;
 use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Providers\AIProviderInterface;
+use NeuronAI\RAG\Document;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
+use NeuronAI\RAG\PostProcessor\PostProcessorInterface;
 use NeuronAI\RAG\RAG;
 use NeuronAI\RAG\VectorStore\FileVectorStore;
 use NeuronAI\RAG\VectorStore\MemoryVectorStore;
 use NeuronAI\RAG\VectorStore\VectorStoreInterface;
+use Override;
 
 /**
  * RAG agent for answering questions using indexed documentation.
@@ -27,6 +32,8 @@ class DocumentationAgent extends RAG
      * @var array<string, MemoryVectorStore>
      */
     private static array $shared_memory_stores = [];
+
+    private ?RecordingPostProcessor $recorder = null;
 
     public function __construct(
         protected ?string $providerName = null,
@@ -52,6 +59,34 @@ class DocumentationAgent extends RAG
         }
 
         unset(self::$shared_memory_stores[$profile->value]);
+    }
+
+    /**
+     * The documents that reached the model on the last question, after the similarity threshold:
+     * what the answer is entitled to cite.
+     *
+     * @return list<Document>
+     */
+    public function retrievedDocuments(): array
+    {
+        return $this->recorder()->documents();
+    }
+
+    /**
+     * The same threshold as the retrieval that `ai:evaluate-documentation` measures, then the recorder.
+     *
+     * @return list<PostProcessorInterface>
+     */
+    #[Override]
+    protected function postProcessors(): array
+    {
+        $threshold = MinimumSimilarity::postProcessor();
+
+        return [
+            ...parent::postProcessors(),
+            ...($threshold === null ? [] : [$threshold]),
+            $this->recorder(),
+        ];
     }
 
     protected function provider(): AIProviderInterface
@@ -95,6 +130,11 @@ PROMPT;
             'elasticsearch' => ElasticsearchRagVectorStore::fromConfig($this->indexProfile, $this->topK),
             default => $this->fileVectorStore(),
         };
+    }
+
+    private function recorder(): RecordingPostProcessor
+    {
+        return $this->recorder ??= new RecordingPostProcessor;
     }
 
     /**
