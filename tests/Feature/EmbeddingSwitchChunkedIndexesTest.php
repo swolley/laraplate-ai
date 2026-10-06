@@ -372,3 +372,85 @@ it('falls back to the default chunk size when the configured one is below 1 or n
     'numeric string' => ['40', 40],
     'too large' => [10_000_000, EmbeddingSwitchIndexes::MAX_CHUNK_SIZE],
 ]);
+
+it('writes the documentation in chunks of the indexes plan, with the target, and leaves it out of the verify refresh', function (): void {
+    Harness::$ragPlan = [
+        'rag:developer#0' => ['model' => 'rag:developer', 'from' => null, 'to' => 'm.md'],
+        'rag:developer#1' => ['model' => 'rag:developer', 'from' => 'm.md', 'to' => null],
+        'rag:user#0' => ['model' => 'rag:user', 'from' => null, 'to' => null],
+    ];
+    app(EmbeddingSwitchStore::class)->put(new EmbeddingSwitchState('running', 'indexes', Harness::TARGET, Harness::ACTIVE, startedAt: now()->toIso8601String()));
+    Queue::fake();
+
+    $state = chunked_orchestrator()->advance();
+
+    expect($state->chunksTotal)->toBe(6)
+        ->and($state->pendingChunks)->toHaveKeys(array_keys(Harness::$ragPlan))
+        ->and(Harness::$ragWrites)->toBe([]);
+
+    chunked_orchestrator()->advance();
+
+    Queue::assertPushed(IndexDocumentsChunkJob::class, 6);
+    Queue::assertPushed(IndexDocumentsChunkJob::class, static fn (IndexDocumentsChunkJob $job): bool => $job->chunkId === 'rag:user#0' && $job->phase === 'indexes' && $job->target === Harness::TARGET);
+
+    $job = new IndexDocumentsChunkJob('indexes', Harness::TARGET, 'rag:user#0', Harness::$ragPlan['rag:user#0']);
+    app()->call([$job, 'handle']);
+    app()->call([$job, 'handle']);
+
+    expect(Harness::$ragWrites)->toBe([['target' => Harness::TARGET, 'model' => 'rag:user', 'from' => null, 'to' => null]])
+        ->and(chunked_store()->get()->pendingChunks)->not->toHaveKey('rag:user#0')
+        ->and(chunked_store()->get()->chunksDone)->toBe(1);
+
+    $stale = new IndexDocumentsChunkJob('indexes', Harness::TARGET, 'rag:developer#0', [...Harness::$ragPlan['rag:developer#0'], 'to' => 'z.md']);
+    app()->call([$stale, 'handle']);
+
+    expect(Harness::$ragWrites)->toHaveCount(1);
+
+    chunked_store()->put(chunked_store()->get()->withoutChunkPlan()->with(phase: 'verify', rounds: 0));
+    $verify = chunked_orchestrator()->advance();
+
+    expect($verify->chunkPhase)->toBe('verify')
+        ->and($verify->chunksTotal)->toBe(3)
+        ->and(array_filter(array_keys($verify->pendingChunks), static fn (string $id): bool => str_starts_with($id, 'rag:')))->toBe([]);
+});
+
+it('fails naming the documentation chunks not written, and resumes by writing only those', function (): void {
+    Harness::$ragPlan = [
+        'rag:developer#0' => ['model' => 'rag:developer', 'from' => null, 'to' => 'm.md'],
+        'rag:user#0' => ['model' => 'rag:user', 'from' => null, 'to' => null],
+    ];
+    Harness::$refusedRagChunks = ['rag:user'];
+    Harness::start(Harness::TARGET);
+
+    $failed = Harness::advanceUntil();
+
+    expect($failed->status)->toBe('failed')
+        ->and($failed->phase)->toBe('indexes')
+        ->and(array_keys($failed->pendingChunks))->toBe(['rag:user#0'])
+        ->and($failed->error)->toContain('1 of 5 index chunk(s) of the indexes phase were not written')
+        ->and($failed->error)->toContain('rag:user:[start, end)');
+
+    Harness::$refusedRagChunks = [];
+    Harness::$ragWrites = [];
+    Queue::fake();
+
+    $this->artisan('ai:embeddings:switch', ['--resume' => true])->assertSuccessful();
+    chunked_orchestrator()->advance();
+    chunked_orchestrator()->advance();
+
+    Queue::assertPushed(IndexDocumentsChunkJob::class, 1);
+    Queue::assertPushed(IndexDocumentsChunkJob::class, static fn (IndexDocumentsChunkJob $job): bool => $job->chunkId === 'rag:user#0');
+    expect(Harness::$ragRebuilds)->toHaveCount(1);
+});
+
+it('falls back to the default documentation chunk size when the configured one is below 1 or not a number, and caps it', function (mixed $configured, int $expected): void {
+    config()->set(EmbeddingSwitchIndexes::RAG_CHUNK_SIZE_CONFIG, $configured);
+
+    expect(app(EmbeddingSwitchIndexes::class)->ragChunkSize())->toBe($expected);
+})->with([
+    'unset' => [null, EmbeddingSwitchIndexes::DEFAULT_RAG_CHUNK_SIZE],
+    'zero' => [0, EmbeddingSwitchIndexes::DEFAULT_RAG_CHUNK_SIZE],
+    'not a number' => ['few', EmbeddingSwitchIndexes::DEFAULT_RAG_CHUNK_SIZE],
+    'configured' => [5, 5],
+    'too large' => [100_000, EmbeddingSwitchIndexes::MAX_RAG_CHUNK_SIZE],
+]);

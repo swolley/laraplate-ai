@@ -26,7 +26,8 @@ use Throwable;
  *
  * Three phases wait on queued work. `embeddings` dispatches `GenerateEmbeddingsJob` with the target
  * for every record still missing a row of it, then stays in the phase until every record has one.
- * `indexes` prepares the indexes in one step and stores a chunk plan, then dispatches one
+ * `indexes` prepares the indexes in one step and stores a chunk plan (model documents and, when a
+ * switch rebuilds them, documentation documents), then dispatches one
  * `IndexDocumentsChunkJob` per pending chunk and stays in the phase until none is pending; `verify`
  * plans, dispatches and waits for its refresh the same way, then checks. While the queue of the
  * phase's jobs holds work the phase waits; when it is empty and work is still missing, it dispatches
@@ -237,7 +238,7 @@ final readonly class EmbeddingSwitchOrchestrator
         if ($state->chunkPhase !== 'indexes') {
             $this->indexes->prepare($target, $this->activeDimensions());
 
-            return $state->withChunkPlan('indexes', $this->indexes->plan());
+            return $state->withChunkPlan('indexes', $this->indexes->plan(withDocumentation: true));
         }
 
         if ($state->pendingChunks === []) {

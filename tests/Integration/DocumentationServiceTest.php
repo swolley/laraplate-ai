@@ -620,3 +620,71 @@ it('returns no helper roots when rag_paths is unavailable', function (): void {
 
     expect($method->invoke($service))->toBe([]);
 });
+
+it('lists the source names a profile indexes, sorted and once each', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-docs-sources-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+
+    foreach (['c.md', 'a.md', 'b.md'] as $file) {
+        file_put_contents($tmp_dir . '/' . $file, "# {$file}\n\nBody.");
+    }
+
+    $service = new DocumentationService;
+
+    try {
+        $names = $service->sourceNames(DocumentationIndexProfile::Developer, $tmp_dir);
+
+        expect($names)->toHaveCount(3)
+            ->and($names)->toBe(collect($names)->sort(SORT_STRING)->values()->all())
+            ->and($names[0])->toEndWith('a.md')
+            ->and($names[2])->toEndWith('c.md')
+            ->and($service->sourceNames(DocumentationIndexProfile::User, $tmp_dir))->toBe([]);
+    } finally {
+        foreach (['a.md', 'b.md', 'c.md'] as $file) {
+            unlink($tmp_dir . '/' . $file);
+        }
+
+        rmdir($tmp_dir);
+    }
+});
+
+it('indexes only the sources of a range, replacing each of them, so a range written twice writes the same documents', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-docs-range-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+
+    foreach (['a.md', 'b.md', 'c.md'] as $file) {
+        file_put_contents($tmp_dir . '/' . $file, "# {$file}\n\nBody.");
+    }
+
+    config()->set('ai.features.faq.vector_store', 'elasticsearch');
+
+    /** @var list<list<string>> $batches */
+    $batches = [];
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldNotReceive('addDocuments');
+    $agent_mock->shouldReceive('reindexBySource')
+        ->twice()
+        ->andReturnUsing(function (array $documents) use (&$batches): void {
+            $batches[] = array_values(array_unique(array_map(static fn (Document $document): string => basename($document->getSourceName()), $documents)));
+        });
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock);
+
+    try {
+        $names = $service->sourceNames(DocumentationIndexProfile::Developer, $tmp_dir);
+
+        $first = $service->indexSources(DocumentationIndexProfile::Developer, $names[1], null, $tmp_dir);
+        $again = $service->indexSources(DocumentationIndexProfile::Developer, $names[1], null, $tmp_dir);
+
+        expect($first)->toBeGreaterThan(0)
+            ->and($again)->toBe($first)
+            ->and($batches)->toBe([['b.md', 'c.md'], ['b.md', 'c.md']])
+            ->and($service->indexSources(DocumentationIndexProfile::Developer, null, $names[0], $tmp_dir))->toBe(0);
+    } finally {
+        foreach (['a.md', 'b.md', 'c.md'] as $file) {
+            unlink($tmp_dir . '/' . $file);
+        }
+
+        rmdir($tmp_dir);
+    }
+});

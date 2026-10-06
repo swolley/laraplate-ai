@@ -57,11 +57,59 @@ final readonly class DocumentationService
         bool $fullRebuild = false,
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
     ): int {
-        $roots = $path !== null
-            ? [['path' => $path, 'prefix' => $this->singlePathPrefix($path)]]
-            : $this->helperRoots();
+        return $this->indexFromRoots($this->roots($path), $fullRebuild, $profile);
+    }
 
-        return $this->indexFromRoots($roots, $fullRebuild, $profile);
+    /**
+     * The source names of the documents `$profile` indexes (from {@see rag_paths()}, or from
+     * `$path` alone), sorted as strings, each once: what a caller splits into ranges for
+     * {@see self::indexSources()}.
+     *
+     * @return list<string>
+     */
+    public function sourceNames(DocumentationIndexProfile $profile, ?string $path = null): array
+    {
+        $names = array_values(array_unique(array_map(
+            static fn (Document $document): string => $document->getSourceName(),
+            $this->profileDocuments($this->roots($path), $profile),
+        )));
+
+        sort($names, SORT_STRING);
+
+        return $names;
+    }
+
+    /**
+     * Indexes the documents of `$profile` whose source name is at least `$from` and below `$to`
+     * (string order; a missing bound is open), embedding them with the active embedding profile.
+     * Each of those sources is replaced in the store ({@see DocumentationAgent::reindexBySource()}),
+     * so indexing a range again writes the same documents again. The store is never reset. Returns
+     * the number of chunks written.
+     */
+    public function indexSources(
+        DocumentationIndexProfile $profile,
+        ?string $from = null,
+        ?string $to = null,
+        ?string $path = null,
+    ): int {
+        $documents = array_values(array_filter(
+            $this->profileDocuments($this->roots($path), $profile),
+            static function (Document $document) use ($from, $to): bool {
+                $name = $document->getSourceName();
+
+                return ($from === null || strcmp($name, $from) >= 0) && ($to === null || strcmp($name, $to) < 0);
+            },
+        ));
+
+        $split_documents = $this->splitDocuments($documents);
+
+        if ($split_documents === []) {
+            return 0;
+        }
+
+        $this->storeDocuments($split_documents, $profile, replaceSources: true);
+
+        return count($split_documents);
     }
 
     /**
@@ -246,6 +294,18 @@ final readonly class DocumentationService
     }
 
     /**
+     * The roots to read: `$path` alone, or every directory returned by {@see rag_paths()}.
+     *
+     * @return list<array{path: string, prefix: string}>
+     */
+    private function roots(?string $path): array
+    {
+        return $path !== null
+            ? [['path' => $path, 'prefix' => $this->singlePathPrefix($path)]]
+            : $this->helperRoots();
+    }
+
+    /**
      * @param  list<array{path: string, prefix: string}>  $roots
      */
     private function indexFromRoots(
@@ -253,6 +313,37 @@ final readonly class DocumentationService
         bool $fullRebuild,
         DocumentationIndexProfile $profile,
     ): int {
+        $documents = $this->profileDocuments($roots, $profile);
+        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
+
+        if ($fullRebuild) {
+            $this->resetVectorStoreForFullRebuild($driver, $profile);
+        }
+
+        $split_documents = $this->splitDocuments($documents);
+
+        if ($split_documents === []) {
+            return 0;
+        }
+
+        $this->storeDocuments(
+            $split_documents,
+            $profile,
+            replaceSources: ! $fullRebuild && $this->shouldUseIncrementalReindex($driver, $profile),
+        );
+
+        return count($split_documents);
+    }
+
+    /**
+     * The documents under `$roots` that the audience policy allows in `$profile`; those of the user
+     * profile are marked as validated against their required permissions.
+     *
+     * @param  list<array{path: string, prefix: string}>  $roots
+     * @return list<Document>
+     */
+    private function profileDocuments(array $roots, DocumentationIndexProfile $profile): array
+    {
         $documents = $this->gatherDocumentsFromRoots($roots);
         $audience_policy = new DocumentAudiencePolicy(
             ai_config_string('ai.features.faq.policy_classification_version', 'in-app-docs-v1'),
@@ -271,14 +362,17 @@ final readonly class DocumentationService
             }
         }
 
-        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
+        return $documents;
+    }
 
-        if ($fullRebuild) {
-            $this->resetVectorStoreForFullRebuild($driver, $profile);
-        }
-
+    /**
+     * @param  list<Document>  $documents
+     * @return list<Document>
+     */
+    private function splitDocuments(array $documents): array
+    {
         if ($documents === []) {
-            return 0;
+            return [];
         }
 
         $splitter = $this->splitter ?? SplitterFactory::make();
@@ -290,19 +384,24 @@ final readonly class DocumentationService
             }
         }
 
-        if ($split_documents === []) {
-            return 0;
-        }
+        return $split_documents;
+    }
 
-        $use_incremental_reindex = ! $fullRebuild && $this->shouldUseIncrementalReindex($driver, $profile);
-
+    /**
+     * Embeds and stores the chunks in the vector store of `$profile`, in batches that never split a
+     * source; with `$replaceSources` each source already stored is deleted first.
+     *
+     * @param  list<Document>  $split_documents
+     */
+    private function storeDocuments(array $split_documents, DocumentationIndexProfile $profile, bool $replaceSources): void
+    {
         /** @var DocumentationAgent $agent */
         $agent = $this->agentFactory !== null
             ? ($this->agentFactory)($profile)
             : DocumentationAgent::make(indexProfile: $profile);
 
         foreach ($this->batchBySource($split_documents) as $batch) {
-            if ($use_incremental_reindex) {
+            if ($replaceSources) {
                 $agent->reindexBySource($batch);
 
                 continue;
@@ -310,8 +409,6 @@ final readonly class DocumentationService
 
             $agent->addDocuments($batch);
         }
-
-        return count($split_documents);
     }
 
     /**

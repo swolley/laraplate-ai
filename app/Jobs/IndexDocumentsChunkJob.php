@@ -16,10 +16,13 @@ use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchStore;
 use Throwable;
 
 /**
- * Writes the search documents of one chunk of an embedding model switch (one embeddable model, one
- * key range) with the target's vectors, then records the chunk as written in the switch state. The
- * `indexes` phase dispatches it once the indexes are recreated or emptied, the `verify` phase to
- * refresh every document before its checks; `$phase` says which plan the chunk belongs to.
+ * Writes the documents of one chunk of an embedding model switch with the target's vectors, then
+ * records the chunk as written in the switch state. A chunk is one embeddable model and key range
+ * (search documents), or, in the `indexes` plan, one documentation profile and range of source
+ * names (`rag:<profile>`, documentation documents embedded with the target as the active profile,
+ * each source replaced). The `indexes` phase dispatches it once the indexes are recreated or
+ * emptied, the `verify` phase to refresh every search document before its checks; `$phase` says
+ * which plan the chunk belongs to.
  *
  * It is idempotent: writing a chunk again writes the same documents again. A chunk the state no
  * longer expects (written already, replaced by a new plan, a switch failed, abandoned or ended) is
@@ -41,7 +44,9 @@ final class IndexDocumentsChunkJob implements ShouldQueue
 
     /**
      * The longest one chunk may take: {@see EmbeddingSwitchIndexes::DEFAULT_CHUNK_SIZE} records read
-     * with their target rows and written to the search engine in bulk.
+     * with their target rows and written to the search engine in bulk, or
+     * {@see EmbeddingSwitchIndexes::DEFAULT_RAG_CHUNK_SIZE} documentation files split and embedded
+     * with the target.
      */
     public const int TIMEOUT_SECONDS = 240;
 

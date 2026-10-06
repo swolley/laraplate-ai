@@ -17,8 +17,10 @@ use Throwable;
  * the current chunk plan belongs to, `pendingChunks` holds the chunks not written yet (by id, with
  * the model and the key range each covers), `chunksTotal` and `chunksDone` count them, and
  * `chunkProgressAt` is the time of the last dispatch of chunks or the last chunk written, which a
- * waiting phase reads to tell a working chunk queue from a stalled one. A state stored before
- * these keys existed loads with no plan.
+ * waiting phase reads to tell a working chunk queue from a stalled one. A chunk is either a range
+ * of an embeddable model's keys (`model` is the class) or, in the `indexes` plan only, a range of
+ * documentation source names of one documentation profile (`model` is `rag:<profile>`, see
+ * {@see self::RAG_CHUNK_PREFIX}). A state stored before these keys existed loads with no plan.
  */
 final readonly class EmbeddingSwitchState
 {
@@ -27,6 +29,11 @@ final readonly class EmbeddingSwitchState
     public const array PHASES = ['preflight', 'embeddings', 'indexes', 'verify', 'activate'];
 
     public const array CHUNKED_PHASES = ['indexes', 'verify'];
+
+    /**
+     * The `model` of a documentation chunk starts with this, followed by the documentation profile.
+     */
+    public const string RAG_CHUNK_PREFIX = 'rag:';
 
     /**
      * A running switch whose state has not been written for this long has lost its job: no pass of
@@ -99,14 +106,27 @@ final readonly class EmbeddingSwitchState
     }
 
     /**
-     * Readable references to chunks, as `Class [from, to)`, at most ten of them.
+     * Whether `$chunk` covers documentation source names rather than an embeddable model's keys.
+     *
+     * @param  array{model: string, from: int|string|null, to: int|string|null}  $chunk
+     */
+    public static function isRagChunk(array $chunk): bool
+    {
+        return str_starts_with($chunk['model'], self::RAG_CHUNK_PREFIX);
+    }
+
+    /**
+     * Readable references to chunks, at most ten of them: `Class [from, to)` for a model's key range,
+     * `rag:<profile>:[from, to)` for a range of documentation source names.
      *
      * @param  array<string, array{model: string, from: int|string|null, to: int|string|null}>  $chunks
      */
     public static function describeChunks(array $chunks): string
     {
         $references = array_map(
-            static fn (array $chunk): string => class_basename($chunk['model']) . ' [' . ($chunk['from'] ?? 'start') . ', ' . ($chunk['to'] ?? 'end') . ')',
+            static fn (array $chunk): string => self::isRagChunk($chunk)
+                ? $chunk['model'] . ':[' . ($chunk['from'] ?? 'start') . ', ' . ($chunk['to'] ?? 'end') . ')'
+                : class_basename($chunk['model']) . ' [' . ($chunk['from'] ?? 'start') . ', ' . ($chunk['to'] ?? 'end') . ')',
             array_slice(array_values($chunks), 0, 10),
         );
 

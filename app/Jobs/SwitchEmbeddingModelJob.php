@@ -33,8 +33,8 @@ use Throwable;
  * `embeddings` queue nor `embeddings-index`: the embeddings phase waits while the first holds jobs
  * and the chunked phases while the second does, so a run queued there would wait for itself.
  *
- * A run does not write the search documents: the `indexes` and `verify` phases hand them to
- * `IndexDocumentsChunkJob` chunks and only wait for them.
+ * A run writes no document, neither of the search indexes nor of the documentation indexes: the
+ * `indexes` and `verify` phases hand them to `IndexDocumentsChunkJob` chunks and only wait for them.
  */
 final class SwitchEmbeddingModelJob implements ShouldQueue
 {
@@ -47,12 +47,15 @@ final class SwitchEmbeddingModelJob implements ShouldQueue
     public const int REDISPATCH_DELAY_SECONDS = 5;
 
     /**
-     * The longest one run may take. The longest run left is the step that prepares the `indexes`
-     * phase: it recreates or empties each index and, when FAQ keeps its documents in Elasticsearch,
-     * rebuilds the documentation indexes in one go (`ai:index-rag-docs --full` embeds every
-     * documentation document with the target), which depends on the documentation size and on the
-     * provider and is not bounded by the corpus chunking. Every other run walks the corpus or
-     * deletes the previous model's rows, seconds to a minute.
+     * The longest one run may take. No run embeds or writes documents any more, but several steps
+     * still grow with the corpus and none has been timed on a large one: an `embeddings` pass and
+     * the `verify` checks walk every searchable record (with its rows and translations, hashing its
+     * text), the first `embeddings` round dispatches one job per record, the step that prepares the
+     * `indexes` phase builds the target's pgvector HNSW index over its rows (not concurrently) and
+     * recreates or empties each search index, and the activation deletes every row of the previous
+     * model. Since these are not bounded by any chunk size, the timeout is kept at 900 s rather than
+     * lowered without a measurement. A run that exceeds it fails the switch; `--resume` repeats
+     * the step, so a step that always exceeds it needs a longer timeout, not a resume.
      */
     public const int TIMEOUT_SECONDS = 900;
 

@@ -27,7 +27,8 @@ use RuntimeException;
 /**
  * Sets up a small corpus and fakes for driving an embedding model switch end to end: the provider
  * answers with vectors of the length of the profile in force, the search engine is
- * {@see RecordingSwitchSearchEngine} and the RAG rebuild is a recording mock. Queue jobs run on the
+ * {@see RecordingSwitchSearchEngine} and the RAG rebuilder is a recording mock planning
+ * {@see self::$ragPlan}. Queue jobs run on the
  * sync connection the test suite uses.
  */
 final class EmbeddingSwitchHarness
@@ -53,11 +54,32 @@ final class EmbeddingSwitchHarness
     public static array $embeddedWith = [];
 
     /**
-     * The targets the RAG rebuild was asked for, with the profile in force while it ran.
+     * The targets the RAG indexes were prepared (recreated) for.
      *
      * @var list<array{target: string, dimensions: int}>
      */
     public static array $ragRebuilds = [];
+
+    /**
+     * The documentation chunks the fake RAG rebuilder plans; none unless a test sets them.
+     *
+     * @var array<string, array{model: string, from: int|string|null, to: int|string|null}>
+     */
+    public static array $ragPlan = [];
+
+    /**
+     * The documentation chunks the fake RAG rebuilder wrote, with the target.
+     *
+     * @var list<array{target: string, model: string, from: int|string|null, to: int|string|null}>
+     */
+    public static array $ragWrites = [];
+
+    /**
+     * Documentation chunk models (`rag:<profile>`) the fake RAG rebuilder fails to write.
+     *
+     * @var list<string>
+     */
+    public static array $refusedRagChunks = [];
 
     /**
      * Configures the profiles, the Core vector settings, the corpus table and every fake; returns the engine.
@@ -67,6 +89,9 @@ final class EmbeddingSwitchHarness
         self::$refusedTexts = [];
         self::$embeddedWith = [];
         self::$ragRebuilds = [];
+        self::$ragPlan = [];
+        self::$ragWrites = [];
+        self::$refusedRagChunks = [];
 
         config()->set('ai.features.embeddings.models.' . self::WIDE, ['dimensions' => 768]);
         config()->set('core.search.vector.enabled', true);
@@ -97,8 +122,16 @@ final class EmbeddingSwitchHarness
 
         /** @var IRagIndexRebuilder&MockInterface $rag */
         $rag = Mockery::mock(IRagIndexRebuilder::class);
-        $rag->shouldReceive('rebuild')->andReturnUsing(static function (EmbeddingModelProfile $target): void {
+        $rag->shouldReceive('prepare')->andReturnUsing(static function (EmbeddingModelProfile $target): void {
             self::$ragRebuilds[] = ['target' => $target->key, 'dimensions' => $target->dimensions];
+        });
+        $rag->shouldReceive('plan')->andReturnUsing(static fn (): array => self::$ragPlan);
+        $rag->shouldReceive('writeChunk')->andReturnUsing(static function (EmbeddingModelProfile $target, array $chunk): void {
+            if (in_array($chunk['model'], self::$refusedRagChunks, true)) {
+                throw new RuntimeException("refused to write {$chunk['model']}");
+            }
+
+            self::$ragWrites[] = ['target' => $target->key, ...$chunk];
         });
         app()->instance(IRagIndexRebuilder::class, $rag);
 

@@ -57,7 +57,7 @@ All replicas then share the same corpus via Elasticsearch.
 
 ### Embedding dimension changes
 
-Changing the embedding model goes through `ai:embeddings:switch`, which recreates these indexes for the new model (`ai:create-rag-index --force`) and reindexes them (`ai:index-rag-docs --full`). By hand: `ai:create-rag-index --force` drops and recreates each index with the active profile's dimensions.
+Changing the embedding model goes through `ai:embeddings:switch`, which recreates these indexes for the new model (`ai:create-rag-index --profile=all --force`) and reindexes the documentation in `IndexDocumentsChunkJob` chunks of `AI_EMBEDDINGS_RAG_CHUNK_SIZE` files on the `embeddings-index` queue (the work of `ai:index-rag-docs`, one range of files per chunk). By hand: `ai:create-rag-index --force` drops and recreates each index with the active profile's dimensions.
 
 ### Embedding service timeout and batch size
 

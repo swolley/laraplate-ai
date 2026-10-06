@@ -56,6 +56,7 @@ it('round-trips a chunk plan through JSON and drops malformed chunks', function 
     $state = (new EmbeddingSwitchState('running', 'indexes', 't', 'p'))->withChunkPlan('indexes', [
         'App\Models\Post#0' => ['model' => 'App\Models\Post', 'from' => null, 'to' => 251],
         'App\Models\Post#1' => ['model' => 'App\Models\Post', 'from' => 251, 'to' => null],
+        'rag:user#0' => ['model' => 'rag:user', 'from' => null, 'to' => 'faq-module-AI/guide.md'],
     ])->with(chunkProgressAt: '2026-10-06T10:00:00+00:00');
 
     expect(EmbeddingSwitchState::fromJson($state->toJson()))->toEqual($state)
@@ -99,6 +100,15 @@ it('keeps the chunks completed since a snapshot when a state computed from it is
 
     expect($replanned->withCompletionsSince($snapshot, $fresh))->toBe($replanned)
         ->and(EmbeddingSwitchState::describeChunks(['a' => $chunk(1), 'z' => ['model' => 'App\Models\Post', 'from' => null, 'to' => null]]))->toBe('M [1, 2), Post [start, end)');
+});
+
+it('names documentation chunks by profile and source range, model chunks by class and key range', function (): void {
+    expect(EmbeddingSwitchState::describeChunks([
+        'App\Models\Post#1' => ['model' => 'App\Models\Post', 'from' => 251, 'to' => null],
+        'rag:user#0' => ['model' => 'rag:user', 'from' => null, 'to' => 'faq-module-AI/guide.md'],
+    ]))->toBe('Post [251, end), rag:user:[start, faq-module-AI/guide.md)')
+        ->and(EmbeddingSwitchState::isRagChunk(['model' => 'rag:developer', 'from' => null, 'to' => null]))->toBeTrue()
+        ->and(EmbeddingSwitchState::isRagChunk(['model' => 'App\Models\Post', 'from' => null, 'to' => null]))->toBeFalse();
 });
 
 it('keeps the later chunk progress time when it merges completions', function (): void {

@@ -23,15 +23,19 @@ use Modules\Core\Search\Support\VectorModelContext;
  * {@see self::prepare()} is the once-only part of the `indexes` phase, run by the switch job: on
  * pgvector the target's partial index is created, an index whose vectors already have the target's
  * dimensions keeps its mapping but is emptied (documents of records that are no longer searchable
- * must not survive), any other index is recreated, and the RAG indexes are rebuilt. The documents
- * themselves are written afterwards in chunks ({@see self::plan()}), each by an
- * `IndexDocumentsChunkJob` calling {@see self::writeChunk()}; the `verify` phase writes them all
- * once more the same way, without touching the indexes.
+ * must not survive), any other index is recreated, and the RAG indexes are recreated empty. The
+ * documents themselves are written afterwards in chunks ({@see self::plan()}), each by an
+ * `IndexDocumentsChunkJob` calling {@see self::writeChunk()}: per embeddable model, ranges of keys;
+ * with `$withDocumentation` (the `indexes` phase), also per documentation profile, ranges of
+ * documentation source names ({@see IRagIndexRebuilder}). The `verify` phase writes the model
+ * documents once more the same way, without touching the indexes; the documentation is not edited
+ * by users, so it has no refresh.
  *
- * Everything runs inside {@see VectorModelContext::using()} with the target key, so each document
- * carries only the target's vectors. The engines size the vector mapping from
+ * The model work runs inside {@see VectorModelContext::using()} with the target key, so each
+ * document carries only the target's vectors. The engines size the vector mapping from
  * `core.search.vector.dimensions` (and `similarity`) when they create an index, so both are set to
- * the target's for the duration of the work, in that process only, and restored afterwards.
+ * the target's for the duration of the work, in that process only, and restored afterwards. The
+ * documentation work runs with the target as the active embedding profile.
  */
 final readonly class EmbeddingSwitchIndexes
 {
@@ -48,6 +52,19 @@ final readonly class EmbeddingSwitchIndexes
      */
     public const int MAX_CHUNK_SIZE = 2000;
 
+    /**
+     * The config key of the number of documentation source files per chunk.
+     */
+    public const string RAG_CHUNK_SIZE_CONFIG = 'ai.features.embeddings.rag_chunk_size';
+
+    /**
+     * A documentation file is split into several pieces, each embedded: 20 files is a few hundred
+     * embeddings, well inside {@see \Modules\AI\Jobs\IndexDocumentsChunkJob::TIMEOUT_SECONDS}.
+     */
+    public const int DEFAULT_RAG_CHUNK_SIZE = 20;
+
+    public const int MAX_RAG_CHUNK_SIZE = 200;
+
     public function __construct(
         private EmbeddingSwitchCorpus $corpus,
         private IRagIndexRebuilder $rag,
@@ -55,7 +72,7 @@ final readonly class EmbeddingSwitchIndexes
 
     /**
      * Creates the pgvector profile index, recreates or empties each embeddable model's index and
-     * rebuilds the RAG indexes for the target; writes no document of the models.
+     * recreates the RAG indexes for the target; writes no document.
      *
      * @param  int|null  $currentDimensions  The dimensions of an index whose engine cannot report them
      */
@@ -68,17 +85,19 @@ final readonly class EmbeddingSwitchIndexes
                 $this->resetIndex($modelClass, $target, $currentDimensions);
             }
 
-            $this->rag->rebuild($target);
+            $this->rag->prepare($target);
         });
     }
 
     /**
      * The chunks that write every searchable document once: per embeddable model, ranges of
-     * {@see self::chunkSize()} keys covering the whole key space, by an id unique in the plan.
+     * {@see self::chunkSize()} keys covering the whole key space, by an id unique in the plan; with
+     * `$withDocumentation`, followed by the documentation chunks of {@see self::ragChunkSize()}
+     * source files each (none when a switch does not rebuild the documentation).
      *
      * @return array<string, array{model: string, from: int|string|null, to: int|string|null}>
      */
-    public function plan(): array
+    public function plan(bool $withDocumentation = false): array
     {
         $chunks = [];
 
@@ -88,17 +107,28 @@ final readonly class EmbeddingSwitchIndexes
             }
         }
 
+        if ($withDocumentation) {
+            $chunks = [...$chunks, ...$this->rag->plan($this->ragChunkSize())];
+        }
+
         return $chunks;
     }
 
     /**
-     * Writes the searchable documents of one chunk with the target's vectors, without touching the
-     * index or its mapping. Writing a chunk again writes the same documents again.
+     * Writes the documents of one chunk with the target's vectors, without touching the index or
+     * its mapping: the searchable documents of a model's key range, or the documentation documents
+     * of a range of source names. Writing a chunk again writes the same documents again.
      *
      * @param  array{model: string, from: int|string|null, to: int|string|null}  $chunk
      */
     public function writeChunk(EmbeddingModelProfile $target, array $chunk): void
     {
+        if (EmbeddingSwitchState::isRagChunk($chunk)) {
+            $this->rag->writeChunk($target, $chunk);
+
+            return;
+        }
+
         /** @var class-string<Model> $modelClass */
         $modelClass = $chunk['model'];
 
@@ -122,6 +152,16 @@ final readonly class EmbeddingSwitchIndexes
     public function chunkSize(): int
     {
         return self::configuredSize(self::CHUNK_SIZE_CONFIG, self::DEFAULT_CHUNK_SIZE, self::MAX_CHUNK_SIZE);
+    }
+
+    /**
+     * The number of documentation source files per chunk, `ai.features.embeddings.rag_chunk_size`:
+     * below 1 or not a number falls back to {@see self::DEFAULT_RAG_CHUNK_SIZE}, above
+     * {@see self::MAX_RAG_CHUNK_SIZE} is capped.
+     */
+    public function ragChunkSize(): int
+    {
+        return self::configuredSize(self::RAG_CHUNK_SIZE_CONFIG, self::DEFAULT_RAG_CHUNK_SIZE, self::MAX_RAG_CHUNK_SIZE);
     }
 
     /**

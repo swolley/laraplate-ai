@@ -34,6 +34,12 @@ return [
             // number falls back to 250; above 2000 is capped.
             'index_chunk_size' => env('AI_EMBEDDINGS_INDEX_CHUNK_SIZE', 250),
 
+            // Documentation source files per chunk when a switch rebuilds the Elasticsearch
+            // documentation (RAG) indexes: one IndexDocumentsChunkJob per documentation profile and
+            // range of this many files, on the `embeddings-index` queue. Below 1 or not a number
+            // falls back to 20; above 200 is capped.
+            'rag_chunk_size' => env('AI_EMBEDDINGS_RAG_CHUNK_SIZE', 20),
+
             // Seconds a chunked switch phase waits on a non-empty `embeddings-index` queue with no
             // chunk written before it fails naming the queue (a missing or dead worker). Default 900,
             // above the 760 s one chunk may take over its 3 tries. Below 1 or not a number: 900.
