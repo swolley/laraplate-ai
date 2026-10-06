@@ -56,6 +56,24 @@ final class Conversation extends Model
     }
 
     /**
+     * Remove for good what the conversation holds: its messages, its summaries, and the title, the
+     * summary, the system message and the metadata on its own row. The row stays, soft deleted or
+     * not, and holds nothing.
+     */
+    public function purgeContent(): void
+    {
+        Message::query()->withTrashed()->where('conversation_id', $this->getKey())->forceDelete();
+        ConversationSummary::query()->withTrashed()->where('conversation_id', $this->getKey())->forceDelete();
+
+        self::query()->withTrashed()->whereKey($this->getKey())->update([
+            'title' => null,
+            'summary' => null,
+            'system_message' => null,
+            'metadata' => null,
+        ]);
+    }
+
+    /**
      * Add a message to the conversation.
      *
      * @param  array<string, mixed>|null  $metadata

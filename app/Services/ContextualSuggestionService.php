@@ -197,7 +197,7 @@ PROMPT;
     {
         return ContextualSuggestion::query()->create([
             'user_id' => $user->id,
-            'context' => $context,
+            'context' => ContextualSuggestion::retainedContext($context),
             'suggestion' => $suggestion,
         ]);
     }

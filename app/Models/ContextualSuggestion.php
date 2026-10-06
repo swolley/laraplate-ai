@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\AI\Enums\AITables;
 use Modules\Core\Models\User;
@@ -13,6 +14,14 @@ use Override;
 
 final class ContextualSuggestion extends Model
 {
+    use MassPrunable;
+
+    /**
+     * Days a suggestion is kept. One is shown for an hour at most, so what is older is stale data
+     * about what a user was doing; the purge is scheduled in the AI service provider.
+     */
+    public const int RETENTION_DAYS = 7;
+
     /**
      * @var string
      */
@@ -26,6 +35,37 @@ final class ContextualSuggestion extends Model
         'suggestion',
         'dismissed_at',
     ];
+
+    /**
+     * What the `context` column keeps of what a client sends: the page and the action the suggestion
+     * is about, as text. The `data` a client sends helps generate the suggestion and is never stored.
+     *
+     * @param  array<array-key, mixed>  $context
+     * @return array<string, string>
+     */
+    public static function retainedContext(array $context): array
+    {
+        $retained = [];
+
+        foreach (['page', 'action'] as $key) {
+            if (is_string($context[$key] ?? null) && $context[$key] !== '') {
+                $retained[$key] = mb_substr($context[$key], 0, 255);
+            }
+        }
+
+        return $retained;
+    }
+
+    /**
+     * The suggestions the scheduled `model:prune` removes: those older than the retention, soft
+     * deleted ones included.
+     *
+     * @return Builder<ContextualSuggestion>
+     */
+    public function prunable(): Builder
+    {
+        return self::query()->withTrashed()->where('created_at', '<', now()->subDays(self::RETENTION_DAYS));
+    }
 
     /**
      * @return BelongsTo<User, $this>

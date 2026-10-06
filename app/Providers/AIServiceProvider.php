@@ -22,7 +22,11 @@ use Modules\AI\Contracts\IEmbeddingService;
 use Modules\AI\Contracts\IRagIndexRebuilder;
 use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Filament\MediaAnalysisSchemaContributor;
+use Modules\AI\Models\ContextualSuggestion;
+use Modules\AI\Models\Conversation;
 use Modules\AI\Observers\MediaAnalysisRefcountObserver;
+use Modules\AI\Observers\PurgeAssistantDataOfDeletedUserObserver;
+use Modules\AI\Observers\PurgeDeletedConversationObserver;
 use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
@@ -54,6 +58,7 @@ use Modules\AI\Services\Tools\CrudToolProvider;
 use Modules\AI\Services\Tools\GraphToolProvider;
 use Modules\Core\Filament\ResourceSchemaContributorRegistry;
 use Modules\Core\Models\Media;
+use Modules\Core\Models\User;
 use Modules\Core\Overrides\ModuleServiceProvider;
 use Modules\Core\Search\Contracts\IQueryIntentParser;
 use Modules\Core\Search\Contracts\IReranker;
@@ -156,6 +161,12 @@ class AIServiceProvider extends ModuleServiceProvider
 
         Media::observe(MediaAnalysisRefcountObserver::class);
 
+        // What the assistant keeps about a user (suggestions, conversations) goes with the user, and
+        // what a conversation holds goes with the conversation: both are soft deleted by default,
+        // which no foreign key sees.
+        User::observe(PurgeAssistantDataOfDeletedUserObserver::class);
+        Conversation::observe(PurgeDeletedConversationObserver::class);
+
         // Changing the embedding model from the settings page asks for a confirmation that shows
         // what the switch costs, starts it on confirm and locks the field while one runs.
         $this->app->make(SettingChangeConfirmations::class)
@@ -179,6 +190,13 @@ class AIServiceProvider extends ModuleServiceProvider
                 ->command(RepairMissingEmbeddingsCommand::class, ['--all', '--if-idle'])
                 ->hourly()
                 ->withoutOverlapping()
+                ->onOneServer();
+
+            // Retention of the contextual suggestions: older rows are stale data about what a user
+            // was doing. The limit is ContextualSuggestion::RETENTION_DAYS, in code.
+            $this->app->make(Schedule::class)
+                ->command('model:prune', ['--model' => [ContextualSuggestion::class]])
+                ->daily()
                 ->onOneServer();
         });
     }
