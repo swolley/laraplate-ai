@@ -10,6 +10,7 @@ use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Modules\AI\Tests\Stubs\TranslatableTestModel;
 use Modules\AI\Tests\Stubs\TranslatableTestModelTranslation;
+use Modules\AI\Tests\Stubs\Translation\FixedTranslatableModelClassNames;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -17,18 +18,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  */
 function translate_content_command_with_models(array $model_list): TranslateContentCommand
 {
-    $resolver = new class($model_list) implements ITranslatableModelClassNames
-    {
-        public function __construct(private readonly array $model_list) {}
-
-        /**
-         * @return list<class-string>
-         */
-        public function all(): array
-        {
-            return $this->model_list;
-        }
-    };
+    $resolver = new FixedTranslatableModelClassNames($model_list);
 
     return new TranslateContentCommand($resolver);
 }

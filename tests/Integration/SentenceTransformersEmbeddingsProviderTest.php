@@ -5,6 +5,7 @@ declare(strict_types=1);
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Response;
 use Modules\AI\Ai\Embeddings\SentenceTransformersEmbeddingsProvider;
+use Modules\AI\Tests\Stubs\Embeddings\DocumentWithArrayFormattedContent;
 use Modules\Core\Search\Exceptions\EmbeddingsException;
 use NeuronAI\RAG\Document;
 
@@ -140,13 +141,7 @@ it('prepends http when missing from URL', function (): void {
 });
 
 it('uses an empty text when document formatted content is not a string', function (): void {
-    $document = new class extends Document
-    {
-        /**
-         * @var array<int, string>
-         */
-        public array $formattedContent = ['not text'];
-    };
+    $document = new DocumentWithArrayFormattedContent;
 
     $embeddings = array_fill(0, 512, 0.1);
     $this->mockClient->shouldReceive('post')

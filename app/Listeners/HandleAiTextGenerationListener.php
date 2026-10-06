@@ -15,7 +15,6 @@ use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Ai\Providers\AiModelChoice;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\Core\Events\AiTextGenerationRequested;
-use NeuronAI\Chat\Messages\UserMessage;
 use Throwable;
 
 /**
@@ -69,8 +68,7 @@ final readonly class HandleAiTextGenerationListener
         $startedAt = microtime(true);
 
         try {
-            $response = $this->makeChatAgent()->chat(new UserMessage($event->prompt));
-            $text = $this->sanitize((string) ($response->getMessage()->getContent() ?? ''));
+            $text = $this->sanitize($this->makeChatAgent()->ask($event->prompt));
         } catch (Throwable) {
             $this->log($event->purpose, 'error', $this->elapsedMs($startedAt), 0);
 
@@ -158,6 +156,6 @@ final readonly class HandleAiTextGenerationListener
             return ($this->chatAgentFactory)();
         }
 
-        return ChatAgent::forFeature(AiModelFeature::TextGeneration, self::SYSTEM_PROMPT); // @codeCoverageIgnore
+        return ChatAgent::forFeature(AiModelFeature::TextGeneration, self::SYSTEM_PROMPT);
     }
 }

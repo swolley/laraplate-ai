@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\AI\Services\ContextualSuggestionService;
+use Modules\AI\Tests\Stubs\Users\UserWithFixedKey;
 use Modules\Core\Models\User;
+use NeuronAI\Chat\Messages\AssistantMessage;
+use NeuronAI\Testing\FakeAIProvider;
 
 uses(RefreshDatabase::class);
 
@@ -164,13 +168,7 @@ it('resolveUserId casts numeric string keys to integers', function (): void {
     $service = new ContextualSuggestionService;
     $method = new ReflectionMethod($service, 'resolveUserId');
 
-    $user = new class extends User
-    {
-        public function getKey(): mixed
-        {
-            return '42';
-        }
-    };
+    $user = UserWithFixedKey::keyed('42');
 
     expect($method->invoke($service, $user))->toBe(42);
 });
@@ -179,79 +177,49 @@ it('resolveUserId falls back to zero for non numeric keys', function (): void {
     $service = new ContextualSuggestionService;
     $method = new ReflectionMethod($service, 'resolveUserId');
 
-    $user = new class extends User
-    {
-        public function getKey(): mixed
-        {
-            return ['compound'];
-        }
-    };
+    $user = UserWithFixedKey::keyed(['compound']);
 
     expect($method->invoke($service, $user))->toBe(0);
 });
+
+/**
+ * A suggestion service whose model is Neuron's fake provider, answering with the given replies in
+ * order; with none, it fails like a provider that is down. What it was asked is read from $provider.
+ *
+ * @param  list<string>  $replies
+ */
+function suggestionServiceAnswering(array $replies, ?FakeAIProvider &$provider = null): ContextualSuggestionService
+{
+    $provider = new FakeAIProvider(...array_map(static fn (string $reply): AssistantMessage => new AssistantMessage($reply), $replies));
+    $model = $provider;
+
+    return new ContextualSuggestionService(chatAgentFactory: static fn (): ChatAgent => ChatAgent::make(systemPrompt: 'Suggest.')->setAiProvider($model));
+}
 
 it('generateSuggestion calls AI and creates suggestion when not cached', function (): void {
     config()->set('ai.features.contextual_suggestions.enabled', true);
     config()->set('ai.features.contextual_suggestions.cooldown_minutes', 0);
     config()->set('ai.features.contextual_suggestions.cache_ttl', 3600);
 
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Try using keyboard shortcuts'));
-
-    $mockAgent = Mockery::mock(Modules\AI\Ai\Agents\ChatAgent::class);
-    $mockAgent->shouldReceive('chat')
-        ->with(Mockery::type(NeuronAI\Chat\Messages\UserMessage::class))
-        ->andReturn($mockAgentHandler);
-
-    $service = new ContextualSuggestionService(
-        chatAgentFactory: fn () => $mockAgent,
-    );
+    $service = suggestionServiceAnswering(['Try using keyboard shortcuts'], $provider);
 
     $user = User::factory()->create();
     $result = $service->generateSuggestion($user, ['page' => 'settings']);
 
     expect($result)->toBeInstanceOf(ContextualSuggestion::class)
         ->and($result->suggestion)->toBe('Try using keyboard shortcuts')
-        ->and($result->user_id)->toBe($user->id);
+        ->and($result->user_id)->toBe($user->id)
+        ->and((string) $provider->getRecorded()[0]->messages[0]->getContent())->toContain('settings');
 });
 
-it('generateSuggestion returns null when AI returns empty text', function (): void {
+it('generateSuggestion returns null when AI returns empty text or fails', function (array $replies): void {
     config()->set('ai.features.contextual_suggestions.enabled', true);
     config()->set('ai.features.contextual_suggestions.cooldown_minutes', 0);
 
-    $mockMessage = Mockery::mock(NeuronAI\Chat\Messages\Message::class);
-    $mockMessage->shouldReceive('getContent')->andReturn('');
-
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')->andReturn($mockMessage);
-
-    $mockAgent = Mockery::mock(Modules\AI\Ai\Agents\ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
-
-    $service = new ContextualSuggestionService(
-        chatAgentFactory: fn () => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $result = $service->generateSuggestion($user, ['page' => 'home']);
+    $result = suggestionServiceAnswering($replies)->generateSuggestion(User::factory()->create(), ['page' => 'home']);
 
     expect($result)->toBeNull();
-});
-
-it('generateSuggestion returns null on AI exception', function (): void {
-    config()->set('ai.features.contextual_suggestions.enabled', true);
-    config()->set('ai.features.contextual_suggestions.cooldown_minutes', 0);
-
-    $mockAgent = Mockery::mock(Modules\AI\Ai\Agents\ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andThrow(new Exception('AI error'));
-
-    $service = new ContextualSuggestionService(
-        chatAgentFactory: fn () => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $result = $service->generateSuggestion($user, ['page' => 'home']);
-
-    expect($result)->toBeNull();
-});
+})->with([
+    'empty text' => [['']],
+    'the provider is down' => [[]],
+]);

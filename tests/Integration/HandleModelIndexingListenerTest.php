@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\GenerateEmbeddingsJob;
 use Modules\AI\Listeners\HandleModelIndexingListener;
+use Modules\AI\Tests\Stubs\CompoundKeySearchableModel;
 use Modules\AI\Tests\Unit\SearchableModelStub;
 use Modules\Core\Events\ModelRequiresIndexing;
 
@@ -92,13 +93,7 @@ it('adds embeddings to required pre-processing', function (): void {
 it('skips event cache when model key is not scalar', function (): void {
     Cache::spy();
 
-    $model = new class extends SearchableModelStub
-    {
-        public function getKey(): mixed
-        {
-            return ['compound'];
-        }
-    };
+    $model = new CompoundKeySearchableModel;
 
     $event = new ModelRequiresIndexing($model, false);
     $listener = new HandleModelIndexingListener();

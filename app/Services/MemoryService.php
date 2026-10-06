@@ -96,11 +96,7 @@ PROMPT;
             $context = "Previous summary:\n{$conversation->summary}\n\nNew messages:\n";
         }
 
-        $summary_agent = $this->makeChatAgent(self::SUMMARY_SYSTEM_PROMPT);
-
-        $response = $summary_agent->chat(new UserMessage($context . $conversation_text));
-
-        return mb_trim($response->getMessage()->getContent() ?? '');
+        return $this->makeChatAgent(self::SUMMARY_SYSTEM_PROMPT)->ask($context . $conversation_text);
     }
 
     /**
@@ -195,7 +191,6 @@ PROMPT;
             return ($this->chatAgentFactory)($systemPrompt);
         }
 
-        /** @var ChatAgent */
-        return ChatAgent::forFeature(AiModelFeature::ChatSummary, $systemPrompt); // @codeCoverageIgnore
+        return ChatAgent::forFeature(AiModelFeature::ChatSummary, $systemPrompt);
     }
 }

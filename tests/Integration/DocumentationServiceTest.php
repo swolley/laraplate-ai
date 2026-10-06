@@ -5,9 +5,11 @@ declare(strict_types=1);
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Services\DocumentationService;
+use Modules\AI\Tests\Stubs\Documentation\CountingSplitter;
+use Modules\AI\Tests\Stubs\Documentation\EmptySplitter;
+use Modules\AI\Tests\Stubs\Documentation\ManyChunksSplitter;
 use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\RAG\Document;
-use NeuronAI\RAG\Splitter\SplitterInterface;
 use NeuronAI\Testing\FakeAIProvider;
 use NeuronAI\Testing\FakeEmbeddingsProvider;
 use NeuronAI\Testing\FakeVectorStore;
@@ -20,28 +22,7 @@ it('never splits one source across two reindexBySource batches', function (): vo
 
     config()->set('ai.features.faq.vector_store', 'memory');
 
-    $chunk_splitter = new class implements SplitterInterface
-    {
-        public function splitDocument(Document $document): array
-        {
-            $count = str_contains($document->sourceName, 'large') ? 150 : 3;
-            $chunks = [];
-
-            for ($i = 0; $i < $count; $i++) {
-                $chunk = new Document($document->getContent() . ' #' . $i);
-                $chunk->sourceType = $document->sourceType;
-                $chunk->sourceName = $document->sourceName;
-                $chunks[] = $chunk;
-            }
-
-            return $chunks;
-        }
-
-        public function splitDocuments(array $documents): array
-        {
-            return array_merge(...array_map($this->splitDocument(...), $documents));
-        }
-    };
+    $chunk_splitter = new ManyChunksSplitter;
 
     /** @var list<array<string, int>> $calls */
     $calls = [];
@@ -293,29 +274,7 @@ it('honors a custom SplitterInterface passed to the constructor', function (): v
 
     config()->set('ai.features.faq.vector_store', 'memory');
 
-    $splitterCalls = 0;
-    $customSplitter = new class($splitterCalls) implements SplitterInterface
-    {
-        public function __construct(public int &$calls) {}
-
-        public function splitDocument(Document $document): array
-        {
-            $this->calls++;
-
-            return [$document];
-        }
-
-        public function splitDocuments(array $documents): array
-        {
-            $out = [];
-
-            foreach ($documents as $document) {
-                $out = array_merge($out, $this->splitDocument($document));
-            }
-
-            return $out;
-        }
-    };
+    $customSplitter = new CountingSplitter;
 
     $agentMock = Mockery::mock(DocumentationAgent::class);
     $agentMock->shouldReceive('reindexBySource')->once();
@@ -325,7 +284,7 @@ it('honors a custom SplitterInterface passed to the constructor', function (): v
     try {
         $service->indexDocuments($tmpDir);
 
-        expect($splitterCalls)->toBeGreaterThanOrEqual(1);
+        expect($customSplitter->calls)->toBeGreaterThanOrEqual(1);
     } finally {
         unlink($tmpDir . '/readme.md');
         rmdir($tmpDir);
@@ -549,18 +508,7 @@ it('returns zero when the splitter yields no chunks', function (): void {
 
     config()->set('ai.features.faq.vector_store', 'memory');
 
-    $empty_splitter = new class implements SplitterInterface
-    {
-        public function splitDocument(Document $document): array
-        {
-            return [];
-        }
-
-        public function splitDocuments(array $documents): array
-        {
-            return [];
-        }
-    };
+    $empty_splitter = new EmptySplitter;
 
     $agent_mock = Mockery::mock(DocumentationAgent::class);
     $agent_mock->shouldNotReceive('addDocuments');

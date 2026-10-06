@@ -216,30 +216,9 @@ it('summarizeConversation returns empty string for empty conversation', function
 });
 
 it('summarizeConversation generates summary via ChatAgent for non-empty conversation', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Conversation about deadlines'));
+    $service = memoryServiceAnswering(['  Conversation about deadlines  '], $provider);
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')
-        ->with(Mockery::type(NeuronAI\Chat\Messages\UserMessage::class))
-        ->andReturn($mockAgentHandler);
-
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
-
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'When is the deadline?',
-    ]);
+    $conversation = conversationWithAMessage('When is the deadline?');
     Message::query()->create([
         'conversation_id' => $conversation->id,
         'role' => 'assistant',
@@ -247,53 +226,23 @@ it('summarizeConversation generates summary via ChatAgent for non-empty conversa
     ]);
 
     $result = $service->summarizeConversation($conversation);
+    $prompt = (string) $provider->getRecorded()[0]->messages[0]->getContent();
 
-    expect($result)->toBe('Conversation about deadlines');
+    expect($result)->toBe('Conversation about deadlines')
+        ->and($prompt)->toContain('User: When is the deadline?')->toContain('Assistant: The deadline is March 15.')->not->toContain('Previous summary:');
 });
 
 it('summarizeConversation includes previous summary as context', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Updated summary'));
+    $service = memoryServiceAnswering(['Updated summary'], $provider);
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')
-        ->with(Mockery::on(fn (NeuronAI\Chat\Messages\UserMessage $msg): bool => str_contains((string) $msg->getContent(), 'Previous summary:')
-            && str_contains((string) $msg->getContent(), 'Old summary')))
-        ->andReturn($mockAgentHandler);
-
-    $service = new MemoryService(
-        chatAgentFactory: fn (string $systemPrompt) => $mockAgent,
-    );
-
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-        'summary' => 'Old summary',
-    ]);
-
-    Message::query()->create([
-        'conversation_id' => $conversation->id,
-        'role' => 'user',
-        'content' => 'New message here.',
-    ]);
+    $conversation = conversationWithAMessage('New message here.');
+    $conversation->update(['summary' => 'Old summary']);
 
     $result = $service->summarizeConversation($conversation);
+    $prompt = (string) $provider->getRecorded()[0]->messages[0]->getContent();
 
-    expect($result)->toBe('Updated summary');
-});
-
-it('extractFacts returns empty array for empty conversation', function (): void {
-    $user = User::factory()->create();
-    $conversation = Conversation::query()->create([
-        'user_id' => $user->id,
-        'memory_enabled' => true,
-    ]);
-
-    $result = $this->service->extractFacts($conversation);
-
-    expect($result)->toBe([]);
+    expect($result)->toBe('Updated summary')
+        ->and($prompt)->toContain('Previous summary:')->toContain('Old summary')->toContain('New message here.');
 });
 
 /**

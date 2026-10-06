@@ -5,8 +5,8 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Modules\AI\Console\TranslateMissingCommand;
-use Modules\AI\Contracts\ITranslatableModelClassNames;
 use Modules\AI\Tests\Stubs\TranslatableMissingTestModel;
+use Modules\AI\Tests\Stubs\Translation\FixedTranslatableModelClassNames;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -14,18 +14,7 @@ use Symfony\Component\Console\Tester\CommandTester;
  */
 function translate_missing_command_with_models(array $model_list): TranslateMissingCommand
 {
-    $resolver = new class($model_list) implements ITranslatableModelClassNames
-    {
-        public function __construct(private readonly array $model_list) {}
-
-        /**
-         * @return list<class-string>
-         */
-        public function all(): array
-        {
-            return $this->model_list;
-        }
-    };
+    $resolver = new FixedTranslatableModelClassNames($model_list);
 
     return new TranslateMissingCommand($resolver);
 }

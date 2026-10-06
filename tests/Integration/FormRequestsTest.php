@@ -3,12 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Validator;
-use Modules\AI\Http\Requests\ApproveActionRequest;
 use Modules\AI\Http\Requests\GenerateSuggestionRequest;
 use Modules\AI\Http\Requests\InsertConversationRequest;
 use Modules\AI\Http\Requests\ListConversationsRequest;
 use Modules\AI\Http\Requests\ListMessagesRequest;
-use Modules\AI\Http\Requests\RejectActionRequest;
 use Modules\AI\Http\Requests\SendMessageRequest;
 
 it('InsertConversationRequest returns expected rules', function (): void {
@@ -88,26 +86,4 @@ it('GenerateSuggestionRequest returns expected rules', function (): void {
         ->and($rules['context.page'])->toContain('sometimes', 'string', 'max:255')
         ->and($rules['context.action'])->toContain('sometimes', 'string', 'max:255')
         ->and($rules['context.data'])->toContain('sometimes', 'array');
-});
-
-it('ApproveActionRequest returns expected rules', function (): void {
-    $request = new ApproveActionRequest;
-    $request->setContainer(app());
-    $request->initialize([]);
-
-    $rules = $request->rules();
-
-    expect($rules)->toHaveKey('reason')
-        ->and($rules['reason'])->toContain('sometimes', 'nullable', 'string', 'max:500');
-});
-
-it('RejectActionRequest returns expected rules', function (): void {
-    $request = new RejectActionRequest;
-    $request->setContainer(app());
-    $request->initialize([]);
-
-    $rules = $request->rules();
-
-    expect($rules)->toHaveKey('reason')
-        ->and($rules['reason'])->toContain('sometimes', 'nullable', 'string', 'max:500');
 });

@@ -10,6 +10,7 @@ use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Exceptions\AssistancePolicyViolationException;
 use NeuronAI\Agent\Agent;
+use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\Exceptions\ToolRunsExceededException;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\Tools\ToolInterface;
@@ -44,6 +45,15 @@ class ChatAgent extends Agent
         $choice = AiModelChoice::forFeature($feature);
 
         return static::make($choice->provider, $systemPrompt, $choice->model, $maxOutputTokens);
+    }
+
+    /**
+     * The answer to a prompt as plain text, trimmed: for the one-shot calls that want a string and
+     * nothing else (a summary, a translation, a rewritten note).
+     */
+    public function ask(string $prompt): string
+    {
+        return mb_trim($this->chat(new UserMessage($prompt))->getMessage()->getContent() ?? '');
     }
 
     /**

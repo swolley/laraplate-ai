@@ -14,6 +14,7 @@ use Modules\AI\Http\Requests\SendMessageRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
+use Modules\AI\Tests\Stubs\Requests\SendMessageRequestWithInvalidMessage;
 use Modules\Core\Models\User;
 
 uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
@@ -188,17 +189,7 @@ it('insertMessage aborts when validated message is not a string', function (): v
     $conversation = Conversation::query()->create(['user_id' => $this->user->id]);
     $chatService = Mockery::mock(IChatService::class);
 
-    $request = new class extends SendMessageRequest
-    {
-        /**
-         * @return array<string, mixed>
-         */
-        #[Override]
-        public function validated($key = null, $default = null): mixed
-        {
-            return ['message' => ['not a string']];
-        }
-    };
+    $request = new SendMessageRequestWithInvalidMessage;
 
     $request->setContainer(app());
     $request->initialize([], []);
@@ -295,8 +286,7 @@ it('sendMessageWithTools returns message and action requests', function (): void
     expect($response->getStatusCode())->toBe(Response::HTTP_CREATED)
         ->and($data)->toHaveKey('data')
         ->and($data['data'])->toHaveKey('message')
-        ->and($data['data'])->toHaveKey('action_requests')
-        ->and($data['data']['action_requests'])->toBe([]);
+        ->and($data['data'])->not->toHaveKey('action_requests');
 });
 
 it('sendMessageWithTools passes context when provided', function (): void {

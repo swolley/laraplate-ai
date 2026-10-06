@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Services\Translation\AiTranslationService;
+use NeuronAI\Chat\Messages\AssistantMessage;
+use NeuronAI\Testing\FakeAIProvider;
 
 it('translate returns empty string as-is', function (): void {
     $service = new AiTranslationService;
@@ -33,6 +35,23 @@ it('translateBatch returns empty array for empty input', function (): void {
 });
 
 /**
+ * A translation service whose model is Neuron's fake provider, answering with the given replies in
+ * order; with none, it fails like a provider that is down. What it was asked is read from $provider.
+ *
+ * @param  list<string>  $replies
+ */
+function translationServiceAnswering(array $replies, ?FakeAIProvider &$provider = null, ?string $service_provider = null): AiTranslationService
+{
+    $provider = new FakeAIProvider(...array_map(static fn (string $reply): AssistantMessage => new AssistantMessage($reply), $replies));
+    $model = $provider;
+
+    return new AiTranslationService(
+        chatAgentFactory: static fn (?string $name): ChatAgent => ChatAgent::make(systemPrompt: 'Translate.')->setAiProvider($model),
+        provider: $service_provider,
+    );
+}
+
+/**
  * The provider failing is the point, not which exception it raises. Driving it
  * through the injected factory keeps the assertion on translate()'s contract —
  * log, then rethrow — instead of on whatever a real endpoint answers. Without
@@ -45,76 +64,38 @@ it('translate rethrows the provider failure after logging it', function (): void
         ->once()
         ->withArgs(static fn (string $message): bool => $message === 'AI translation error');
 
-    $failing_agent = Mockery::mock(ChatAgent::class);
-    $failing_agent->shouldReceive('chat')->andThrow(new RuntimeException('provider unavailable'));
+    $service = translationServiceAnswering([]);
 
-    $service = new AiTranslationService(chatAgentFactory: fn (): ChatAgent => $failing_agent);
-
-    expect(fn (): string => $service->translate('hello', 'en', 'it'))
-        ->toThrow(RuntimeException::class, 'provider unavailable');
+    expect(fn (): string => $service->translate('hello', 'en', 'it'))->toThrow(Exception::class);
 });
 
-it('translate calls ChatAgent and returns translated text', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Ciao'));
+it('translate asks the model for the text between the two locales and returns the translation', function (): void {
+    $service = translationServiceAnswering(["  Ciao\n"], $provider);
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')
-        ->with(Mockery::on(fn (NeuronAI\Chat\Messages\UserMessage $msg): bool => str_contains((string) $msg->getContent(), 'Hello') && str_contains((string) $msg->getContent(), 'en') && str_contains((string) $msg->getContent(), 'it')))
-        ->andReturn($mockAgentHandler);
+    expect($service->translate('Hello', 'en', 'it'))->toBe('Ciao');
 
-    $service = new AiTranslationService(
-        chatAgentFactory: fn (?string $provider) => $mockAgent,
-    );
+    $prompt = (string) $provider->getRecorded()[0]->messages[0]->getContent();
 
-    $result = $service->translate('Hello', 'en', 'it');
-
-    expect($result)->toBe('Ciao');
+    expect($prompt)->toContain('from en to it')->toContain('Hello');
 });
 
-it('translateBatch calls translate for each text', function (): void {
-    $mockAgentHandler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $mockAgentHandler->shouldReceive('getMessage')
-        ->andReturn(
-            new NeuronAI\Chat\Messages\AssistantMessage('Ciao'),
-            new NeuronAI\Chat\Messages\AssistantMessage('Mondo'),
-        );
+it('translateBatch translates each text in order', function (): void {
+    $service = translationServiceAnswering(['Ciao', 'Mondo'], $provider);
 
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andReturn($mockAgentHandler);
+    expect($service->translateBatch(['Hello', 'World'], 'en', 'it'))->toBe(['Ciao', 'Mondo']);
 
-    $service = new AiTranslationService(
-        chatAgentFactory: fn (?string $provider) => $mockAgent,
-    );
-    $result = $service->translateBatch(['Hello', 'World'], 'en', 'it');
-
-    expect($result)->toBe(['Ciao', 'Mondo']);
-});
-
-it('translate logs error and throws on exception', function (): void {
-    $mockAgent = Mockery::mock(ChatAgent::class);
-    $mockAgent->shouldReceive('chat')->andThrow(new Exception('Translation failed'));
-
-    $service = new AiTranslationService(
-        chatAgentFactory: fn (?string $provider) => $mockAgent,
-    );
-
-    expect(fn (): string => $service->translate('Hello', 'en', 'it'))->toThrow(Exception::class, 'Translation failed');
+    $provider->assertCallCount(2);
 });
 
 it('hands its provider to the agent factory', function (): void {
     $received_provider = 'untouched';
-    $handler = Mockery::mock(NeuronAI\Agent\AgentHandler::class);
-    $handler->shouldReceive('getMessage')->andReturn(new NeuronAI\Chat\Messages\AssistantMessage('Ciao'));
-    $agent = Mockery::mock(ChatAgent::class);
-    $agent->shouldReceive('chat')->andReturn($handler);
+    $provider = new FakeAIProvider(new AssistantMessage('Ciao'));
 
     $service = new AiTranslationService(
-        chatAgentFactory: function (?string $provider) use (&$received_provider, $agent): ChatAgent {
-            $received_provider = $provider;
+        chatAgentFactory: function (?string $name) use (&$received_provider, $provider): ChatAgent {
+            $received_provider = $name;
 
-            return $agent;
+            return ChatAgent::make(systemPrompt: 'Translate.')->setAiProvider($provider);
         },
         provider: 'mistral',
         model: 'mistral-large-latest',

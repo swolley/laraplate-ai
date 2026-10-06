@@ -8,7 +8,7 @@ use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Tests\Stubs\Embeddings\RecordingEmbeddingsProvider;
 use Modules\AI\Tests\Stubs\RecordingHttpClient;
 use NeuronAI\Chat\Messages\UserMessage;
-use NeuronAI\RAG\VectorStore\MemoryVectorStore;
+use NeuronAI\Testing\FakeVectorStore;
 
 /**
  * These run a real agent end to end, with only the socket replaced: mocking chat() would
@@ -42,7 +42,7 @@ it('completes a chat round trip on a real DocumentationAgent', function (): void
     $agent = DocumentationAgent::make('ollama', 'memory');
     $agent->setAiProvider($provider);
     $agent->setEmbeddingsProvider($embeddings);
-    $agent->setVectorStore(new MemoryVectorStore());
+    $agent->setVectorStore(new FakeVectorStore);
 
     $answer = $agent->chat(new UserMessage('How do I configure search?'))->getMessage()->getContent();
 

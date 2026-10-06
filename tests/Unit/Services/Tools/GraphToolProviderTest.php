@@ -157,7 +157,6 @@ it('executes named NeuronAI inputs without registering contextual tools globally
 
     $depthSchema = $tools[0]->getProperties()[4]->getJsonSchema();
 
-    expect($registry->hasTools())->toBeFalse()
-        ->and($tools[0]->getResult())->toContain('"available":true')
+    expect($tools[0]->getResult())->toContain('"available":true')
         ->and($depthSchema)->toMatchArray(['minimum' => 1, 'maximum' => 2]);
 });

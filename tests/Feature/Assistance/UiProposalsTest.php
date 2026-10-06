@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Http\Request;
-use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
@@ -299,7 +298,6 @@ it('is not steered by text the page wrote in a description or a hint', function 
 it('changes nothing on the server when a proposal is made', function (): void {
     $before = $this->user->fresh()->preferences;
     $modifications = Modification::query()->count();
-    $actions = ActionRequest::query()->count();
 
     proposalAssistance(
         proposalRequest($this->user, [proposalLayoutTarget()]),
@@ -311,8 +309,7 @@ it('changes nothing on the server when a proposal is made', function (): void {
     )->respond($this->conversation, $this->user, 'Change the layout.');
 
     expect($this->user->fresh()->preferences)->toBe($before)
-        ->and(Modification::query()->count())->toBe($modifications)
-        ->and(ActionRequest::query()->count())->toBe($actions);
+        ->and(Modification::query()->count())->toBe($modifications);
 });
 
 it('never lets a message with a proposal say that the change was made', function (string $claim, string $locale): void {

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Services\Translation\TranslationService;
+use Modules\AI\Tests\Stubs\PlainTestModel;
 use Modules\AI\Tests\Stubs\TranslateModelJobStub;
 
 beforeEach(function (): void {
@@ -157,10 +158,7 @@ it('translates components recursively', function (): void {
 });
 
 it('cannot resolve source translation when the model exposes no translation API', function (): void {
-    $model = new class extends Model
-    {
-        protected $table = 'test';
-    };
+    $model = new PlainTestModel;
 
     $job = new TranslateModelJob($model, [], false);
     $method = new ReflectionMethod(TranslateModelJob::class, 'resolveSourceTranslation');

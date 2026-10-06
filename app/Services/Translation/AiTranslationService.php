@@ -9,7 +9,6 @@ use Exception;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Enums\AiModelFeature;
-use NeuronAI\Chat\Messages\UserMessage;
 
 final readonly class AiTranslationService implements TranslationServiceInterface
 {
@@ -28,12 +27,7 @@ final readonly class AiTranslationService implements TranslationServiceInterface
         }
 
         try {
-            $agent = $this->makeChatAgent();
-
-            $prompt = "Translate the following text from {$from_locale} to {$to_locale}:\n\n{$text}";
-            $response = $agent->chat(new UserMessage($prompt));
-
-            return mb_trim($response->getMessage()->getContent() ?? '');
+            return $this->makeChatAgent()->ask("Translate the following text from {$from_locale} to {$to_locale}:\n\n{$text}");
         } catch (Exception $e) {
             Log::error('AI translation error', [
                 'error' => $e->getMessage(),
@@ -67,7 +61,6 @@ final readonly class AiTranslationService implements TranslationServiceInterface
             return ChatAgent::forFeature(AiModelFeature::Translation, self::SYSTEM_PROMPT);
         }
 
-        /** @var ChatAgent */
         return ChatAgent::make(
             providerName: $this->provider,
             systemPrompt: self::SYSTEM_PROMPT,

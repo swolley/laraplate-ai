@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Modules\AI\Jobs\TranslateModelJob;
 use Modules\AI\Listeners\HandleModelTranslationListener;
+use Modules\AI\Tests\Stubs\Translation\CompoundKeySearchableTranslatableTestModel;
+use Modules\AI\Tests\Stubs\Translation\SearchableTranslatableTestModel;
 use Modules\AI\Tests\Unit\TranslatableModelStub;
-use Modules\AI\Tests\Unit\TranslatableModelStubTranslation;
 use Modules\Core\Events\ModelRequiresIndexing;
 use Modules\Core\Events\TranslatedModelSaved;
-use Modules\Core\Models\Concerns\HasTranslations;
 
 beforeEach(function (): void {
     Config::set('ai.features.translation.enabled', true);
@@ -57,29 +57,7 @@ it('dispatches TranslateModelJob', function (): void {
 });
 
 it('registers translation for indexing when model is Searchable', function (): void {
-    $model = new class extends Model
-    {
-        use HasTranslations;
-        use Illuminate\Database\Eloquent\Factories\HasFactory;
-        use Modules\Core\Search\Traits\Searchable;
-
-        protected bool $auto_translate_enabled = true;
-
-        public function getTable(): string
-        {
-            return 'test_searchable_translatable';
-        }
-
-        public function vectorSearchEnabled(): bool
-        {
-            return true;
-        }
-
-        protected static function getTranslationModelClass(): string
-        {
-            return TranslatableModelStubTranslation::class;
-        }
-    };
+    $model = new SearchableTranslatableTestModel;
     $model->id = 1;
 
     $indexingEvent = new ModelRequiresIndexing($model, false);
@@ -98,34 +76,7 @@ it('registers translation for indexing when model is Searchable', function (): v
 it('skips indexing cache registration when searchable model key is not scalar', function (): void {
     Cache::spy();
 
-    $model = new class extends Model
-    {
-        use HasTranslations;
-        use Illuminate\Database\Eloquent\Factories\HasFactory;
-        use Modules\Core\Search\Traits\Searchable;
-
-        protected bool $auto_translate_enabled = true;
-
-        public function getKey(): mixed
-        {
-            return ['compound'];
-        }
-
-        public function getTable(): string
-        {
-            return 'test_searchable_translatable';
-        }
-
-        public function vectorSearchEnabled(): bool
-        {
-            return true;
-        }
-
-        protected static function getTranslationModelClass(): string
-        {
-            return TranslatableModelStubTranslation::class;
-        }
-    };
+    $model = new CompoundKeySearchableTranslatableTestModel;
 
     $event = new TranslatedModelSaved($model, ['it'], false);
     $listener = new HandleModelTranslationListener();

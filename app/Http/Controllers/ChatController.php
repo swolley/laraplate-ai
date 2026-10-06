@@ -158,7 +158,6 @@ final class ChatController extends Controller
 
     /**
      * Send a protected non-streaming message with contextual read-only tools.
-     * Read-only assistance tools never create ActionRequest records.
      */
     public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
     {
@@ -182,7 +181,6 @@ final class ChatController extends Controller
                     'metadata' => $message->metadata,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ],
-                'action_requests' => [],
             ])
             ->setStatus(Response::HTTP_CREATED)
             ->json();

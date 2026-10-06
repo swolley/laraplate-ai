@@ -17,7 +17,6 @@ use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Models\ContextualSuggestion;
 use Modules\Core\Models\User;
-use NeuronAI\Chat\Messages\UserMessage;
 
 /**
  * Service for generating contextual AI suggestions based on UI context.
@@ -140,13 +139,7 @@ PROMPT;
      */
     private function generateSuggestionText(array $context): ?string
     {
-        $agent = $this->makeChatAgent();
-
-        $prompt = $this->buildPromptFromContext($context);
-
-        $response = $agent->chat(new UserMessage($prompt));
-
-        $text = mb_trim($response->getMessage()->getContent() ?? '');
+        $text = $this->makeChatAgent()->ask($this->buildPromptFromContext($context));
 
         return $text !== '' ? $text : null;
     }
@@ -157,8 +150,7 @@ PROMPT;
             return ($this->chatAgentFactory)();
         }
 
-        /** @var ChatAgent */
-        return ChatAgent::forFeature(AiModelFeature::ContextualSuggestions, self::SUGGESTION_SYSTEM_PROMPT); // @codeCoverageIgnore
+        return ChatAgent::forFeature(AiModelFeature::ContextualSuggestions, self::SUGGESTION_SYSTEM_PROMPT);
     }
 
     /**
