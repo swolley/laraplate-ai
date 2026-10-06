@@ -74,3 +74,30 @@ it('resolves specific provider when name is given', function (): void {
 
     expect($provider)->toBeInstanceOf(AIProviderInterface::class);
 });
+
+/**
+ * What the agent's tool error handler answers the model for an exception.
+ */
+function chatAgentToolErrorFor(Throwable $exception): string
+{
+    $agent = ChatAgent::make(systemPrompt: 'x');
+    $handler = (new ReflectionMethod($agent, 'resolveToolErrorHandler'))->invoke($agent);
+
+    return $handler($exception, NeuronAI\Tools\Tool::make('lookup', 'A tool'));
+}
+
+it('answers the model with a fixed message when a tool fails, never with the exception text', function (): void {
+    $message = chatAgentToolErrorFor(new NeuronAI\Exceptions\MissingCallbackParameter('Missing required parameter: secret_column'));
+
+    expect($message)->toContain('The tool call failed')->not->toContain('secret_column')->not->toContain('Missing required');
+});
+
+it('tells the model a tool has been called too often', function (): void {
+    $message = chatAgentToolErrorFor(new NeuronAI\Exceptions\ToolRunsExceededException('Tool lookup has been executed too many times - 3 - with arguments: {"id":7}'));
+
+    expect($message)->toContain('too many times')->not->toContain('"id"');
+});
+
+it('lets a policy violation end the turn instead of handing it to the model', function (): void {
+    chatAgentToolErrorFor(new Modules\AI\Exceptions\AssistancePolicyViolationException('unsafe_output'));
+})->throws(Modules\AI\Exceptions\AssistancePolicyViolationException::class);

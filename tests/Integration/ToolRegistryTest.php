@@ -312,3 +312,20 @@ it('getAllNeuronToolsWithApproval returns high-risk pending admin approval messa
     expect($pending_requests)->toHaveCount(1)
         ->and($tools[0]->getResult())->toContain('pending admin approval');
 });
+
+it('limits how often the model may call a tool in a turn when the tool says so, and leaves Neuron\'s limit otherwise', function (): void {
+    $this->registry->register('limited', fn (): string => 'ok', 'A tool with a limit', [], maxRuns: 2);
+    $this->registry->register('unlimited', fn (): string => 'ok', 'A tool without one', []);
+
+    $tools = collect($this->registry->getAllNeuronTools())->keyBy(static fn (Tool $tool): string => $tool->getName());
+
+    expect($this->registry->getTool('limited')->maxRuns)->toBe(2)
+        ->and($tools['limited']->getMaxRuns())->toBe(2)
+        ->and($this->registry->getTool('unlimited')->maxRuns)->toBeNull()
+        ->and($tools['unlimited']->getMaxRuns())->toBeNull();
+});
+
+it('limits the graph and CRUD tools to a few calls per turn', function (): void {
+    expect(Modules\AI\Services\Tools\GraphToolProvider::MAX_RUNS)->toBe(3)
+        ->and(Modules\AI\Services\Tools\CrudToolProvider::MAX_RUNS)->toBe(3);
+});

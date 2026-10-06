@@ -14,6 +14,7 @@ final readonly class ToolDefinition
     /**
      * @param  ParameterShape[]  $parameters
      * @param  callable(mixed ...$args): mixed  $handler
+     * @param  int|null  $maxRuns  how many times the model may call the tool in one turn; null leaves Neuron's default
      */
     public function __construct(
         public string $name,
@@ -21,5 +22,6 @@ final readonly class ToolDefinition
         public array $parameters,
         public string $riskLevel,
         public mixed $handler,
+        public ?int $maxRuns = null,
     ) {}
 }

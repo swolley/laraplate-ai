@@ -143,6 +143,23 @@ it('ends the run with an interrupt when the assistant proposes a change, and app
     $provider->assertCallCount(2);
 });
 
+it('completes the turn when the model calls a tool without a required argument, and tells it so without the exception text', function (): void {
+    agentFakeModel($provider = new ToolCallingFakeProvider([['propose_preference_change', []]], new AssistantMessage('I could not suggest a change, but you can pick the layout in Settings.')));
+
+    $events = agentEvents(($this->run)(['context' => ['page' => ['resource' => 'erp/orders', 'proposable' => [agentLayoutTarget()]]]])->streamedContent());
+    $finished = end($events);
+    $messages = $provider->getRecorded()[1]->messages;
+    $result = end($messages)->getTools()[0]->getResult();
+
+    expect($finished)->toMatchArray(['type' => 'RunFinished', 'outcome' => ['type' => 'success']])
+        ->and(array_column($events, 'type'))->not->toContain('RunError')
+        ->and(array_values(array_filter($events, static fn (array $event): bool => $event['type'] === 'TextMessageContent'))[0]['delta'])->toBe('I could not suggest a change, but you can pick the layout in Settings.')
+        ->and($result)->toBeString()->not->toContain('Missing required parameter')->not->toContain('namespace')
+        ->and($this->conversation->messages()->where('role', 'assistant')->first()->metadata)->not->toHaveKey('refused');
+
+    $provider->assertCallCount(2);
+});
+
 it('says POLICY_DENIED, with a refusal that says nothing of why, and never calls the model', function (): void {
     agentFakeModel($provider = new FakeAIProvider(new AssistantMessage('should not be sent')));
 

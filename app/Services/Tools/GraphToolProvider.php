@@ -16,6 +16,12 @@ use Throwable;
 
 final readonly class GraphToolProvider implements ContextualToolProviderInterface
 {
+    /**
+     * How many times the model may call one of these tools in a turn: they read records, and a model
+     * that keeps asking is looping.
+     */
+    public const int MAX_RUNS = 3;
+
     public function __construct(
         private GraphToolGatewayInterface $gateway,
         private Request $request,
@@ -33,6 +39,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
                 description: 'Search authorized application records and return a bounded read-only relation graph.',
                 parameters: $this->searchParameters(),
                 riskLevel: 'low',
+                maxRuns: self::MAX_RUNS,
                 handler: fn (mixed $module, mixed $entity, mixed $query, mixed $relations, mixed $depth, mixed $limit, mixed $relation_limit): array => $this->invoke(
                     $context,
                     fn (): array => $this->gateway->search(new GraphSearchToolInput(
@@ -51,6 +58,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
                 description: 'Expand explicitly requested relations from one authorized application record.',
                 parameters: $this->centerParameters(),
                 riskLevel: 'low',
+                maxRuns: self::MAX_RUNS,
                 handler: fn (mixed $module, mixed $entity, mixed $record_key, mixed $relations, mixed $depth, mixed $limit, mixed $relation_limit): array => $this->invoke(
                     $context,
                     fn (): array => $this->gateway->expand(new GraphExpandToolInput(
@@ -69,6 +77,7 @@ final readonly class GraphToolProvider implements ContextualToolProviderInterfac
                 description: 'Calculate bounded statistics for explicitly requested authorized record relations.',
                 parameters: $this->centerParameters(),
                 riskLevel: 'low',
+                maxRuns: self::MAX_RUNS,
                 handler: fn (mixed $module, mixed $entity, mixed $record_key, mixed $relations, mixed $depth, mixed $limit, mixed $relation_limit): array => $this->invoke(
                     $context,
                     fn (): array => $this->gateway->stats(new GraphStatsToolInput(

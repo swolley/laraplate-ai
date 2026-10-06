@@ -48,6 +48,12 @@ use Throwable;
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
+    /**
+     * How many times the model may call one of these tools in a turn: they read records, and a model
+     * that keeps asking is looping.
+     */
+    public const int MAX_RUNS = 3;
+
     private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'bulk_update', 'bulk_delete', 'pending_approvals', 'approve', 'disapprove'];
 
     /**
@@ -200,6 +206,7 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             parameters: $this->parameters($operation),
             riskLevel: 'low',
             handler: $this->handlerFor($operation, $module, $entity),
+            maxRuns: self::MAX_RUNS,
         );
     }
 

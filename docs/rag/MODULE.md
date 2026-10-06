@@ -216,6 +216,16 @@ flowchart TB
   OutGuard --> Store
 ```
 
+### Tool failures
+
+A tool the model calls can fail: a missing required argument, a handler that throws, a tool called too often
+in one turn. `ChatAgent` gives Neuron's `toolErrorHandler()` a handler that returns a fixed message as the
+tool's result (never the exception text, which can name a parameter or a record) and logs the tool name
+and the exception class; the model then tries again or answers without the tool, and the turn is not
+refused. An `AssistancePolicyViolationException` is a policy decision, not a tool failure: it still ends
+the turn. A tool may declare `ToolDefinition::$maxRuns`, how many times the model may call it in a turn
+(`ToolRegistry` sets it with `Tool::setMaxRuns()`); `graph_*` and `crud_*` declare 3, Neuron's default is 10.
+
 ### Structured output of the model
 
 Where the module needs the model's answer as data, it asks through Neuron's structured output

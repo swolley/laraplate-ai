@@ -39,6 +39,7 @@ final class ToolRegistry
         string $description,
         array $parameters,
         string $riskLevel = 'low',
+        ?int $maxRuns = null,
     ): void {
         $this->tools[$name] = new ToolDefinition(
             name: $name,
@@ -46,6 +47,7 @@ final class ToolRegistry
             parameters: $parameters,
             riskLevel: $riskLevel,
             handler: $handler,
+            maxRuns: $maxRuns,
         );
     }
 
@@ -212,6 +214,10 @@ final class ToolRegistry
             $definition->name,
             $definition->description,
         );
+
+        if ($definition->maxRuns !== null) {
+            $tool->setMaxRuns($definition->maxRuns);
+        }
 
         foreach ($definition->parameters as $param) {
             $tool->addProperty(
