@@ -34,32 +34,6 @@
                 ]
             }
         },
-        "\/app\/crud\/detail\/ai\/action-requests\/{actionRequest}": {
-            "get": {
-                "summary": "Get details of a specific action request.",
-                "description": "",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "actionRequest",
-                        "type": "string",
-                        "required": true,
-                        "description": ""
-                    }
-                ],
-                "operationId": "get-app-crud-detail-ai-action-requests-actionRequest",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
         "\/app\/crud\/detail\/ai\/conversations\/{conversation}": {
             "get": {
                 "summary": "Get conversation details.",
@@ -174,7 +148,7 @@
         "\/app\/crud\/insert\/ai\/conversations\/{conversation}\/messages-with-tools": {
             "post": {
                 "summary": "Send a message with tools support (non-streaming).",
-                "description": "If the LLM proposes tool calls, ActionRequests are created based on risk level.",
+                "description": "Tool calls follow the assistant policy; writes are proposed and applied only after the person confirms, and moderated entities send them for approval.",
                 "deprecated": false,
                 "responses": {
                     "200": {
@@ -259,23 +233,6 @@
                     }
                 ],
                 "operationId": "post-app-crud-insert-ai-suggestions",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
-        "\/app\/crud\/select\/ai\/action-requests": {
-            "get": {
-                "summary": "List action requests for the authenticated user.",
-                "description": "Admins can see all requests with pending_admin_approval status.",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "operationId": "get-app-crud-select-ai-action-requests",
                 "tags": [
                     "App",
                     "AI"
@@ -398,110 +355,6 @@
                     }
                 ],
                 "operationId": "post-app-crud-stream-ai-conversations-conversation-messages",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
-        "\/app\/crud\/update\/ai\/action-requests\/{actionRequest}\/approve": {
-            "post": {
-                "summary": "Approve a high-risk action request (admin approval).",
-                "description": "Only admins can approve these requests.",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "actionRequest",
-                        "type": "string",
-                        "required": true,
-                        "description": ""
-                    },
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "reason": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                ],
-                "operationId": "post-app-crud-update-ai-action-requests-actionRequest-approve",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
-        "\/app\/crud\/update\/ai\/action-requests\/{actionRequest}\/confirm": {
-            "post": {
-                "summary": "Confirm a medium-risk action request (user confirmation).",
-                "description": "Only the owner of the request can confirm it.",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "actionRequest",
-                        "type": "string",
-                        "required": true,
-                        "description": ""
-                    }
-                ],
-                "operationId": "post-app-crud-update-ai-action-requests-actionRequest-confirm",
-                "tags": [
-                    "App",
-                    "AI"
-                ]
-            }
-        },
-        "\/app\/crud\/update\/ai\/action-requests\/{actionRequest}\/reject": {
-            "post": {
-                "summary": "Reject an action request.",
-                "description": "Users can reject their own pending requests.\nAdmins can reject any pending request.",
-                "deprecated": false,
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    }
-                },
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "actionRequest",
-                        "type": "string",
-                        "required": true,
-                        "description": ""
-                    },
-                    {
-                        "in": "body",
-                        "name": "body",
-                        "description": "",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "reason": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                ],
-                "operationId": "post-app-crud-update-ai-action-requests-actionRequest-reject",
                 "tags": [
                     "App",
                     "AI"

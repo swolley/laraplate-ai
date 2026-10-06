@@ -141,13 +141,6 @@ return [
         ],
         'tools' => [
             'enabled' => env('AI_TOOLS_ENABLED', true),
-            // Tool definitions with risk levels
-            'definitions' => [
-                // Example tool definitions (register actual tools via ToolRegistry::register())
-                // 'get_user_info' => ['risk_level' => 'low'],
-                // 'update_record' => ['risk_level' => 'medium'],
-                // 'delete_record' => ['risk_level' => 'high'],
-            ],
 
             // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
             // Empty = no CRUD tools (default). Each key is "module.entity"; the value

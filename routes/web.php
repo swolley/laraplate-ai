@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use Modules\AI\Http\Controllers\ActionRequestController;
 use Modules\AI\Http\Controllers\AgentController;
 use Modules\AI\Http\Controllers\CapabilitiesController;
 use Modules\AI\Http\Controllers\ChatController;
@@ -25,15 +24,6 @@ Route::prefix('crud')->name('crud.')->group(function (): void {
         Route::post('stream/ai/conversations/{conversation}/messages', 'streamMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.stream');
         Route::post('insert/ai/conversations/{conversation}/messages', 'insertMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.insert');
         Route::post('insert/ai/conversations/{conversation}/messages-with-tools', 'sendMessageWithTools')->middleware(ResolveAssistantApplicationContext::class)->name('messages.with-tools');
-    });
-
-    // Action request routes (AI tool execution management)
-    Route::controller(ActionRequestController::class)->group(function (): void {
-        Route::get('select/ai/action-requests', 'list')->name('action-requests.list');
-        Route::get('detail/ai/action-requests/{actionRequest}', 'detail')->name('action-requests.detail');
-        Route::post('update/ai/action-requests/{actionRequest}/confirm', 'confirm')->name('action-requests.confirm');
-        Route::post('update/ai/action-requests/{actionRequest}/approve', 'approve')->name('action-requests.approve');
-        Route::post('update/ai/action-requests/{actionRequest}/reject', 'reject')->name('action-requests.reject');
     });
 
     // Contextual suggestions routes
