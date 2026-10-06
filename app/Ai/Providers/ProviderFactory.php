@@ -46,6 +46,21 @@ final class ProviderFactory
         };
     }
 
+    /**
+     * Whether the chat provider chosen in Settings has what it needs to be called (an API key, a
+     * URL). It builds the provider and calls nothing.
+     */
+    public static function isConfigured(): bool
+    {
+        try {
+            self::make();
+        } catch (ConfigurationException|InvalidArgumentException) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static function createOpenAI(?string $model): OpenAI
     {
         $api_key = ai_config_string('ai.providers.openai.api_key');

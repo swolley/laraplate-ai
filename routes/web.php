@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Modules\AI\Http\Controllers\ActionRequestController;
+use Modules\AI\Http\Controllers\CapabilitiesController;
 use Modules\AI\Http\Controllers\ChatController;
 use Modules\AI\Http\Controllers\SuggestionController;
 use Modules\AI\Http\Middleware\ResolveAssistantApplicationContext;
+
+Route::get('ai/capabilities', [CapabilitiesController::class, 'show'])->middleware('auth')->name('capabilities');
 
 Route::prefix('crud')->name('crud.')->group(function (): void {
     // Chat routes
