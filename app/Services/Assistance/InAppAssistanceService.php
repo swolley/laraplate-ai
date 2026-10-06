@@ -12,9 +12,11 @@ use InvalidArgumentException;
 use Modules\AI\Data\UiProposal;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Exceptions\AssistancePolicyViolationException;
+use Modules\AI\Http\Resources\WriteProposalResource;
 use Modules\AI\Jobs\GenerateConversationTitleJob;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
+use Modules\AI\Models\WriteProposal;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\Data\ApplicationContentRequestContext;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
@@ -26,6 +28,7 @@ use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\Assistance\Scope\DataAccess;
 use Modules\AI\Services\Assistance\Stream\RunProgress;
+use Modules\AI\Services\Assistance\Writes\WriteProposalService;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
@@ -75,11 +78,20 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
         $this->assertRequestIdentity($access);
         $application_content = $this->applicationContentCitations();
         $application_content->reset();
+        $write_proposals = app(WriteProposalService::class);
+        $write_proposals->startTurn();
 
         try {
             $policy = $this->policy_compiler->compile(
                 AssistantProfile::InAppAssistance,
-                ['application_content', 'in_app_rag', 'read_only_graph', AssistantCapabilities::PROPOSALS_CAPABILITY],
+                [
+                    'application_content',
+                    'in_app_rag',
+                    'read_only_graph',
+                    AssistantCapabilities::PROPOSALS_CAPABILITY,
+                    AssistantCapabilities::READS_CAPABILITY,
+                    AssistantCapabilities::WRITES_CAPABILITY,
+                ],
             );
             $input = $this->guardrails->validateInput($user_input);
             $this->report($progress, RunProgress::STARTED, RunProgress::STEP_RETRIEVE);
@@ -126,6 +138,16 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 $metadata['proposals'] = array_map(
                     static fn (UiProposal $proposal): array => $proposal->toArray(),
                     $proposals->proposals(),
+                );
+            }
+
+            $pending_writes = $write_proposals->proposedInTurn();
+
+            if ($pending_writes !== []) {
+                $output = $this->guardrails->reportPendingWrites($output, $access->locale);
+                $metadata['writes'] = array_map(
+                    static fn (WriteProposal $proposal): array => (new WriteProposalResource($proposal))->resolve(),
+                    $pending_writes,
                 );
             }
 

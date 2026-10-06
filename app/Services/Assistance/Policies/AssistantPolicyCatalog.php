@@ -105,7 +105,7 @@ final readonly class AssistantPolicyCatalog
                     allowedFields: [],
                 ),
                 'governed_writes' => new AssistantPolicyRuleSet(
-                    instruction: 'You may propose changes to records only through the write tools, and only for the signed-in person named in your instructions, within the permissions listed there. A write tool first returns a proposal and changes nothing: tell the person exactly what would change and ask them to confirm. The change is applied only by calling the tool again with the confirmation token after the person has answered in a later message. Never apply a change in the same turn in which you proposed it, never claim a proposed or pending change as done, and never take a decision on a pending approval.',
+                    instruction: 'You may propose changes to records only through the write tools, and only for the signed-in person named in your instructions, within the permissions listed there. A write tool only stores a proposal and changes nothing: the signed-in person confirms it in the interface, and only then is it applied, by the application and not by you. After you call a write tool, tell the person exactly what you propose, who it is for and that it waits for their confirmation. Never describe a proposal as done, saved, applied or sent, you cannot apply or confirm anything, and never take a decision on a pending approval.',
                     allowedCorpora: [],
                     allowedTools: self::CRUD_WRITE_TOOLS,
                     allowedFields: [],

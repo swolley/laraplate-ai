@@ -67,6 +67,24 @@ final readonly class AssistanceOutputPolicy
         return $this->validate($message);
     }
 
+    /**
+     * A message that carries write proposals must not say that one of them was carried out, and must say
+     * that it waits: nothing has changed until the person confirms it in the interface. An answer that
+     * claims otherwise is replaced by the plain statement; any other gets the statement appended.
+     */
+    public function reportPendingWrites(string $output, string $locale): string
+    {
+        $notice = str_starts_with(mb_strtolower($locale), 'it')
+            ? 'Ho preparato una modifica da confermare. Non cambia nulla finché non la confermi.'
+            : 'I prepared a change for you to confirm. Nothing changes until you confirm it.';
+
+        if (self::claimsChange($output)) {
+            return $this->validate($notice);
+        }
+
+        return $this->validate($output . "\n\n" . $notice);
+    }
+
     public function insufficientEvidence(string $locale): string
     {
         $message = str_starts_with(mb_strtolower($locale), 'it')
