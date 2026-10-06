@@ -20,6 +20,7 @@ class ChatAgent extends Agent
         protected ?string $providerName = null,
         protected ?string $systemPrompt = null,
         protected ?string $model = null,
+        protected ?int $maxOutputTokens = null,
     ) {
         // Agent extends NeuronAI's Workflow, whose constructor initialises the
         // workflow executor. Without this call the executor stays uninitialised
@@ -35,18 +36,19 @@ class ChatAgent extends Agent
     }
 
     /**
-     * An agent on the provider and model chosen in Settings for this feature.
+     * An agent on the provider and model chosen in Settings for this feature, limited to
+     * `$maxOutputTokens` of output when given.
      */
-    public static function forFeature(AiModelFeature $feature, ?string $systemPrompt = null): static
+    public static function forFeature(AiModelFeature $feature, ?string $systemPrompt = null, ?int $maxOutputTokens = null): static
     {
         $choice = AiModelChoice::forFeature($feature);
 
-        return static::make($choice->provider, $systemPrompt, $choice->model);
+        return static::make($choice->provider, $systemPrompt, $choice->model, $maxOutputTokens);
     }
 
     protected function provider(): AIProviderInterface
     {
-        return ProviderFactory::make($this->providerName, $this->model);
+        return ProviderFactory::make($this->providerName, $this->model, $this->maxOutputTokens);
     }
 
     protected function instructions(): string

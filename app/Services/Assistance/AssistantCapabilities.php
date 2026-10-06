@@ -55,11 +55,11 @@ final readonly class AssistantCapabilities
     }
 
     /**
-     * No client-facing streaming agent endpoint exists yet.
+     * `POST /app/ai/agent` streams the run as lifecycle events and complete validated messages.
      */
     public function streaming(): bool
     {
-        return false;
+        return true;
     }
 
     /**

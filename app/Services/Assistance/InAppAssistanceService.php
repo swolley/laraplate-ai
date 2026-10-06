@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use Modules\AI\Data\UiProposal;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Exceptions\AssistancePolicyViolationException;
+use Modules\AI\Jobs\GenerateConversationTitleJob;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
@@ -24,6 +25,7 @@ use Modules\AI\Services\Assistance\Proposals\UiProposalCollector;
 use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\Assistance\Scope\DataAccess;
+use Modules\AI\Services\Assistance\Stream\RunProgress;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
@@ -60,12 +62,14 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
 
     /**
      * @param  array<string, mixed>|null  $request_context
+     * @param  (Closure(string, string): void)|null  $progress  told where the run is, with the words of {@see RunProgress}
      */
     public function respond(
         Conversation $conversation,
         User $authenticated_user,
         string $user_input,
         ?array $request_context = null,
+        ?Closure $progress = null,
     ): Message {
         $access = $this->access_context_factory->forInApp($conversation, $authenticated_user);
         $this->assertRequestIdentity($access);
@@ -78,6 +82,7 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 ['application_content', 'in_app_rag', 'read_only_graph', AssistantCapabilities::PROPOSALS_CAPABILITY],
             );
             $input = $this->guardrails->validateInput($user_input);
+            $this->report($progress, RunProgress::STARTED, RunProgress::STEP_RETRIEVE);
             $module_context = $this->serverApplicationContext();
             $scope = $this->scope_resolver->resolve($access->profile, $module_context?->module);
             $documents = $this->documentation_retrieval instanceof Closure
@@ -93,6 +98,8 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 : $this->contextualTools($access, $input, $policy);
             $proposals = $this->proposalCollector($policy);
             $tools = [...$tools, ...$this->proposalTools($policy, $proposals)];
+            $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_RETRIEVE);
+            $this->report($progress, RunProgress::STARTED, RunProgress::STEP_ANSWER);
 
             if ($application_content->clarificationRequired()) {
                 $output = $this->guardrails->clarificationRequired($access->locale);
@@ -101,6 +108,9 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                     ? ($this->completion)($input, $policy->systemPrompt, $prompt_context, $tools)
                     : $this->complete($input, $policy, $prompt_context, $tools);
             }
+
+            $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_ANSWER);
+            $this->report($progress, RunProgress::STARTED, RunProgress::STEP_VALIDATE);
 
             if ($application_content->attempted() && ! $application_content->hasEvidence()) {
                 $output = $this->guardrails->insufficientEvidence($access->locale);
@@ -121,7 +131,11 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
 
             $conversation->addMessage('user', $input, $this->presentationPreferences($request_context));
 
-            return $conversation->addMessage('assistant', $output, $metadata);
+            $reply = $conversation->addMessage('assistant', $output, $metadata);
+            $this->titleTheConversation($conversation, $reply);
+            $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_VALIDATE);
+
+            return $reply;
         } catch (Throwable $exception) {
             $reason_code = $exception instanceof AssistancePolicyViolationException
                 ? $exception->reasonCode
@@ -133,9 +147,35 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 'conversation_id' => $access->conversationId,
             ]);
 
+            // The refusal that is stored says nothing of why. A run that is watched learns only the
+            // coarse code of the contract: a policy said no, or something else failed.
+            $this->report(
+                $progress,
+                RunProgress::REFUSED,
+                $exception instanceof AssistancePolicyViolationException ? RunProgress::POLICY_DENIED : RunProgress::PROVIDER_ERROR,
+            );
+
             return $conversation->addMessage('assistant', $this->safeRefusal(), [
                 'refused' => true,
             ]);
+        }
+    }
+
+    /**
+     * Tells whoever watches the run where it is. A watcher that fails never fails the run.
+     *
+     * @param  (Closure(string, string): void)|null  $progress
+     */
+    private function report(?Closure $progress, string $kind, string $detail): void
+    {
+        if (! $progress instanceof Closure) {
+            return;
+        }
+
+        try {
+            $progress($kind, $detail);
+        } catch (Throwable) {
+            // The run goes on.
         }
     }
 
@@ -247,6 +287,23 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 ...$context->authorizedResults,
             ], 0, 50),
         ));
+    }
+
+    /**
+     * The first answer that is not a refusal asks for a title, when the conversation has none. The
+     * answer is returned without waiting for it, and a failure to queue the job is not the reply's.
+     */
+    private function titleTheConversation(Conversation $conversation, Message $reply): void
+    {
+        if ($conversation->title !== null) {
+            return;
+        }
+
+        try {
+            GenerateConversationTitleJob::dispatch($reply->id);
+        } catch (Throwable $exception) {
+            Log::notice('Conversation title not queued', ['conversation_id' => $conversation->id, 'exception' => $exception::class]);
+        }
     }
 
     private function assertRequestIdentity(AssistantAccessContext $access): void

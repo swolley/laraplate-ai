@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Modules\AI\Http\Controllers\ActionRequestController;
+use Modules\AI\Http\Controllers\AgentController;
 use Modules\AI\Http\Controllers\CapabilitiesController;
 use Modules\AI\Http\Controllers\ChatController;
 use Modules\AI\Http\Controllers\SuggestionController;
 use Modules\AI\Http\Middleware\ResolveAssistantApplicationContext;
 
 Route::get('ai/capabilities', [CapabilitiesController::class, 'show'])->middleware('auth')->name('capabilities');
+// Authenticated by the controller, like the message routes: an `auth` redirect to a login page cannot serve a stream client.
+Route::post('ai/agent', [AgentController::class, 'run'])->middleware(ResolveAssistantApplicationContext::class)->name('agent');
 
 Route::prefix('crud')->name('crud.')->group(function (): void {
     // Chat routes

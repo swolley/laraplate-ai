@@ -88,3 +88,31 @@ it('points chat at the Ollama api path of the configured base URL', function ():
 
     expect((new ReflectionProperty($provider, 'url'))->getValue($provider))->toBe('http://ollama.test/api');
 });
+
+it('caps the output of each provider with the parameter it names it by', function (): void {
+    config()->set('ai.providers.openai.api_key', 'test-key');
+    config()->set('ai.providers.mistral.api_key', 'test-key');
+    config()->set('ai.providers.anthropic.api_key', 'test-key');
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+
+    $read = static fn (object $provider, string $property): mixed => new ReflectionProperty($provider, $property)->getValue($provider);
+
+    expect($read(ProviderFactory::make('openai', null, 60), 'parameters'))->toBe(['max_completion_tokens' => 60])
+        ->and($read(ProviderFactory::make('mistral', null, 60), 'parameters'))->toBe(['max_tokens' => 60])
+        ->and($read(ProviderFactory::make('ollama', null, 60), 'parameters'))->toBe(['options' => ['num_predict' => 60]])
+        ->and($read(ProviderFactory::make('anthropic', null, 60), 'max_tokens'))->toBe(60);
+});
+
+it('leaves the limit of the provider alone when no cap is asked for', function (): void {
+    config()->set('ai.providers.openai.api_key', 'test-key');
+    config()->set('ai.providers.mistral.api_key', 'test-key');
+    config()->set('ai.providers.anthropic.api_key', 'test-key');
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+
+    $read = static fn (object $provider, string $property): mixed => new ReflectionProperty($provider, $property)->getValue($provider);
+
+    expect($read(ProviderFactory::make('openai'), 'parameters'))->toBe([])
+        ->and($read(ProviderFactory::make('mistral'), 'parameters'))->toBe([])
+        ->and($read(ProviderFactory::make('ollama'), 'parameters'))->toBe([])
+        ->and($read(ProviderFactory::make('anthropic'), 'max_tokens'))->toBe(8192);
+});
