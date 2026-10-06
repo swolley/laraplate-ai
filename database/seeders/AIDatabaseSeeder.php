@@ -128,7 +128,7 @@ class AIDatabaseSeeder extends Seeder
      */
     private static function storedServingModel(): ?string
     {
-        $stored = Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.model')->value('value');
+        $stored = Setting::query()->withoutGlobalScopes()->where('name', 'search.vector.model')->first()?->value;
 
         return is_string($stored) && $stored !== '' ? $stored : null;
     }
