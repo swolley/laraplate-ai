@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\AI\Http\Controllers\ActionRequestController;
 use Modules\AI\Http\Controllers\ChatController;
 use Modules\AI\Http\Controllers\SuggestionController;
+use Modules\AI\Http\Middleware\ResolveAssistantApplicationContext;
 
 Route::prefix('crud')->name('crud.')->group(function (): void {
     // Chat routes
@@ -15,9 +16,9 @@ Route::prefix('crud')->name('crud.')->group(function (): void {
         Route::get('detail/ai/conversations/{conversation}', 'detailConversation')->name('conversations.detail');
         Route::delete('delete/ai/conversations/{conversation}', 'deleteConversation')->name('conversations.delete');
         Route::get('select/ai/conversations/{conversation}/messages', 'listMessages')->name('messages.list');
-        Route::post('stream/ai/conversations/{conversation}/messages', 'streamMessage')->name('messages.stream');
-        Route::post('insert/ai/conversations/{conversation}/messages', 'insertMessage')->name('messages.insert');
-        Route::post('insert/ai/conversations/{conversation}/messages-with-tools', 'sendMessageWithTools')->name('messages.with-tools');
+        Route::post('stream/ai/conversations/{conversation}/messages', 'streamMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.stream');
+        Route::post('insert/ai/conversations/{conversation}/messages', 'insertMessage')->middleware(ResolveAssistantApplicationContext::class)->name('messages.insert');
+        Route::post('insert/ai/conversations/{conversation}/messages-with-tools', 'sendMessageWithTools')->middleware(ResolveAssistantApplicationContext::class)->name('messages.with-tools');
     });
 
     // Action request routes (AI tool execution management)

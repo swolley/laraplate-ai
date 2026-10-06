@@ -14,13 +14,15 @@ See also: `MODULE.md` (RAG ingestion/indexing pipeline, security boundaries), `D
 | Scope resolution | AI | `AssistantScopeResolver::resolve(profile, moduleKey)` |
 | Module clause on retrieval | AI | `DocumentationRetrievalContext::elasticsearchFilter()` |
 | Cross-cutting marker | AI + module owners | `metadata.cross_cutting_user` frontmatter key, carried by `FileDocumentReader` |
+| Page → application context | AI | `Modules\AI\Http\Middleware\ResolveAssistantApplicationContext`, the only writer of the request attribute `assistant_application_context` |
 | Scope wiring in respond() | AI | `InAppAssistanceService::respond()` |
 
 `DataAccess` is `None | Module | Application`; `DocScope` is `Module | Application`. `AssistantScope::generic()` is `(moduleKey: null, dataAccess: None, docScope: Application)`.
 
 ## InternalFlow
 
-1. `InAppAssistanceService::respond()` reads the server-set request attribute `assistant_application_context` (never a model- or user-supplied argument) via `serverApplicationContext()`, which yields a module key or `null`.
+0. On the three message routes (`ai.crud.messages.insert`, `.stream`, `.with-tools`) `ResolveAssistantApplicationContext` first drops any `assistant_application_context` already on the request, then reads `context.page.resource` (`{module}/{entity}`, lower case, the pair of a CRUD route) and `recordKey`. It resolves the pair with Core's model lookup (`DynamicEntity::tryResolveModel`, so only a registered model of that module) and checks that the user holds `select` on that model (`AuthorizationService::ensurePermissionForClass`). Only then does it set the attribute `{module, entity, record_key}`; a malformed resource, an unknown module or entity, an entity of another module, a model the user may not read, or a lookup that throws leaves it unset. `recordKey` counts only as an integer or a non-empty string of at most 255 characters.
+1. `InAppAssistanceService::respond()` reads that attribute (never a model- or user-supplied argument) via `serverApplicationContext()`, which yields a module key or `null`.
 2. `AssistantScopeResolver::resolve($access->profile, $moduleKey)`:
    - Profile is not `InAppAssistance` → `AssistantScope::generic()` (`dataAccess: None`, `docScope: Application`). This branch is a defensive default; in practice the in-app request path always carries `InAppAssistance`.
    - Profile is `InAppAssistance` and no valid module key → `(moduleKey: null, dataAccess: Application, docScope: Application)`. **This is the "stays generic" case**: authorized data and documentation remain fully available, exactly as before module scoping was introduced.
@@ -63,11 +65,11 @@ The marker is **relevance-only**: it decides which documents survive the module 
 
 ## Configuration
 
-No new configuration surface. Scope is computed per-request from `assistant_application_context` (set server-side before `InAppAssistanceService::respond()` runs) and the caller's `AssistantProfile`; it is never read from config, the prompt, or model output.
+No new configuration surface. Scope is computed per-request from `assistant_application_context` (set by `ResolveAssistantApplicationContext` before `InAppAssistanceService::respond()` runs) and the caller's `AssistantProfile`; it is never read from config, the prompt, or model output.
 
 ## PermissionsAndSecurity
 
-- Scope is **server-owned and never model-chosen**: the module key comes only from a request attribute set by trusted middleware, not from user input or the assistant's own output.
+- Scope is **server-owned and never model-chosen**: the module key comes only from a request attribute set by `ResolveAssistantApplicationContext`, never read from the client's payload as it is: a `context.assistant_application_context` key sent by a client is ignored, and the page the client reports counts only when it names a model the user may read. A page narrows the assistant to a place the user already reaches; it cannot widen it.
 - The module clause is **additive** to the existing `bool.filter` — it narrows an already-authorized result set further by relevance, it cannot surface a document that audience/permission/tenant/locale filtering would otherwise reject.
 - `safeDocuments()` and its metadata allowlist are untouched by this feature; `cross_cutting_user` never appears in the user-facing safe projection.
 - Page-level scoping (filters, approvals, per-record actions) is explicitly **out of scope** here — this feature scopes to the current **module**, not the current page or record.

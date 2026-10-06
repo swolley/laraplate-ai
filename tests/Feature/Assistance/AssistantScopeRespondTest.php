@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Http\Request;
+use Modules\AI\Http\Middleware\ResolveAssistantApplicationContext;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
@@ -16,7 +17,10 @@ use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\Core\Models\Permission;
+use Modules\Core\Models\Setting;
 use Modules\Core\Models\User;
+use Modules\Core\Support\PermissionName;
 use NeuronAI\RAG\Document;
 use NeuronAI\Tools\Tool;
 
@@ -97,3 +101,35 @@ it('stays generic and resolves DataAccess::Application when no module context is
     expect($capturedScope)->toBeInstanceOf(AssistantScope::class)
         ->and($capturedScope->dataAccess)->toBe(DataAccess::Application);
 });
+
+it('narrows to the module of the page a client reports, and only when the resolver accepts it', function (string $resource, bool $readable, ?string $module, DataAccess $data_access): void {
+    if ($readable) {
+        $permission = PermissionName::forClass(Setting::class, 'select');
+        Permission::findOrCreate($permission, 'web');
+        $this->user->givePermissionTo($permission);
+    }
+
+    $request = Request::create('/app/ai/assistance', 'POST', ['message' => 'hello', 'context' => ['page' => ['resource' => $resource]]]);
+    $request->setUserResolver(fn (): User => $this->user);
+    app(ResolveAssistantApplicationContext::class)->handle($request, fn (Request $request) => response('ok'));
+
+    $capturedScope = null;
+    $service = scopedAssistanceService(
+        $request,
+        function (string $input, AssistantAccessContext $access, AssistantScope $scope) use (&$capturedScope): array {
+            $capturedScope = $scope;
+
+            return [];
+        },
+        static fn (): string => 'Open Settings and select Profile.',
+    );
+
+    $service->respond($this->conversation, $this->user, 'How do I change a setting?');
+
+    expect($capturedScope->moduleKey)->toBe($module)
+        ->and($capturedScope->dataAccess)->toBe($data_access);
+})->with([
+    'readable resource of a module' => ['core/settings', true, 'core', DataAccess::Module],
+    'resource the user may not read' => ['core/settings', false, null, DataAccess::Application],
+    'unknown resource' => ['core/no_such_entity', true, null, DataAccess::Application],
+]);
