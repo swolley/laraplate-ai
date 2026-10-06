@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Tools;
 
+use function class_uses_trait;
 use function user_class;
 
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -23,6 +24,7 @@ use Modules\Core\Http\Requests\ListRequest;
 use Modules\Core\Http\Requests\ModifyRequest;
 use Modules\Core\Http\Requests\PendingApprovalsRequest;
 use Modules\Core\Http\Requests\SearchRequest;
+use Modules\Core\Models\Concerns\HasApprovals;
 use Modules\Core\Models\DynamicEntity;
 use Modules\Core\Services\Authorization\AuthorizationService;
 use Modules\Core\Services\Crud\CrudService;
@@ -41,10 +43,14 @@ use Throwable;
  * its own. A tool is exposed only for an operation the user is actually
  * permitted to perform: if the user cannot do it, no tool is offered (there is
  * no "escalate to approval" path). Approval, when it happens, belongs to the
- * model: entities using {@see \Modules\Core\Models\Concerns\HasApprovals}
+ * model: entities using {@see HasApprovals}
  * capture writes as pending modifications on save unless the writer holds the
  * `approve` credit — that moderation is applied by Core inside the write, not
  * by this provider. All exposed tools therefore run inline.
+ *
+ * Writes are offered fail-closed: an entity without approvals gets no write
+ * tool unless the operator listed it under `ai.features.tools.crud.unmoderated_writes`.
+ * A decision on a pending change (approve, disapprove) is never offered.
  */
 final readonly class CrudToolProvider implements ContextualToolProviderInterface
 {
@@ -54,7 +60,16 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
      */
     public const int MAX_RUNS = 3;
 
-    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'bulk_update', 'bulk_delete', 'pending_approvals', 'approve', 'disapprove'];
+    /**
+     * `approve` and `disapprove` are not here on purpose: a decision on a pending change is made by a
+     * person in the panel. A model that could vote could be made to vote.
+     */
+    private const array VALID_OPERATIONS = ['view', 'list', 'detail', 'search', 'summarize', 'export', 'create', 'update', 'delete', 'bulk_update', 'bulk_delete', 'pending_approvals'];
+
+    /**
+     * The operations that change data.
+     */
+    private const array WRITE_OPERATIONS = ['create', 'update', 'delete', 'bulk_update', 'bulk_delete'];
 
     /**
      * Upper bound on rows materialized for an in-memory aggregation, so a
@@ -96,8 +111,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         'bulk_update' => 'update',
         'bulk_delete' => 'forceDelete',
         'pending_approvals' => 'approve',
-        'approve' => 'approve',
-        'disapprove' => 'approve',
     ];
 
     public function __construct(
@@ -133,7 +146,13 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                 continue;
             }
 
+            $writesAllowed = $this->writesAllowed((string) $entityKey, $model);
+
             foreach ($operations as $operation) {
+                if (in_array($operation, self::WRITE_OPERATIONS, true) && ! $writesAllowed) {
+                    continue;
+                }
+
                 if (! $this->userCanAll($model, $this->requiredAbilities($operation))) {
                     continue;
                 }
@@ -143,6 +162,29 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
         }
 
         return $tools;
+    }
+
+    /**
+     * Whether the assistant may be offered write operations on this entity at all.
+     *
+     * An entity whose model uses approvals sends a write to a vote unless the writer is allowed to write
+     * directly, so listing it is enough. An entity without approvals applies a write as it comes: it is
+     * offered only when the operator listed it under `ai.features.tools.crud.unmoderated_writes`, which
+     * says, on purpose, "applied directly, no vote".
+     */
+    private function writesAllowed(string $entityKey, Model $model): bool
+    {
+        if (class_uses_trait($model, HasApprovals::class)) {
+            return true;
+        }
+
+        $unmoderated = config('ai.features.tools.crud.unmoderated_writes', []);
+
+        if (! is_array($unmoderated)) {
+            return false;
+        }
+
+        return in_array(mb_strtolower($entityKey), array_map(static fn (mixed $key): string => mb_strtolower((string) $key), $unmoderated), true);
     }
 
     /**
@@ -278,8 +320,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'bulk_update' => "Update many {$label} records matched by filters. Preview first (default): returns the match count and a sample without changing anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each change is captured for approval.',
             'bulk_delete' => "Delete many {$label} records matched by filters. Preview first (default): returns the match count and a sample without deleting anything. Pass confirm=true to apply, which is refused above a hard cap of " . self::BULK_CAP . ' records. On moderated entities each deletion is captured for approval.',
             'pending_approvals' => "List pending {$label} changes awaiting approval, each with its author; optionally filter by author (name, email or user id).",
-            'approve' => "Approve the pending change on a {$label} record by id.",
-            'disapprove' => "Reject the pending change on a {$label} record by id.",
             default => "Operate on {$label}.",
         };
     }
@@ -342,9 +382,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'pending_approvals' => [
                 ['name' => 'author', 'type' => 'string', 'description' => 'Optional filter: modifier name, email, or user id.', 'required' => false],
             ],
-            'approve', 'disapprove' => [
-                ['name' => 'id', 'type' => 'string', 'description' => 'Record identifier.', 'required' => true],
-            ],
             default => [],
         };
     }
@@ -368,8 +405,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             'bulk_update' => fn (mixed $filters = null, mixed $attributes = null, mixed $confirm = null): array => $this->runBulk('bulk_update', $module, $entity, $filters, $attributes, $confirm),
             'bulk_delete' => fn (mixed $filters = null, mixed $confirm = null): array => $this->runBulk('bulk_delete', $module, $entity, $filters, null, $confirm),
             'pending_approvals' => fn (mixed $author = null): array => $this->runPendingApprovals($module, $entity, $author),
-            'approve' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'approve'),
-            'disapprove' => fn (mixed $id = null): array => $this->runApproval($module, $entity, $id, 'disapprove'),
             default => static fn (): array => ['error' => 'Unsupported operation.'],
         };
     }
@@ -934,25 +969,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             $result = $this->crud->pendingApprovals($data);
 
             return ['request' => $request, 'data' => $this->enrichApprovals($result->data, $authorFilter)];
-        } catch (Throwable $exception) {
-            return $this->fail($request, $exception);
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function runApproval(string $module, string $entity, mixed $id, string $operation): array
-    {
-        $key = $this->primaryKey($module, $entity);
-        $recordId = $this->toString($id);
-        $request = ['verb' => $operation, 'module' => $module, 'entity' => $entity, 'id' => $recordId];
-
-        try {
-            $data = $this->modifyData($module, $entity, [$key => $recordId]);
-            $result = $operation === 'approve' ? $this->crud->approve($data) : $this->crud->disapprove($data);
-
-            return $this->present($result, $request);
         } catch (Throwable $exception) {
             return $this->fail($request, $exception);
         }

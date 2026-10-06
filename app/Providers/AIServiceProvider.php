@@ -41,6 +41,7 @@ use Modules\AI\Services\Assistance\GlobalAssistantTenantResolver;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
+use Modules\AI\Services\Assistance\Writes\AssistantWriteBudget;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
@@ -107,6 +108,7 @@ class AIServiceProvider extends ModuleServiceProvider
         $this->app->bind(GraphToolProvider::class);
         $this->app->bind(CrudToolProvider::class);
         $this->app->scoped(ApplicationContentCitationMapper::class);
+        $this->app->scoped(AssistantWriteBudget::class);
         $this->app->bind(ApplicationContentToolProvider::class);
         $this->app->singleton(ApplicationContentEvaluationService::class);
         $this->app->singleton(ApplicationContentRetrievalStrategyEvaluationService::class);

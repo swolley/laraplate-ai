@@ -172,6 +172,14 @@ return [
                 'entities' => [
                     // 'cms.content' => ['list', 'detail', 'search', 'create', 'update', 'delete'],
                 ],
+                // Entities whose model has no approvals, and on which the assistant may nonetheless
+                // write. Empty = none (default). Listing one says "a write is applied directly, no
+                // vote": the person still confirms it in the conversation, nobody else reviews it.
+                // Entities with approvals need no entry here. `approve` and `disapprove` are never
+                // offered to the assistant.
+                'unmoderated_writes' => [
+                    // 'cms.tag',
+                ],
             ],
         ],
         'guardrails' => [

@@ -211,7 +211,7 @@ it('proposes a table view without fetching data (configure mode)', function (): 
         ->and($result['request']['page'])->toBe(1);
 });
 
-it('exposes approval tools only with the approve permission', function (): void {
+it('lists pending approvals only with the approve permission, and never offers a decision', function (): void {
     $user = user_class()::factory()->create();
     Auth::login($user);
     Config::set('ai.features.tools.crud.entities', ['core.setting' => ['pending_approvals', 'approve', 'disapprove']]);
@@ -222,9 +222,18 @@ it('exposes approval tools only with the approve permission', function (): void 
     grantSettingAbility($user, 'approve');
     $names = toolNames(makeCrudToolProvider($user)->tools(inAppContext($user)));
 
-    expect($names)->toContain('crud_pending_approvals_core_setting')
-        ->toContain('crud_approve_core_setting')
-        ->toContain('crud_disapprove_core_setting');
+    // Holding `approve` is not enough for the model to vote: a decision is made by a person in the panel.
+    expect($names)->toBe(['crud_pending_approvals_core_setting']);
+});
+
+it('offers writes on an entity with approvals without a second opt-in', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'update');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['update']]);
+    Config::set('ai.features.tools.crud.unmoderated_writes', []);
+
+    expect(toolNames(makeCrudToolProvider($user)->tools(inAppContext($user))))->toBe(['crud_update_core_setting']);
 });
 
 it('summarizes records with group-by count and sum metrics', function (): void {
@@ -411,4 +420,58 @@ it('lists pending approvals and echoes the author filter', function (): void {
         ->and($result['request']['verb'])->toBe('pending_approvals')
         ->and($result['request']['author'])->toBe('Marco')
         ->and($result['data'])->toBeArray();
+});
+
+function grantEntityAbility(object $user, string $entity, string $ability): void
+{
+    $name = PermissionName::forModel(DynamicEntity::resolve($entity, module: 'core'), $ability);
+    Permission::findOrCreate($name, 'web');
+    $user->givePermissionTo($name);
+}
+
+it('offers no write on an entity without approvals unless the operator listed it, and still offers its reads', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+
+    foreach (['select', 'update', 'insert', 'forceDelete'] as $ability) {
+        grantEntityAbility($user, 'template', $ability);
+    }
+
+    Config::set('ai.features.tools.crud.entities', ['core.template' => ['list', 'create', 'update', 'delete', 'bulk_update', 'bulk_delete']]);
+    Config::set('ai.features.tools.crud.unmoderated_writes', []);
+
+    expect(toolNames(makeCrudToolProvider($user)->tools(inAppContext($user))))->toBe(['crud_list_core_template']);
+
+    Config::set('ai.features.tools.crud.unmoderated_writes', ['core.template']);
+
+    expect(toolNames(makeCrudToolProvider($user)->tools(inAppContext($user))))->toBe([
+        'crud_list_core_template',
+        'crud_create_core_template',
+        'crud_update_core_template',
+        'crud_delete_core_template',
+        'crud_bulk_update_core_template',
+        'crud_bulk_delete_core_template',
+    ]);
+});
+
+it('matches the unmoderated opt-in case-insensitively and ignores a malformed value', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantEntityAbility($user, 'template', 'update');
+    Config::set('ai.features.tools.crud.entities', ['core.template' => ['update']]);
+
+    Config::set('ai.features.tools.crud.unmoderated_writes', ['Core.Template']);
+    expect(toolNames(makeCrudToolProvider($user)->tools(inAppContext($user))))->toBe(['crud_update_core_template']);
+
+    Config::set('ai.features.tools.crud.unmoderated_writes', 'core.template');
+    expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
+});
+
+it('still requires the ability of the user for an opted-in unmoderated write', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    Config::set('ai.features.tools.crud.entities', ['core.template' => ['update']]);
+    Config::set('ai.features.tools.crud.unmoderated_writes', ['core.template']);
+
+    expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
 });
