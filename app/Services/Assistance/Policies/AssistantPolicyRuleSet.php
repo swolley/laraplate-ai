@@ -43,6 +43,10 @@ final readonly class AssistantPolicyRuleSet
                 }
             }
         }
+
+        foreach ([...$allowedTools, ...$deniedTools] as $tool) {
+            ToolNameMatcher::assertValid($tool);
+        }
     }
 
     /**
@@ -74,7 +78,7 @@ final readonly class AssistantPolicyRuleSet
         return new self(
             instruction: $this->instruction . "\n" . $specific->instruction,
             allowedCorpora: $this->without(array_values(array_intersect($this->allowedCorpora, $specific->allowedCorpora)), $denied_corpora),
-            allowedTools: $this->without(array_values(array_intersect($this->allowedTools, $specific->allowedTools)), $denied_tools),
+            allowedTools: $this->withoutTools(ToolNameMatcher::intersect($this->allowedTools, $specific->allowedTools), $denied_tools),
             allowedFields: $this->without(array_values(array_intersect($this->allowedFields, $specific->allowedFields)), $denied_fields),
             deniedCorpora: $denied_corpora,
             deniedTools: $denied_tools,
@@ -102,6 +106,25 @@ final readonly class AssistantPolicyRuleSet
     private function without(array $allowed, array $denied): array
     {
         $values = array_values(array_diff($allowed, $denied));
+        sort($values, SORT_STRING);
+
+        return $values;
+    }
+
+    /**
+     * An exact name that a denied entry matches is dropped. A pattern is kept, because what a denial
+     * takes out of it can only be said against a concrete name: {@see CompiledAssistantPolicy::allowsTool()}.
+     *
+     * @param  list<string>  $allowed
+     * @param  list<string>  $denied
+     * @return list<string>
+     */
+    private function withoutTools(array $allowed, array $denied): array
+    {
+        $values = array_values(array_filter(
+            $allowed,
+            static fn (string $entry): bool => str_ends_with($entry, '*') || ! ToolNameMatcher::matchesAny($entry, $denied),
+        ));
         sort($values, SORT_STRING);
 
         return $values;

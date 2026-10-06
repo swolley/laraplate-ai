@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\AI\Services\Tools;
 
 use Modules\AI\Services\Assistance\AssistantAccessContext;
+use Modules\AI\Services\Assistance\Policies\ToolNameMatcher;
 use NeuronAI\Tools\PropertyType;
 use NeuronAI\Tools\Tool;
 
@@ -23,13 +24,14 @@ final class ToolRegistry
         ContextualToolProviderInterface $provider,
         AssistantAccessContext $context,
         ?array $allowedToolNames = null,
+        array $deniedToolNames = [],
     ): array {
         $definitions = $provider->tools($context);
 
         if ($allowedToolNames !== null) {
             $definitions = array_values(array_filter(
                 $definitions,
-                static fn (ToolDefinition $definition): bool => in_array($definition->name, $allowedToolNames, true),
+                static fn (ToolDefinition $definition): bool => ToolNameMatcher::allows($definition->name, $allowedToolNames, $deniedToolNames),
             ));
         }
 
@@ -41,15 +43,16 @@ final class ToolRegistry
 
     /**
      * @param  list<ToolDefinition>  $definitions
-     * @param  list<string>|null  $allowedToolNames
+     * @param  list<string>|null  $allowedToolNames  exact names or trailing-wildcard patterns
+     * @param  list<string>  $deniedToolNames  they override the allowed ones
      * @return list<Tool>
      */
-    public function getNeuronToolsForDefinitions(array $definitions, ?array $allowedToolNames = null): array
+    public function getNeuronToolsForDefinitions(array $definitions, ?array $allowedToolNames = null, array $deniedToolNames = []): array
     {
         if ($allowedToolNames !== null) {
             $definitions = array_values(array_filter(
                 $definitions,
-                static fn (ToolDefinition $definition): bool => in_array($definition->name, $allowedToolNames, true),
+                static fn (ToolDefinition $definition): bool => ToolNameMatcher::allows($definition->name, $allowedToolNames, $deniedToolNames),
             ));
         }
 

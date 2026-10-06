@@ -102,3 +102,15 @@ it('limits the graph and CRUD tools to a few calls per turn', function (): void 
     expect(Modules\AI\Services\Tools\GraphToolProvider::MAX_RUNS)->toBe(3)
         ->and(Modules\AI\Services\Tools\CrudToolProvider::MAX_RUNS)->toBe(3);
 });
+
+it('admits a tool class by wildcard and lets a denial override it', function (): void {
+    $definitions = [
+        registryDefinition('crud_update_cms_content', fn (): string => 'ok', 'Update'),
+        registryDefinition('crud_approve_cms_content', fn (): string => 'ok', 'Approve'),
+        registryDefinition('graph_search', fn (): string => 'ok', 'Graph'),
+    ];
+
+    $tools = $this->registry->getNeuronToolsForDefinitions($definitions, ['crud_*'], ['crud_approve_*']);
+
+    expect(array_map(static fn (Tool $tool): string => $tool->getName(), $tools))->toBe(['crud_update_cms_content']);
+});

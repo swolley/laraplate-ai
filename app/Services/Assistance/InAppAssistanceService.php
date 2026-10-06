@@ -194,13 +194,14 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 $this->serverApplicationContext(),
             );
 
-            return $this->tool_registry->getNeuronToolsForDefinitions($definitions, $policy->allowedTools);
+            return $this->tool_registry->getNeuronToolsForDefinitions($definitions, $policy->allowedTools, $policy->deniedTools);
         }
 
         return $this->tool_registry->getContextualNeuronTools(
             $this->tool_provider,
             $access,
             $policy->allowedTools,
+            $policy->deniedTools,
         );
     }
 

@@ -55,6 +55,7 @@ final readonly class AssistantPolicyCompiler
             allowedCorpora: $effective->allowedCorpora,
             allowedTools: $effective->allowedTools,
             allowedFields: $effective->allowedFields,
+            deniedTools: $effective->deniedTools,
         );
     }
 }
