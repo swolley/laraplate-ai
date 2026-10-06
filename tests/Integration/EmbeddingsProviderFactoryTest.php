@@ -99,3 +99,26 @@ it('sends the model of the profile in force, not the provider\'s configured mode
     'mistral' => ['mistral:mistral-embed-2312', 'ai.providers.mistral.model'],
     'voyageai' => ['voyageai:voyage-3', 'ai.providers.voyageai.model'],
 ]);
+
+it('asks OpenAI for the dimensions of the profile on the text-embedding-3 models, and for the length of the model on the others', function (string $profileKey, ?int $expected): void {
+    config()->set('ai.providers.openai.api_key', 'test-key');
+    config()->set("ai.features.embeddings.models.{$profileKey}", ['dimensions' => 1536]);
+
+    $provider = app(EmbeddingModelRegistry::class)->withActive($profileKey, static fn (): EmbeddingsProviderInterface => EmbeddingsProviderFactory::make());
+
+    expect((fn (): ?int => $this->dimensions)->call($provider))->toBe($expected);
+})->with([
+    'text-embedding-3-small' => ['openai:text-embedding-3-small', 1536],
+    'text-embedding-3-large' => ['openai:text-embedding-3-large', 1536],
+    'text-embedding-ada-002 takes no dimensions' => ['openai:text-embedding-ada-002', null],
+]);
+
+it('does not apply the dimensions of the profile to an OpenAI provider that is not the profile\'s', function (): void {
+    config()->set('ai.providers.openai.api_key', 'test-key');
+    config()->set('ai.features.embeddings.models.ollama:mxbai-embed-large', ['dimensions' => 1024]);
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+
+    $provider = app(EmbeddingModelRegistry::class)->withActive('ollama:mxbai-embed-large', static fn (): EmbeddingsProviderInterface => EmbeddingsProviderFactory::make('openai'));
+
+    expect((fn (): ?int => $this->dimensions)->call($provider))->toBeNull();
+});

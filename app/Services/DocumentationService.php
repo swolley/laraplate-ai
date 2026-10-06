@@ -14,6 +14,7 @@ use InvalidArgumentException;
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
+use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
 use Modules\AI\Enums\AssistantProfile;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
@@ -177,7 +178,7 @@ final readonly class DocumentationService
             return false;
         }
 
-        $store_driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
+        $store_driver = FaqVectorStoreConfig::driver();
 
         if ($store_driver === 'filesystem') {
             $path = $this->getFilesystemVectorStoreFilePath();
@@ -314,7 +315,7 @@ final readonly class DocumentationService
         DocumentationIndexProfile $profile,
     ): int {
         $documents = $this->profileDocuments($roots, $profile);
-        $driver = ai_config_string('ai.features.faq.vector_store', 'filesystem');
+        $driver = FaqVectorStoreConfig::driver();
 
         if ($fullRebuild) {
             $this->resetVectorStoreForFullRebuild($driver, $profile);
@@ -475,20 +476,7 @@ final readonly class DocumentationService
     private function getFilesystemVectorStoreFilePath(
         DocumentationIndexProfile $profile = DocumentationIndexProfile::Developer,
     ): string {
-        $configured = config('ai.features.faq.vector_store_path');
-        $path = is_string($configured) && $configured !== ''
-            ? $configured
-            : storage_path('app/ai/faq-vectorstore.store');
-
-        if ($profile === DocumentationIndexProfile::Developer) {
-            return $path;
-        }
-
-        $extension = pathinfo($path, PATHINFO_EXTENSION);
-        $suffix = $extension === '' ? '' : '.' . $extension;
-        $base = $suffix === '' ? $path : mb_substr($path, 0, -mb_strlen($suffix));
-
-        return $base . '-user' . $suffix;
+        return FaqVectorStoreConfig::file($profile)->path;
     }
 
     private function resetVectorStoreForFullRebuild(

@@ -86,7 +86,6 @@ Feature switches and tuning are runtime settings managed from Filament > Setting
 
 # OpenAI Configuration
 OPENAI_API_KEY=                      # OpenAI API key
-OPENAI_API_URL=                      # OpenAI compatible API URL (optional)
 OPENAI_MODEL=                        # Model used by embeddings with OpenAI (AI features take their model from Settings)
 
 # Ollama Configuration

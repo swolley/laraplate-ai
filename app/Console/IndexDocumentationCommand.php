@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Modules\AI\Console;
 
 use function ai_config_bool;
-use function ai_config_string;
 
 use Exception;
 use Illuminate\Console\Command;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
+use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
 use Modules\AI\Services\DocumentationService;
 use Override;
 
@@ -54,7 +54,7 @@ final class IndexDocumentationCommand extends Command
             return self::FAILURE;
         }
 
-        if ($full && ai_config_string('ai.features.faq.vector_store', 'filesystem') === 'memory') {
+        if ($full && FaqVectorStoreConfig::driver() === 'memory') {
             $this->comment('Vector store driver is "memory": --full resets the in-process shared store only.');
         }
 

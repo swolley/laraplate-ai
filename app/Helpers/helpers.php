@@ -123,10 +123,6 @@ if (! function_exists('rag_paths')) {
         }
 
         if ($native_vendor === '') {
-            $native_vendor = ai_config_string('ai.vendor');
-        }
-
-        if ($native_vendor === '') {
             $ai_composer = base_path('Modules/AI/composer.json');
 
             if (is_file($ai_composer)) {

@@ -49,6 +49,11 @@ return [
             // job is retried). Below 1 or not a number: 10.
             'state_lock_wait_seconds' => env('AI_EMBEDDINGS_STATE_LOCK_WAIT_SECONDS', 10),
 
+            // Minutes a job that the `embeddings` rate limiter keeps releasing may wait for its slot
+            // before it dies: the time bound that replaces the number of tries (see
+            // GenerateEmbeddingsJob::retryUntil()). A fixed value, not a setting.
+            'retry_until_minutes' => 1440,
+
             // The model choice is the setting `features.embeddings.model` (overlaid as
             // `ai.features.embeddings.model`); the model that serves search is Core's managed
             // `search.vector.model`. EmbeddingModelRegistry falls back to the first configured profile below.
@@ -69,6 +74,18 @@ return [
                 ],
             ],
         ],
+        // Seconds a search of the application content may take for one answer of the assistant,
+        // clamped between 1 and 30 (ApplicationContentToolProvider).
+        'application_content' => [
+            'timeout_seconds' => 2,
+        ],
+
+        // Messages of a conversation after which MemoryService summarises it. The summary is enabled by
+        // the setting `features.chat.summary.enabled`; MemoryService is not reached by the assistant today.
+        'chat' => [
+            'summary_threshold' => 20,
+        ],
+
         // Media LLM analysis (M1-M21 in the media spec). The master switch is the
         // setting `features.media_analysis.enabled` and the models are the settings
         // `features.media_analysis.{vision,transcription}.model`; only the
@@ -110,15 +127,13 @@ return [
             // Optional extra root for app-level custom docs. Default scan always includes `docs/rag` and active `Modules/*/docs/rag` (see `docs/README.md`).
             'documentation_path' => env('AI_FAQ_DOCS_PATH'),
             'vector_store' => env('AI_FAQ_VECTOR_STORE', 'elasticsearch'), // memory (testing only), filesystem, elasticsearch
-            'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.json')
+            'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.store'); the store writes exactly this file
             'elasticsearch' => [
                 'developer_index' => env(
                     'AI_FAQ_DEVELOPER_ES_INDEX',
                     env('AI_FAQ_ES_INDEX', Str::slug(config('app.name')) . '_rag_docs'),
                 ),
                 'user_index' => env('AI_FAQ_USER_ES_INDEX', Str::slug(config('app.name')) . '_rag_user_docs'),
-                // Deprecated alias retained only for migration compatibility.
-                'index' => env('AI_FAQ_ES_INDEX', Str::slug(config('app.name')) . '_rag_docs'),
                 // The vector length is the active embedding profile's `dimensions`
                 // (ai.features.embeddings.models); a model switch rebuilds these indexes.
             ],
@@ -189,7 +204,6 @@ return [
     'providers' => [
         'openai' => [
             'api_key' => env('OPENAI_API_KEY'),
-            'api_url' => env('OPENAI_API_URL'),
             'model' => env('OPENAI_MODEL'),
         ],
 
@@ -236,10 +250,6 @@ return [
         'cross_encoder' => [
             'url' => env('CROSS_ENCODER_URL', env('SENTENCE_TRANSFORMERS_URL')),
             'api_key' => env('CROSS_ENCODER_API_KEY', env('SENTENCE_TRANSFORMERS_API_KEY')),
-        ],
-
-        'deepl' => [
-            'api_key' => env('DEEPL_API_KEY'),
         ],
     ],
 ];

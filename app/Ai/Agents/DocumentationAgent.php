@@ -9,6 +9,7 @@ use Modules\AI\Ai\Providers\AiModelChoice;
 use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
+use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
 use Modules\AI\Enums\AiModelFeature;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\RAG\Embeddings\EmbeddingsProviderInterface;
@@ -37,12 +38,6 @@ class DocumentationAgent extends RAG
         // RAG extends NeuronAI's Workflow, whose constructor initialises the workflow
         // executor: without it, chat() fails before reaching the provider.
         parent::__construct();
-    }
-
-    public static function make(mixed ...$arguments): static
-    {
-        /** @phpstan-ignore new.static */
-        return new static(...$arguments);
     }
 
     /**
@@ -93,48 +88,31 @@ PROMPT;
      */
     protected function vectorStore(): VectorStoreInterface
     {
-        $configured_driver = config('ai.features.faq.vector_store', 'filesystem');
-        $driver = $this->vectorStoreDriver ?? (is_string($configured_driver) ? $configured_driver : 'filesystem');
+        $driver = $this->vectorStoreDriver ?? FaqVectorStoreConfig::driver();
 
         return match ($driver) {
             'memory' => self::$shared_memory_stores[$this->indexProfile->value] ??= new MemoryVectorStore($this->topK),
             'elasticsearch' => ElasticsearchRagVectorStore::fromConfig($this->indexProfile, $this->topK),
-            default => new FileVectorStore(
-                directory: dirname($this->getStorePath()),
-                topK: $this->topK,
-                name: pathinfo($this->getStorePath(), PATHINFO_FILENAME),
-            ),
+            default => $this->fileVectorStore(),
         };
     }
 
     /**
+     * The store writes the file that {@see FaqVectorStoreConfig::file()} names, with the extension of
+     * that name: Neuron joins its own `.store` otherwise, and the file would not be the one the service
+     * looks for.
+     *
      * @codeCoverageIgnore
      */
-    private function getStorePath(): string
+    private function fileVectorStore(): FileVectorStore
     {
-        if (is_string($this->vectorStorePath) && $this->vectorStorePath !== '') {
-            return $this->profiledStorePath($this->vectorStorePath);
-        }
+        $file = FaqVectorStoreConfig::file($this->indexProfile, $this->vectorStorePath);
 
-        $configured_path = config('ai.features.faq.vector_store_path');
-
-        if (is_string($configured_path) && $configured_path !== '') {
-            return $this->profiledStorePath($configured_path);
-        }
-
-        return $this->profiledStorePath(storage_path('app/ai/faq-vectorstore.store'));
-    }
-
-    private function profiledStorePath(string $path): string
-    {
-        if ($this->indexProfile === DocumentationIndexProfile::Developer) {
-            return $path;
-        }
-
-        $extension = pathinfo($path, PATHINFO_EXTENSION);
-        $suffix = $extension === '' ? '' : '.' . $extension;
-        $base = $suffix === '' ? $path : mb_substr($path, 0, -mb_strlen($suffix));
-
-        return $base . '-user' . $suffix;
+        return new FileVectorStore(
+            directory: $file->directory(),
+            topK: $this->topK,
+            name: $file->name(),
+            ext: $file->extension(),
+        );
     }
 }

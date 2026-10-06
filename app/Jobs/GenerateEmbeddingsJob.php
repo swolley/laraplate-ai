@@ -47,7 +47,7 @@ final class GenerateEmbeddingsJob implements ShouldQueue
 
     /**
      * Job timeout in seconds
-     * 180s (3 min) considering:
+     * 300s (5 min) considering:
      * - 30s per OpenAI call
      * - Multiple calls for long documents
      * - Buffer for network latency and retries.

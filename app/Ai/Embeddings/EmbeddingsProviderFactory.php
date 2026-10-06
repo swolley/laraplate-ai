@@ -30,10 +30,11 @@ final class EmbeddingsProviderFactory
     {
         $profile = self::registry()->active();
         $provider ??= $profile->provider;
-        $model = self::canonical($provider) === self::canonical($profile->provider) ? $profile->serviceModel : null;
+        $isProfileProvider = self::canonical($provider) === self::canonical($profile->provider);
+        $model = $isProfileProvider ? $profile->serviceModel : null;
 
         return match ($provider) {
-            'openai' => self::createOpenAI($model),
+            'openai' => self::createOpenAI($model, $isProfileProvider ? $profile->dimensions : null),
             'ollama' => self::createOllama($model),
             'mistral' => self::createMistral($model),
             'voyageai' => self::createVoyage($model),
@@ -42,11 +43,20 @@ final class EmbeddingsProviderFactory
         };
     }
 
-    private static function createOpenAI(?string $model): OpenAIEmbeddingsProvider
+    /**
+     * The API takes a `dimensions` parameter on the `text-embedding-3` models only, and Neuron's
+     * provider sends 1024 unless told otherwise, so a profile of 1536 would get vectors of 1024. The
+     * profile's dimensions are sent for those models; any other model, and a provider that is not the
+     * profile's, is asked for the vector length that the model has.
+     */
+    private static function createOpenAI(?string $model, ?int $dimensions): OpenAIEmbeddingsProvider
     {
+        $model ??= ai_config_string('ai.providers.openai.model', 'text-embedding-3-small');
+
         return new OpenAIEmbeddingsProvider(
             key: ai_config_string('ai.providers.openai.api_key'),
-            model: $model ?? ai_config_string('ai.providers.openai.model', 'text-embedding-3-small'),
+            model: $model,
+            dimensions: $dimensions !== null && str_starts_with($model, 'text-embedding-3') ? $dimensions : null,
         );
     }
 

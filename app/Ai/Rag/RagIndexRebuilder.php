@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\AI\Ai\Rag;
 
 use function ai_config_bool;
-use function ai_config_string;
 
 use Illuminate\Support\Facades\Artisan;
 use InvalidArgumentException;
@@ -42,7 +41,7 @@ final readonly class RagIndexRebuilder implements IRagIndexRebuilder
     public static function rebuildsDocumentation(): bool
     {
         return ai_config_bool('ai.features.faq.enabled', true)
-            && ai_config_string('ai.features.faq.vector_store', 'filesystem') === 'elasticsearch';
+            && FaqVectorStoreConfig::driver() === 'elasticsearch';
     }
 
     #[Override]

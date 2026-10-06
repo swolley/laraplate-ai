@@ -29,12 +29,6 @@ class ChatAgent extends Agent
         parent::__construct();
     }
 
-    public static function make(mixed ...$arguments): static
-    {
-        /** @phpstan-ignore new.static */
-        return new static(...$arguments);
-    }
-
     /**
      * An agent on the provider and model chosen in Settings for this feature, limited to
      * `$maxOutputTokens` of output when given.
