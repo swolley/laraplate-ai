@@ -19,6 +19,10 @@ final readonly class AssistantCapabilities
 {
     public const string PROPOSALS_CAPABILITY = 'ui_proposals';
 
+    public const string READS_CAPABILITY = 'crud_reads';
+
+    public const string WRITES_CAPABILITY = 'governed_writes';
+
     public function __construct(private AssistantPolicyCompiler $policy_compiler) {}
 
     /**
@@ -55,6 +59,37 @@ final readonly class AssistantCapabilities
     }
 
     /**
+     * Writes are offered when the policy compiled for the in-app profile with the capability
+     * `governed_writes` still allows a tool, and the instance has opted an entity into a write
+     * operation (`ai.features.tools.crud.entities`). Which entities and operations a given person
+     * may use is decided per user, by the tools that are built for them.
+     */
+    public function writes(): bool
+    {
+        try {
+            $policy = $this->policy_compiler->compile(AssistantProfile::InAppAssistance, [self::WRITES_CAPABILITY]);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        if ($policy->allowedTools === []) {
+            return false;
+        }
+
+        $entities = config('ai.features.tools.crud.entities', []);
+
+        foreach (is_array($entities) ? $entities : [] as $operations) {
+            foreach (is_array($operations) ? $operations : [] as $operation) {
+                if (in_array(mb_strtolower((string) $operation), ['create', 'update', 'delete', 'bulk_update', 'bulk_delete'], true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * `POST /app/ai/agent` streams the run as lifecycle events and complete validated messages.
      */
     public function streaming(): bool
@@ -63,7 +98,7 @@ final readonly class AssistantCapabilities
     }
 
     /**
-     * @return array{enabled: bool, configured: bool, features: array{proposals: bool, streaming: bool}}
+     * @return array{enabled: bool, configured: bool, features: array{proposals: bool, writes: bool, streaming: bool}}
      */
     public function toArray(): array
     {
@@ -72,6 +107,7 @@ final readonly class AssistantCapabilities
             'configured' => $this->configured(),
             'features' => [
                 'proposals' => $this->proposals(),
+                'writes' => $this->writes(),
                 'streaming' => $this->streaming(),
             ],
         ];

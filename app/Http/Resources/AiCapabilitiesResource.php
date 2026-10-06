@@ -17,7 +17,7 @@ use Override;
 final class AiCapabilitiesResource extends JsonResource
 {
     /**
-     * @return array{enabled: bool, configured: bool, features: array{proposals: bool, streaming: bool}}
+     * @return array{enabled: bool, configured: bool, features: array{proposals: bool, writes: bool, streaming: bool}}
      */
     #[Override]
     public function toArray(Request $request): array
