@@ -5,19 +5,12 @@ declare(strict_types=1);
 use Illuminate\Http\Request;
 use Modules\AI\Models\ActionRequest;
 use Modules\AI\Models\Conversation;
-use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
-use Modules\AI\Services\Assistance\AssistantAccessContext;
-use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCatalog;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyRuleSet;
 use Modules\AI\Services\Assistance\Proposals\UiProposalCollector;
-use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
-use Modules\AI\Services\ChatService;
-use Modules\AI\Services\DocumentationService;
-use Modules\AI\Services\Tools\ContextualToolProviderInterface;
-use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantFixtures;
 use Modules\Core\Models\Modification;
 use Modules\Core\Models\User;
 use NeuronAI\Tools\Tool;
@@ -71,22 +64,7 @@ function proposalRequest(User $user, ?array $proposable): Request
  */
 function proposalAssistance(Request $request, Closure $complete, ?AssistantPolicyCompiler $compiler = null): InAppAssistanceService
 {
-    $toolProvider = Mockery::mock(ContextualToolProviderInterface::class);
-    $toolProvider->shouldReceive('tools')->andReturn([]);
-
-    return new InAppAssistanceService(
-        app(AssistantAccessContextFactory::class),
-        $compiler ?? app(AssistantPolicyCompiler::class),
-        AssistanceGuardrailPipeline::defaults(),
-        app(DocumentationService::class),
-        $toolProvider,
-        new ToolRegistry,
-        app(ChatService::class),
-        $request,
-        new AssistantScopeResolver,
-        fn (string $input, AssistantAccessContext $access): array => [],
-        $complete,
-    );
+    return ScriptedAssistantFixtures::inAppService($request, $complete, compiler: $compiler);
 }
 
 /**

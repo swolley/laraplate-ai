@@ -6,17 +6,18 @@ namespace Modules\AI\Tests\Stubs\Assistance;
 
 use Closure;
 use Illuminate\Http\Request;
-use Mockery;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentDeadlineExecutor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentPromptProjector;
 use Modules\AI\Services\ApplicationContent\ApplicationContentSourceRouter;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
+use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\AssistantPromptContext;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
+use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
@@ -30,6 +31,7 @@ use Modules\Core\ApplicationContent\Data\ApplicationContentHit;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Services\Authorization\AuthorizationService;
+use NeuronAI\RAG\Document;
 use NeuronAI\Tools\Tool;
 use PHPUnit\Framework\Assert;
 
@@ -86,7 +88,7 @@ final class ScriptedAssistantFixtures
     /**
      * @param  list<ApplicationContentRetrievalProviderInterface>  $providers
      * @param  Closure(string, string, AssistantPromptContext, list<Tool>): string  $completion
-     * @param  (Closure(string, \Modules\AI\Services\Assistance\AssistantAccessContext, ?\Modules\AI\Services\Assistance\Scope\AssistantScope): list<\NeuronAI\RAG\Document>)|null  $documentationRetrieval
+     * @param  (Closure(string, AssistantAccessContext, ?AssistantScope): list<Document>)|null  $documentationRetrieval
      */
     public static function inAppContentService(
         Request $request,
@@ -114,10 +116,7 @@ final class ScriptedAssistantFixtures
             $request,
         );
 
-        if ($graphTools === null) {
-            $graphTools = Mockery::mock(ContextualToolProviderInterface::class);
-            $graphTools->shouldReceive('tools')->andReturn([]);
-        }
+        $graphTools ??= new StaticToolsProvider;
 
         return new InAppAssistanceService(
             app(AssistantAccessContextFactory::class),
@@ -132,6 +131,37 @@ final class ScriptedAssistantFixtures
             $documentationRetrieval ?? static fn (): array => [],
             $completion,
             $citations,
+        );
+    }
+
+    /**
+     * The in-app service with the real collaborators and no tool, for a test that drives `respond()`
+     * through what the model says and what is retrieved. `$retrieve` defaults to no document and
+     * `$complete` to the real completion through `$chat`.
+     *
+     * @param  (Closure(string, AssistantAccessContext, ?AssistantScope): list<Document>)|null  $retrieve
+     * @param  (Closure(string, string, AssistantPromptContext, list<Tool>): string)|null  $complete
+     */
+    public static function inAppService(
+        Request $request,
+        ?Closure $complete = null,
+        ?Closure $retrieve = null,
+        ?AssistantPolicyCompiler $compiler = null,
+        ?ChatService $chat = null,
+        ?ContextualToolProviderInterface $tools = null,
+    ): InAppAssistanceService {
+        return new InAppAssistanceService(
+            app(AssistantAccessContextFactory::class),
+            $compiler ?? app(AssistantPolicyCompiler::class),
+            AssistanceGuardrailPipeline::defaults(),
+            app(DocumentationService::class),
+            $tools ?? new StaticToolsProvider,
+            new ToolRegistry,
+            $chat ?? app(ChatService::class),
+            $request,
+            new AssistantScopeResolver,
+            $retrieve ?? static fn (): array => [],
+            $complete,
         );
     }
 

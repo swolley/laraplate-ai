@@ -11,16 +11,10 @@ use Modules\AI\Jobs\GenerateConversationTitleJob;
 use Modules\AI\Models\Conversation;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
-use Modules\AI\Services\Assistance\AssistantAccessContext;
-use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\ConversationTitleService;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
 use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
-use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
-use Modules\AI\Services\ChatService;
-use Modules\AI\Services\DocumentationService;
-use Modules\AI\Services\Tools\ContextualToolProviderInterface;
-use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantFixtures;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\AssistantMessage;
 use NeuronAI\Testing\FakeAIProvider;
@@ -32,22 +26,8 @@ function titleAssistance(User $user, Closure $complete): InAppAssistanceService
 {
     $request = Request::create('/app/ai/assistance', 'POST', ['message' => 'hello']);
     $request->setUserResolver(fn (): User => $user);
-    $toolProvider = Mockery::mock(ContextualToolProviderInterface::class);
-    $toolProvider->shouldReceive('tools')->andReturn([]);
 
-    return new InAppAssistanceService(
-        app(AssistantAccessContextFactory::class),
-        app(AssistantPolicyCompiler::class),
-        AssistanceGuardrailPipeline::defaults(),
-        app(DocumentationService::class),
-        $toolProvider,
-        new ToolRegistry,
-        app(ChatService::class),
-        $request,
-        new AssistantScopeResolver,
-        fn (string $input, AssistantAccessContext $access): array => [],
-        $complete,
-    );
+    return ScriptedAssistantFixtures::inAppService($request, $complete);
 }
 
 /**

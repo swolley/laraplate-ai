@@ -10,6 +10,7 @@ use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\AI\Tests\Stubs\ApplicationContent\InAppAssistanceContentProvider;
 use Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantFixtures;
+use Modules\AI\Tests\Stubs\Assistance\StaticToolsProvider;
 use Modules\Core\ApplicationContent\Data\ApplicationContentResult;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\User;
@@ -166,19 +167,13 @@ it('routes explicit cross-module intent instead of forcing the page module', fun
 
 it('offers graph and application evidence tools together without coupling them', function (): void {
     $provider = new InAppAssistanceContentProvider(inAppContentDescriptor(), inAppContentResult());
-    $graph_tools = new class implements ContextualToolProviderInterface
-    {
-        public function tools(Modules\AI\Services\Assistance\AssistantAccessContext $context): array
-        {
-            return [new ToolDefinition(
-                'graph_search',
-                'Search authorized graph relations.',
-                [],
-                'low',
-                static fn (): array => ['nodes' => []],
-            )];
-        }
-    };
+    $graph_tools = new StaticToolsProvider([new ToolDefinition(
+        'graph_search',
+        'Search authorized graph relations.',
+        [],
+        'low',
+        static fn (): array => ['nodes' => []],
+    )]);
     $service = inAppContentService(
         $this->request,
         [$provider],

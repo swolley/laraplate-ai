@@ -20,6 +20,7 @@ use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\AI\Tests\Stubs\ApplicationContent\ApplicationContentToolFakeProvider;
+use Modules\AI\Tests\Stubs\Assistance\StaticToolsProvider;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalProviderRegistry;
 use Modules\Core\ApplicationContent\ApplicationContentRetrievalService;
 use Modules\Core\ApplicationContent\Contracts\ApplicationContentRetrievalProviderInterface;
@@ -334,20 +335,8 @@ it('narrows the tool schema from verified context and rejects a conflicting mode
 it('binds a composite contextual provider so graph and application tools remain independent', function (): void {
     expect(app(ContextualToolProviderInterface::class))->toBeInstanceOf(CompositeContextualToolProvider::class);
 
-    $first = new class implements ContextualToolProviderInterface
-    {
-        public function tools(AssistantAccessContext $context): array
-        {
-            return [new ToolDefinition('graph_search', 'Graph', [], 'low', static fn (): array => [])];
-        }
-    };
-    $second = new class implements ContextualToolProviderInterface
-    {
-        public function tools(AssistantAccessContext $context): array
-        {
-            return [new ToolDefinition('application_content_search', 'Content', [], 'low', static fn (): array => [])];
-        }
-    };
+    $first = new StaticToolsProvider([new ToolDefinition('graph_search', 'Graph', [], 'low', static fn (): array => [])]);
+    $second = new StaticToolsProvider([new ToolDefinition('application_content_search', 'Content', [], 'low', static fn (): array => [])]);
 
     expect(array_column(
         (new CompositeContextualToolProvider([$first, $second]))->tools(applicationContentToolAccess()),

@@ -5,16 +5,10 @@ declare(strict_types=1);
 use Illuminate\Http\Request;
 use Modules\AI\Ai\Agents\ChatAgent;
 use Modules\AI\Models\Conversation;
-use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
-use Modules\AI\Services\Assistance\AssistantAccessContextFactory;
 use Modules\AI\Services\Assistance\Contracts\InAppAssistanceServiceInterface;
 use Modules\AI\Services\Assistance\InAppAssistanceService;
-use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
-use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\ChatService;
-use Modules\AI\Services\DocumentationService;
-use Modules\AI\Services\Tools\ContextualToolProviderInterface;
-use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantFixtures;
 use Modules\AI\Tests\Stubs\Assistance\ToolCallingFakeProvider;
 use Modules\Core\Models\Permission;
 use Modules\Core\Models\Role;
@@ -35,23 +29,10 @@ function agentFakeModel(FakeAIProvider $provider): void
         fn (...$arguments): ChatAgent => $real->buildProtectedAgent(...$arguments)->setAiProvider($provider),
     );
 
-    app()->bind(InAppAssistanceServiceInterface::class, static function ($app) use ($chat): InAppAssistanceService {
-        $tools = Mockery::mock(ContextualToolProviderInterface::class);
-        $tools->shouldReceive('tools')->andReturn([]);
-
-        return new InAppAssistanceService(
-            $app->make(AssistantAccessContextFactory::class),
-            $app->make(AssistantPolicyCompiler::class),
-            AssistanceGuardrailPipeline::defaults(),
-            $app->make(DocumentationService::class),
-            $tools,
-            new ToolRegistry,
-            $chat,
-            $app->make(Request::class),
-            new AssistantScopeResolver,
-            static fn (): array => [],
-        );
-    });
+    app()->bind(
+        InAppAssistanceServiceInterface::class,
+        static fn ($app): InAppAssistanceService => ScriptedAssistantFixtures::inAppService($app->make(Request::class), chat: $chat),
+    );
 }
 
 /**
