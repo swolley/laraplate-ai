@@ -151,6 +151,19 @@ The AI module has priority **999** (loaded after Core and Cms) to ensure proper 
 
 ## Features
 
+### Privacy: what the assistant stores
+
+The assistant collects **no usage data**: nothing is recorded in the background, and nothing learns from what
+a user clicks. The instance keeps only what a user's own request or setting creates:
+
+-   the **preferences** of the user (`users.preferences`, written by the client the user uses);
+-   the user's **conversations**: messages with their citations and proposals, summaries and title;
+-   **contextual suggestions** (off by default): the page and the action they are about, pruned after 7 days.
+
+A deleted conversation takes its messages, summaries and title with it, and a deleted user takes their
+conversations and suggestions. Details, the wire contract and the purge rules:
+`docs/rag/ASSISTANT_PROPOSALS_DEVELOPER.md`.
+
 ### Requirements
 
 -   PHP >= 8.5

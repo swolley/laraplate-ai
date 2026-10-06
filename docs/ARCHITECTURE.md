@@ -3,7 +3,7 @@
 > **Status note.** The chat sections below describe the superseded `ChatService` message path
 > (`sendMessage()`, `sendMessageStream()`, `sendMessageWithTools()`, `buildAgent()`), which has been
 > removed. Every HTTP message now goes through `InAppAssistanceService::respond()`, which is
-> policy-compiled, guardrailed, scope-resolved, non-streaming and stateless per message.
+> policy-compiled, guardrailed, scope-resolved and stateless per message; no token of the model is streamed (`POST /app/ai/agent` streams lifecycle events and one validated message).
 > For the current picture, read `docs/rag/MODULE.md`, sections *Perimeters* and *Message orchestration*.
 > The material here is kept because the tool, embedding, translation and suggestion sections remain accurate.
 
