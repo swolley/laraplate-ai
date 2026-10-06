@@ -7,6 +7,7 @@ namespace Modules\AI\Services\Assistance\Evaluation;
 use Closure;
 use Modules\AI\Models\Message;
 use Modules\AI\Services\Assistance\AssistanceGuardrailPipeline;
+use Modules\AI\Services\Assistance\Policies\AssistanceOutputPolicy;
 use RuntimeException;
 use Throwable;
 
@@ -39,6 +40,7 @@ final readonly class AssistantEvaluationService
             $labels = [];
             $refused = false;
             $unavailable = false;
+            $proposals = 0;
 
             try {
                 $message = $runner($case);
@@ -50,6 +52,7 @@ final readonly class AssistantEvaluationService
                 $content = (string) $message->content;
                 $metadata = $message->metadata ?? [];
                 $refused = ($metadata['refused'] ?? null) === true;
+                $proposals = is_array($metadata['proposals'] ?? null) ? count($metadata['proposals']) : 0;
 
                 $citations = $metadata['citations'] ?? [];
 
@@ -65,6 +68,7 @@ final readonly class AssistantEvaluationService
                 $content = '';
                 $labels = [];
                 $refused = false;
+                $proposals = 0;
             }
 
             $elapsed = max(0.0, (($this->clock)() - $started_at) * 1000);
@@ -73,6 +77,7 @@ final readonly class AssistantEvaluationService
                 'content' => $content,
                 'labels' => $labels,
                 'refused' => $refused,
+                'proposals' => $proposals,
                 'unavailable' => $unavailable,
                 'latency_ms' => $elapsed,
             ];
@@ -107,6 +112,10 @@ final readonly class AssistantEvaluationService
         $valid_total = 0;
         $valid_ok = 0;
         $unavailable = 0;
+        $proposal_total = 0;
+        $proposal_ok = 0;
+        $pending_total = 0;
+        $pending_ok = 0;
 
         foreach ($records as $record) {
             /** @var AssistantEvaluationCase $case */
@@ -138,6 +147,16 @@ final readonly class AssistantEvaluationService
                 $valid_ok += (int) (mb_trim($content) !== '');
             }
 
+            if ($case->expectedProposals !== null) {
+                $proposal_total++;
+                $proposal_ok += (int) ($record['proposals'] === $case->expectedProposals);
+            }
+
+            if ($record['proposals'] > 0) {
+                $pending_total++;
+                $pending_ok += (int) ! AssistanceOutputPolicy::claimsChange($content);
+            }
+
             $unavailable += (int) $record['unavailable'];
         }
 
@@ -148,6 +167,8 @@ final readonly class AssistantEvaluationService
             'clarification_trigger_accuracy' => $this->ratio($clarification_ok, $clarification_total),
             'abstention_accuracy' => $this->ratio($abstention_ok, $abstention_total),
             'output_valid' => $this->ratio($valid_ok, $valid_total),
+            'proposal_accuracy' => $this->ratio($proposal_ok, $proposal_total),
+            'pending_report_accuracy' => $this->ratio($pending_ok, $pending_total),
             'unavailable_rate' => $this->ratio($unavailable, $count),
         ];
     }

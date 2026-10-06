@@ -19,6 +19,14 @@ final readonly class AssistanceOutputPolicy
         private int $max_length = 8000,
     ) {}
 
+    /**
+     * Whether the text says that a change was made, in English or Italian.
+     */
+    public static function claimsChange(string $output): bool
+    {
+        return preg_match(self::APPLIED_CLAIM, $output) === 1;
+    }
+
     public function validate(string $output): string
     {
         $output = mb_trim($output);
@@ -48,7 +56,7 @@ final readonly class AssistanceOutputPolicy
      */
     public function reportPendingProposals(string $output, string $locale): string
     {
-        if (preg_match(self::APPLIED_CLAIM, $output) !== 1) {
+        if (! self::claimsChange($output)) {
             return $output;
         }
 

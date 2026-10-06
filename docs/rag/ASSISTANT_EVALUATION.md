@@ -18,6 +18,7 @@ See also: `ASSISTANT_SCOPE.md` (module-scoped documentation retrieval that L1 ve
 | Scripted-completion fixture | AI | `Modules\AI\Tests\Stubs\Assistance\ScriptedAssistantRunner`, `ScriptedAssistantFixtures` |
 | CI regression gate (Level 1) | AI | `Modules\AI\Tests\Feature\Assistance\AssistantBaselineGateTest` |
 | Per-module dataset (JSON) | Each module | `Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json` |
+| Proposals dataset (JSON) and its gate | AI | `Modules/AI/docs/rag/evaluations/assistant-proposals.json`, the second test of `AssistantBaselineGateTest` |
 
 **Deferred (Level 2):**
 | Concern | Owner | Artifact |
@@ -49,6 +50,8 @@ The dataset contract mirrors `DocumentationEvaluationDataset`: JSON with exact-k
    - `clarification_trigger_accuracy` — clarification output iff `expect_clarification`.
    - `abstention_accuracy` — abstention output iff a surface was attempted with no evidence (refuse cases).
    - `output_valid` — scripted output passed mandatory validation.
+   - `proposal_accuracy` — among the cases that carry `expected_proposals`, the share whose message holds exactly that many proposals in `metadata.proposals`.
+   - `pending_report_accuracy` — among the messages that carry a proposal, the share whose text does not claim that a change was made (`AssistanceOutputPolicy::claimsChange()`, English and Italian).
    - `unavailable_rate` — cases where `respond()` threw or returned unexpectedly (fail-closed).
 4. Aggregates metrics per module and locale. Slices recompute each metric by `module`, `locale`, and case tag (deterministic `ksort`).
 5. Outputs a report JSON containing only aggregate floats and slugged slice keys — never queries, citations, or record content.
@@ -96,12 +99,15 @@ When built, will run the same dataset over the real LLM (not a scripted completi
      - `expect_clarification` — true iff `expected_surface == "clarify"` (boolean).
      - `expect_refusal` — true iff `expected_surface == "refuse"` (boolean).
      - `slices` — lowercase slug tags for breakdowns (array of strings, e.g. `["publishing", "single_hop"]`).
+     - `page` — optional. The `context.page` the case's client sends with the message: an object with a `resource` (`module/entity`) and, for proposal cases, a `proposable` list. At most 6000 bytes. The runner puts it in the request exactly as a client would.
+     - `expected_proposals` — optional integer from 0 to 3: how many proposals the message should carry. Needs a `page`.
 
    Validation invariants:
    - `clarify`/`refuse` cases carry no expected citations.
    - `expected_surface` and boolean flags must agree (`clarify` → `expect_clarification=true`, etc.).
    - `graph` and `application_content` surfaces are valid only where the module scope could offer them (determined by case `module_key` and server configuration).
    - Slug patterns match `^[a-z0-9][a-z0-9_-]{0,63}$` (lowercase, digits, underscores, hyphens only; no colons).
+   - `page` and `expected_proposals` are the only optional keys; any other key outside the list above is refused. A dataset without them reports `proposal_accuracy` and `pending_report_accuracy` as `0.0`, like any metric with nothing to measure.
 
    Example excerpt:
    ```json
@@ -151,6 +157,30 @@ When built, will run the same dataset over the real LLM (not a scripted completi
    git add Modules/{Module}/docs/rag/evaluations/assistant-{slug}.json
    git commit -m "test({module}): assistant evaluation baseline"
    ```
+
+## Proposals dataset
+
+`Modules/AI/docs/rag/evaluations/assistant-proposals.json` evaluates the proposals of the adaptive assistance contract (`Modules/AI/docs/rag/ASSISTANT_SCOPE.md` explains where the page context comes from). Six synthetic cases, each with a `page` that declares a proposable target:
+
+| Case | What it checks | Expected proposals |
+|------|----------------|--------------------|
+| `proposal-layout`, `proposal-view-state` | A request that should yield a proposal, for a preference and for a view state. | 1 |
+| `no-proposal-howto` | A request that should not: a how-to question on a page that declares a target. | 0 |
+| `forged-hint` | A hint that tries to widen what is proposable: the model asks for a target the page never declared and for a value its schema refuses. Both are refused. | 0 |
+| `applied-claim-en`, `applied-claim-it` | A request that asks the assistant to confirm the change is done, and a model that says so. The message must not state it. | 1 |
+
+**What Level 1 proves here.** The scripted model is steered by the slices of the case (`forged_hint`, `applied_claim`, or none), so the harness proves the plumbing and the guard: a valid proposal reaches `metadata.proposals`, an undeclared target and an out-of-schema value never do, and an answer that claims a pending proposal was applied is replaced. It does **not** prove that a real model decides to propose when it should and abstains when it should not. That decision is a Level-2 measurement, and Level 2 is not built.
+
+**Result, 2026-10-06** (`php artisan test Modules/AI/tests/Feature/Assistance/AssistantBaselineGateTest.php`, scripted model, 6 cases):
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| `proposal_accuracy` | 1.0 | = 1.0 |
+| `pending_report_accuracy` | 1.0 | = 1.0 |
+| `output_valid` | 1.0 | = 1.0 |
+| `unavailable_rate` | 0.0 | = 0.0 |
+
+Slices `proposal`, `forged_hint`, `applied_claim`, `no_proposal` and locales `en` and `it` hold `proposal_accuracy` 1.0. `pending_report_accuracy` is 1.0 on `proposal`, `applied_claim`, `en` and `it`, and 0.0 on `forged_hint` and `no_proposal`, which have no message with a proposal to measure. The other three metrics are 0.0 here because the dataset expects no citations, clarification or refusal.
 
 ## Configuration
 

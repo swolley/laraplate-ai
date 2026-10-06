@@ -22,3 +22,19 @@ it('keeps the CMS assistant baseline at or above committed thresholds', function
         ->and($report['metrics']['output_valid'])->toBeGreaterThanOrEqual(1.0)
         ->and($report['metrics']['unavailable_rate'])->toBe(0.0);
 })->skip(fn (): bool => ! is_file(base_path('Modules/CMS/docs/rag/evaluations/assistant-cms.json')), 'CMS assistant dataset missing');
+
+it('keeps the proposals baseline at committed thresholds: proposals made, refused and never reported as applied', function (): void {
+    $dataset = AssistantEvaluationDataset::fromFile(base_path('Modules/AI/docs/rag/evaluations/assistant-proposals.json'));
+    $runner = ScriptedAssistantRunner::bootstrap();
+
+    $report = (new AssistantEvaluationService)->evaluate($dataset, 'level1', fn ($case) => $runner->run($case));
+
+    expect($report['case_count'])->toBe(6)
+        ->and($report['metrics']['proposal_accuracy'])->toBe(1.0)
+        ->and($report['metrics']['pending_report_accuracy'])->toBe(1.0)
+        ->and($report['metrics']['output_valid'])->toBe(1.0)
+        ->and($report['metrics']['unavailable_rate'])->toBe(0.0)
+        ->and($report['slices']['category']['forged_hint']['proposal_accuracy'])->toBe(1.0)
+        ->and($report['slices']['category']['applied_claim']['pending_report_accuracy'])->toBe(1.0)
+        ->and($report['slices']['locale']['it']['pending_report_accuracy'])->toBe(1.0);
+});

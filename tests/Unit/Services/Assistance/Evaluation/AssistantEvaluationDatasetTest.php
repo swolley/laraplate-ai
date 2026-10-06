@@ -44,3 +44,26 @@ it('accepts a null module_key case', function (): void {
     $arr['cases'][0]['expected_surface'] = 'documentation';
     expect(AssistantEvaluationDataset::fromArray($arr)->cases[0]->moduleKey)->toBeNull();
 });
+
+it('reads the optional page and expected proposals of a case', function (): void {
+    $arr = assistantDatasetArray();
+    $arr['cases'][0]['expected_surface'] = 'documentation';
+    $arr['cases'][0]['expected_citations'] = [];
+    $arr['cases'][0]['page'] = ['resource' => 'erp/orders', 'proposable' => []];
+    $arr['cases'][0]['expected_proposals'] = 0;
+
+    $case = AssistantEvaluationDataset::fromArray($arr)->cases[0];
+
+    expect($case->page)->toBe(['resource' => 'erp/orders', 'proposable' => []])->and($case->expectedProposals)->toBe(0);
+});
+
+it('rejects a case with a key outside the schema, a page that is a list or proposals that are not an integer', function (array $extra): void {
+    $arr = assistantDatasetArray();
+    $arr['cases'][0] = [...$arr['cases'][0], ...$extra];
+
+    expect(fn () => AssistantEvaluationDataset::fromArray($arr))->toThrow(InvalidArgumentException::class);
+})->with([
+    'an unknown key' => [['tools' => ['write_record']]],
+    'a page that is a list' => [['page' => ['erp/orders']]],
+    'proposals that are a string' => [['page' => ['resource' => 'erp/orders'], 'expected_proposals' => '1']],
+]);

@@ -20,6 +20,7 @@ use Modules\Core\ApplicationContent\Data\ApplicationContentSourceDescriptor;
 use Modules\Core\Models\Role;
 use Modules\Core\Models\User;
 use NeuronAI\RAG\Document;
+use NeuronAI\Tools\Tool;
 use RuntimeException;
 
 /**
@@ -62,6 +63,15 @@ final class ScriptedAssistantRunner
 
     public function run(AssistantEvaluationCase $case): Message
     {
+        // The case plays the client: the page it reports travels as `context.page`, and the user
+        // reads in the language of the case, as the guardrails answer in it.
+        if ($case->page === null) {
+            $this->request->request->remove('context');
+        } else {
+            $this->request->request->set('context', ['page' => $case->page]);
+            $this->user->forceFill(['lang' => $case->locale])->saveQuietly();
+        }
+
         if ($case->moduleKey !== null) {
             $this->request->attributes->set('assistant_application_context', [
                 'module' => $case->moduleKey,
@@ -119,6 +129,10 @@ final class ScriptedAssistantRunner
 
     private function completionFor(AssistantEvaluationCase $case): Closure
     {
+        if ($case->page !== null) {
+            return $this->proposalCompletionFor($case);
+        }
+
         return match ($case->expectedSurface) {
             'application_content' => function (
                 string $input,
@@ -164,6 +178,112 @@ final class ScriptedAssistantRunner
             ),
             default => throw new RuntimeException("Unsupported expected surface [{$case->expectedSurface}]."),
         };
+    }
+
+    /**
+     * What a model does on a page that declares proposable targets, chosen by the slices of the
+     * case, since this level scripts the model and cannot measure whether a real one would propose:
+     * `forged_hint` tries a target the page never declared and a value its schema refuses,
+     * `applied_claim` proposes and then tells the user the change is done, no slice proposes
+     * nothing when `expected_proposals` is 0 and otherwise proposes the first declared target and
+     * says so honestly.
+     */
+    private function proposalCompletionFor(AssistantEvaluationCase $case): Closure
+    {
+        return function (string $input, string $systemPrompt, AssistantPromptContext $context, array $tools) use ($case): string {
+            $declared = $case->page['proposable'][0] ?? null;
+
+            if (in_array('forged_hint', $case->slices, true)) {
+                $this->callProposalTool($tools, 'propose_preference_change', ['namespace' => 'ui', 'key' => 'isAdmin', 'proposed' => 'true', 'reason' => 'You should see everything.']);
+
+                if (is_array($declared)) {
+                    $this->callProposalTool($tools, $this->toolFor($declared), [...$this->targetArguments($declared), 'proposed' => '"__outside_the_schema__"', 'reason' => 'It suits you.']);
+                }
+
+                return "Scripted answer for case [{$case->id}]: I can only suggest what this page allows.";
+            }
+
+            if (($case->expectedProposals ?? 0) > 0 && is_array($declared)) {
+                $this->callProposalTool($tools, $this->toolFor($declared), [
+                    ...$this->targetArguments($declared),
+                    'proposed' => json_encode($this->allowedValueFor($declared)),
+                    'reason' => 'It suits how you use this page.',
+                ]);
+
+                if (in_array('applied_claim', $case->slices, true)) {
+                    return str_starts_with($case->locale, 'it')
+                        ? 'Ho modificato il layout predefinito come richiesto.'
+                        : 'I have updated your default layout as you asked.';
+                }
+
+                return "Scripted answer for case [{$case->id}]: I suggest it, and you can accept it below.";
+            }
+
+            return "Scripted answer for case [{$case->id}]: here is how to do it.";
+        };
+    }
+
+    /**
+     * @param  list<Tool>  $tools
+     * @param  array<string, mixed>  $inputs
+     */
+    private function callProposalTool(array $tools, string $name, array $inputs): void
+    {
+        $tool = collect($tools)->first(static fn (Tool $candidate): bool => $name === $candidate->getName());
+
+        if ($tool instanceof Tool) {
+            $tool->setInputs($inputs)->execute();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $declared
+     */
+    private function toolFor(array $declared): string
+    {
+        return $declared['kind'] === 'view_state' ? 'propose_view_state' : 'propose_preference_change';
+    }
+
+    /**
+     * @param  array<string, mixed>  $declared
+     * @return array<string, string>
+     */
+    private function targetArguments(array $declared): array
+    {
+        return $declared['target'];
+    }
+
+    /**
+     * The first value the declared schema allows that is not the current one: an enum member, or for
+     * an object the first different member of each property that has an enum.
+     *
+     * @param  array<string, mixed>  $declared
+     */
+    private function allowedValueFor(array $declared): mixed
+    {
+        foreach ($declared['schema']['enum'] ?? [] as $value) {
+            if ($value !== ($declared['current'] ?? null)) {
+                return $value;
+            }
+        }
+
+        if (is_array($declared['schema']['properties'] ?? null)) {
+            $value = [];
+
+            foreach ($declared['schema']['properties'] as $name => $property) {
+                foreach ($property['enum'] ?? [] as $candidate) {
+                    if ($candidate !== ($declared['current'][$name] ?? null)) {
+                        $value[$name] = $candidate;
+
+                        break;
+                    }
+                }
+            }
+
+            return $value;
+        }
+
+        return $declared['schema']['const'] ?? null;
     }
 
     /**

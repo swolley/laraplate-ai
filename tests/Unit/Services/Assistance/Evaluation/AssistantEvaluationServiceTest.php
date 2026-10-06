@@ -129,3 +129,40 @@ it('slices metrics by locale and by case slice tag', function (): void {
     expect($report['slices']['locale'])->toHaveKey('en')
         ->and($report['slices']['category'])->toHaveKey('publishing');
 });
+
+it('scores proposals against the expected count and never accepts a pending proposal reported as applied', function (): void {
+    $page = ['resource' => 'erp/orders'];
+    $case = static fn (string $id, int $expected): array => [
+        'id' => $id, 'query' => 'q', 'locale' => 'en', 'module_key' => null,
+        'expected_surface' => 'documentation', 'expected_citations' => [],
+        'expect_clarification' => false, 'expect_refusal' => false,
+        'slices' => ['proposal'], 'page' => $page, 'expected_proposals' => $expected,
+    ];
+    $dataset = AssistantEvaluationDataset::fromArray(assistantServiceDatasetArray([
+        'cases' => [$case('right', 1), $case('missing', 1), $case('extra', 0), $case('claims', 1)],
+    ]));
+
+    $runner = static fn ($c): Message => match ($c->id) {
+        'right' => assistantServiceMessage('I suggest it; accept it below.', ['proposals' => [['id' => 'a']]]),
+        'missing' => assistantServiceMessage('Done.', ['citations' => []]),
+        'extra' => assistantServiceMessage('I suggest it.', ['proposals' => [['id' => 'a']]]),
+        'claims' => assistantServiceMessage('I have updated your layout.', ['proposals' => [['id' => 'a']]]),
+    };
+
+    $metrics = (new AssistantEvaluationService)->evaluate($dataset, 'level1', $runner)['metrics'];
+
+    // right and claims match their expected count, missing and extra do not.
+    expect($metrics['proposal_accuracy'])->toBe(0.5)
+        // three messages carry a proposal and one of them says it was applied.
+        ->and($metrics['pending_report_accuracy'])->toBe(0.6667);
+});
+
+it('reports no proposal metric for a dataset that expects none', function (): void {
+    $metrics = (new AssistantEvaluationService)->evaluate(
+        AssistantEvaluationDataset::fromArray(assistantServiceDatasetArray()),
+        'level1',
+        static fn (): Message => assistantServiceMessage('answer', ['citations' => [['label' => 'Publishing guide']]]),
+    )['metrics'];
+
+    expect($metrics['proposal_accuracy'])->toBe(0.0)->and($metrics['pending_report_accuracy'])->toBe(0.0);
+});

@@ -99,7 +99,7 @@ final readonly class AssistantEvaluationDataset
      */
     private static function caseFromArray(array $data): AssistantEvaluationCase
     {
-        self::assertExactKeys($data, [
+        self::assertKeys($data, [
             'expect_clarification',
             'expect_refusal',
             'expected_citations',
@@ -109,7 +109,7 @@ final readonly class AssistantEvaluationDataset
             'module_key',
             'query',
             'slices',
-        ]);
+        ], ['expected_proposals', 'page']);
 
         $module_key = $data['module_key'] ?? null;
 
@@ -127,7 +127,38 @@ final readonly class AssistantEvaluationDataset
             expectClarification: self::boolean($data, 'expect_clarification'),
             expectRefusal: self::boolean($data, 'expect_refusal'),
             slices: self::stringList($data, 'slices'),
+            page: self::optionalObject($data, 'page'),
+            expectedProposals: self::optionalInteger($data, 'expected_proposals'),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<array-key, mixed>|null
+     */
+    private static function optionalObject(array $data, string $key): ?array
+    {
+        $value = $data[$key] ?? null;
+
+        if ($value !== null && (! is_array($value) || array_is_list($value))) {
+            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private static function optionalInteger(array $data, string $key): ?int
+    {
+        $value = $data[$key] ?? null;
+
+        if ($value !== null && ! is_int($value)) {
+            throw new InvalidArgumentException('Assistant evaluation value is invalid.');
+        }
+
+        return $value;
     }
 
     /**
@@ -141,6 +172,22 @@ final readonly class AssistantEvaluationDataset
         sort($keys, SORT_STRING);
 
         if ($actual !== $keys) {
+            throw new InvalidArgumentException('Assistant evaluation schema is invalid.');
+        }
+    }
+
+    /**
+     * Every required key and no key outside the required and optional ones.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $required
+     * @param  list<string>  $optional
+     */
+    private static function assertKeys(array $data, array $required, array $optional): void
+    {
+        $actual = array_keys($data);
+
+        if (array_diff($required, $actual) !== [] || array_diff($actual, $required, $optional) !== []) {
             throw new InvalidArgumentException('Assistant evaluation schema is invalid.');
         }
     }
