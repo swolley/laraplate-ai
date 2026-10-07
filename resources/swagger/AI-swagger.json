@@ -34,6 +34,38 @@
                 ]
             }
         },
+        "\/app\/crud\/detail\/ai\/assistant-writes\/{proposal}": {
+            "get": {
+                "summary": "Show a write the assistant proposed.",
+                "description": "What would change, as whom, and where it stands.",
+                "deprecated": false,
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Not the person this proposal belongs to"
+                    },
+                    "409": {
+                        "description": "The proposal is not open: expired, rejected or already being applied"
+                    }
+                },
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "proposal",
+                        "type": "string",
+                        "required": true,
+                        "description": "Write proposal id"
+                    }
+                ],
+                "operationId": "get-app-crud-detail-ai-assistant-writes-proposal",
+                "tags": [
+                    "App",
+                    "AI"
+                ]
+            }
+        },
         "\/app\/crud\/detail\/ai\/conversations\/{conversation}": {
             "get": {
                 "summary": "Get conversation details.",
@@ -309,6 +341,70 @@
                     }
                 ],
                 "operationId": "post-app-crud-stream-ai-conversations-conversation-messages",
+                "tags": [
+                    "App",
+                    "AI"
+                ]
+            }
+        },
+        "\/app\/crud\/update\/ai\/assistant-writes\/{proposal}\/confirm": {
+            "post": {
+                "summary": "Confirm a write the assistant proposed.",
+                "description": "Applies the stored payload as the signed-in person; on entities with approvals it is then sent for a vote. Confirming twice writes once.",
+                "deprecated": false,
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Not the person this proposal belongs to"
+                    },
+                    "409": {
+                        "description": "The proposal is not open: expired, rejected or already being applied"
+                    }
+                },
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "proposal",
+                        "type": "string",
+                        "required": true,
+                        "description": "Write proposal id"
+                    }
+                ],
+                "operationId": "post-app-crud-update-ai-assistant-writes-proposal-confirm",
+                "tags": [
+                    "App",
+                    "AI"
+                ]
+            }
+        },
+        "\/app\/crud\/update\/ai\/assistant-writes\/{proposal}\/reject": {
+            "post": {
+                "summary": "Reject a write the assistant proposed.",
+                "description": "Declines it; nothing is written.",
+                "deprecated": false,
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Not the person this proposal belongs to"
+                    },
+                    "409": {
+                        "description": "The proposal is not open: expired, rejected or already being applied"
+                    }
+                },
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "proposal",
+                        "type": "string",
+                        "required": true,
+                        "description": "Write proposal id"
+                    }
+                ],
+                "operationId": "post-app-crud-update-ai-assistant-writes-proposal-reject",
                 "tags": [
                     "App",
                     "AI"

@@ -17,27 +17,17 @@ Canonical English names for AI entities in this module. Use these terms in code,
 | **ChatAgent**            | NeuronAI agent wrapper that every call to the model goes through (`forFeature()`, `ask()`, `structured()`). |
 
 
-## Tool system (ActionRequest)
+## Tool system (governed writes)
 
-
-| Term                       | Meaning                                                                    |
-| -------------------------- | -------------------------------------------------------------------------- |
-| **ActionRequest**          | Proposed AI tool invocation awaiting approval or execution.                |
-| **ActionRequestService**   | Creates, confirms, rejects, and tracks `ActionRequest` lifecycle.          |
-| **RiskClassifier**         | Maps `tool_name` to risk level (`low`, `medium`, `high`).                  |
-| **ExecuteActionRequestJob**| Queue job that runs an approved tool handler.                                |
-| **sendMessageWithTools** | Removed. It was the `ChatService` entry point that created `ActionRequest` rows from LLM tool calls; the HTTP boundary moved to `InAppAssistanceService`, whose tools are read-only, so no code path creates `ActionRequest` rows today. See `docs/rag/MODULE.md`, section *Perimeters*. |
-
-
-### Risk levels
-
-
-| Level      | Initial status                | User action      |
-| ---------- | ----------------------------- | ---------------- |
-| **low**    | `approved`                    | Auto-execute     |
-| **medium** | `pending_user_confirmation`   | User confirms    |
-| **high**   | `pending_admin_approval`      | Admin approves   |
-
+| Term | Definition |
+|------|------------|
+| **Write proposal** (`WriteProposal`) | A write the assistant asked for, stored with its exact payload; it changes nothing until the person confirms it. |
+| **WriteProposalService** | Stores proposals, applies one when the person confirms it (once, under a row lock) and logs each step. |
+| **AssistantWriteController** | The person's confirm, reject and show actions on a proposal, the only way a proposal is applied. |
+| **governed_writes / crud_reads** | Policy capabilities that admit the `crud_*` write and read tools for the in-app profile only. |
+| **unmoderated_writes** | Operator list of entities without approvals on which the assistant may nonetheless write; "applied directly, no vote". |
+| **ToolResultGuard** | Withholds from the model the result of an entity read tool whose text reads like an instruction. |
+| **ActionRequest, RiskClassifier** | Removed 2026-10-07. A tool-level approval path that nothing used; approval is Core's, at the model. |
 
 ## RAG and documentation intelligence
 

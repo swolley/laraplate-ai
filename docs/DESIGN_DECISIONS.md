@@ -36,185 +36,19 @@ The route naming (`/insert/...`) was chosen for consistency with CRUD convention
 
 ---
 
-## Q: What is the Tool System and when are ActionRequests created?
+## Q: How does the assistant change data, and who decides?
 
-### Overview
+The assistant never changes data by itself. A write tool (`crud_create_*`, `crud_update_*`, `crud_delete_*`, `crud_bulk_update_*`, `crud_bulk_delete_*`) only stores a **write proposal** (`ai_write_proposals`) and tells the model that nothing has changed. The person confirms or rejects the proposal through an authenticated action the model cannot perform, and only then is the stored payload applied, as that person, through `CrudService`. Whether the write is also sent for a vote is decided by Core approvals at the model (`HasApprovals`), not by the assistant.
 
-The Tool System allows AI to propose **actions** that modify the system. Instead of the AI directly executing code, it proposes tool calls that go through approval workflows.
+**Why the person confirms outside the model.** The assistant is stateless (each `respond()` is one message, no history), so a model cannot carry a confirmation from one turn to the next, and a confirmation the model reads in a message can be influenced by text it retrieved. A proposal is applied only by an authenticated HTTP action of the person it was proposed to. The model cannot perform it, and neither can text it read.
 
-### When ActionRequests Are Created
+**Why there is no risk level.** An earlier design classified tools by name (`delete_*` high, `update_*` medium, the rest low) and routed them through `ActionRequest`. It had no production caller, read no argument and defaulted to low, and it duplicated the approvals that Core enforces at the model for every surface. It was removed. Whether a write needs a vote is `wouldRequireApproval()` of the model; whether the person is asked is always yes.
 
-ActionRequests are created **only** when:
+**Privileged users.** A superadmin or an `approve` holder writes without a vote everywhere, so the assistant does the same for them once they confirm. What replaces the missing review is the protocol around the assistant: the acting user and their permissions are stated to the model and to the client, the assistant is confined to the application and refuses attempts to change its rules, and no write happens without the person's own confirmation.
 
-1. A user sends a message via `ChatService::sendMessageWithTools()`
-2. The LLM responds with tool calls (not just text)
-3. For each proposed tool, an `ActionRequest` is created
+**Entities without approvals.** The assistant may write to one only if the operator listed it under `ai.features.tools.crud.unmoderated_writes`: "applied directly, no vote".
 
-**Currently, this never happens** because `sendMessageWithTools()` is not exposed via any API endpoint.
-
-### The 3-Level Risk System
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  User: "Create a new blog post titled 'Hello World'"            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LLM proposes: create_content(title="Hello World", body="...")  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  RiskClassifier evaluates: "create_content" → medium risk       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ActionRequest created:                                          │
-│    status: pending_user_confirmation                             │
-│    tool_name: create_content                                     │
-│    tool_args: {title: "Hello World", body: "..."}               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  UI shows: "AI wants to create a blog post. Confirm?"           │
-│            [Confirm] [Reject]                                    │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                    User clicks [Confirm]
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  ActionRequestService::confirmRequest()                          │
-│    → status: approved                                            │
-│    → ExecuteActionRequestJob dispatched                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Job executes handler: Content::create([...])                    │
-│    → status: completed                                           │
-│    → result: {id: 123, title: "Hello World", ...}               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Risk Levels Explained
-
-
-| Level    | Status After Creation       | User Action         | Example Tools                           |
-| -------- | --------------------------- | ------------------- | --------------------------------------- |
-| `low`    | `approved`                  | None (auto-execute) | Read data, search, format text          |
-| `medium` | `pending_user_confirmation` | User confirms       | Create content, send email              |
-| `high`   | `pending_admin_approval`    | Admin approves      | Delete data, change settings, financial |
-
-
-### Why Isn't It Exposed Yet?
-
-The tool system requires:
-
-1. **Frontend UI** - Confirmation dialogs, action history
-2. **Admin panel** - Approval interface for high-risk actions
-3. **Tool definitions** - Registering actual tools to use
-4. **Security review** - Ensuring AI can't be tricked into harmful actions
-
-It was built as infrastructure for future features, not for immediate use.
-
----
-
-## Q: Should ActionRequests appear in the conversation as messages?
-
-### Current Design: No
-
-ActionRequests are **separate entities** from Messages:
-
-- `ai_messages` table: conversation history
-- `ai_action_requests` table: tool execution audit log
-
-### Alternative Design: Yes (Not Implemented)
-
-You could show tool executions as conversation messages:
-
-```
-User: Create a blog post about cats
-Assistant: I'll create that for you.
-           ⚠️ Action requested: Create Blog Post
-           [Confirm] [Reject]
-User: [Confirmed]
-Assistant: ✅ Created blog post #123: "All About Cats"
-```
-
-This would require:
-
-1. Adding action results as new messages
-2. Real-time UI updates when actions complete
-3. Showing action status in message metadata
-
-### Recommendation
-
-Keep them separate for now. ActionRequests can be linked to conversations via `conversation_id`, but their results don't need to be messages unless you want conversational audit trail.
-
----
-
-## Q: What happens to messages sent while an ActionRequest is pending?
-
-### Current Behavior
-
-Messages continue to flow normally. ActionRequests are independent:
-
-```
-Message 1: User asks to create content
-Message 2: AI proposes tool (ActionRequest created)
-Message 3: User asks another question    ← works fine
-Message 4: AI responds                   ← works fine
-           (ActionRequest still pending)
-Message 5: User confirms action          ← via separate endpoint
-           (ActionRequest executes)
-```
-
-### This Allows
-
-- **Non-blocking chat**: Users can continue chatting while actions are pending
-- **Asynchronous approval**: Admin can approve high-risk actions hours later
-- **Multiple pending actions**: Several actions can be awaiting approval simultaneously
-
----
-
-## Q: Why is `sendMessageWithTools` a separate method from `sendMessage`?
-
-### Reason: Different Response Structures
-
-
-| Method                 | Returns                        | Use Case                         |
-| ---------------------- | ------------------------------ | -------------------------------- |
-| `sendMessage`          | `Message`                      | Simple chat, RAG-enabled Q&A     |
-| `sendMessageWithTools` | `{message, action_requests[]}` | AI agents with tool capabilities |
-
-
-### Why Not Merge Them?
-
-1. **Performance**: Tool-enabled chat requires loading tool definitions, setting them on the chat instance
-2. **Complexity**: Most chats don't need tools - simpler path for simpler use case
-3. **Explicit intent**: Caller knows if they want tool capabilities
-
-### Alternative: Single Method with Flag
-
-```php
-public function sendMessage(
-    Conversation $conversation,
-    string $message,
-    ?array $context = null,
-    bool $withTools = false,  // flag
-): Message|array {
-    if ($withTools) {
-        return $this->sendMessageWithTools($conversation, $message, $context);
-    }
-    // ... normal flow
-}
-```
-
-This was not done to keep return types consistent (`Message` vs `array`).
+**Pending proposals and messages.** A proposal is its own row, not a message; messages carry it in `metadata.writes`. Messages keep flowing while a proposal waits; it expires (`ai.features.tools.crud.proposal_ttl_minutes`, 30 by default) and a client sees `expired` if the person returns too late.
 
 ---
 
@@ -239,7 +73,7 @@ foreach ($chat->generateStreamOfText($message) as $chunk) {
 ### Workaround (If Needed)
 
 1. Make non-streaming call to check for tool proposals
-2. If tools proposed, create ActionRequests
+2. If tools propose writes, store write proposals
 3. Send tool results back to LLM
 4. Stream the final response
 
@@ -328,8 +162,7 @@ No HTTP endpoint needed - use services directly.
 | ---------------------- | -------- | ------------------------------------------- |
 | `streamMessage`        | ✅ Active | Primary chat use case, SSE streaming        |
 | `insertMessage`        | ✅ Active | For jobs, APIs, testing - JSON response     |
-| `sendMessageWithTools` | 🔮 Ready | Infrastructure complete, needs API exposure |
-| ActionRequest system   | 🔮 Ready | Infrastructure complete, needs API exposure |
+| `messages-with-tools`  | ✅ Active | Writes are proposals the person confirms     |
 | Embedding system       | ✅ Active | Powers vector search                        |
 | Translation system     | ✅ Active | Automatic translations                      |
 | RAG/FAQ                | ✅ Active | Automatic question detection + answer       |

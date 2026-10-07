@@ -14,7 +14,7 @@ The boundaries of this module are **contracts, not folders**. `AI` is not one sy
 | **Search** | `CrudService` → `AdvancedSearchService` → `EnsembleSearchService` | Core contracts `ISearchPlanner` / `IReranker` | live |
 | **Documentation RAG** | `DocumentationService`, from `respond()` and from `ai:help` | corpora plus the configured vector store | live |
 | **Application content** | CMS and SAO retrieval providers, consumed by `respond()` | citations and authorized evidence | live |
-| **Tools and ActionRequest** | `ActionRequestController`, read-only tools through the assistant | risk level and approval | management and execution live; see the note below on creation |
+| **Tools and governed writes** | tools offered by `CrudToolProvider` to `respond()`; `AssistantWriteController` for the person's confirmation | policy capabilities `crud_reads` / `governed_writes`, Core approvals at the model | live; writes are proposals the person confirms |
 | **Contextual suggestions** | `SuggestionController` | per-context generation | live |
 | **Moderation and translation** | queued jobs | asynchronous, no HTTP surface | live |
 | **Conversation memory** | none | none | dormant |
@@ -25,8 +25,20 @@ The boundaries of this module are **contracts, not folders**. `AI` is not one sy
 
 #### Two perimeters worth a caveat
 
-- **ActionRequest has no producer today.** Records are managed by `ActionRequestController` and executed by `ExecuteActionRequestJob`, but nothing creates them: the approval-gated tool path (`ToolRegistry::getAllNeuronToolsWithApproval()`) was reached only from the superseded chat, and the in-app assistant deliberately exposes read-only tools, which never create an `ActionRequest`. Reconnecting that path or retiring it is an open decision, not an accident to fix silently.
+- **Writes are proposals.** The in-app assistant can propose a create, update, delete or bulk change; it never applies one. See *Writes through the assistant* below. The earlier `ActionRequest` path (`ActionRequestService`, `RiskClassifier`, `ExecuteActionRequestJob`, the global tool registry) had no producer and duplicated Core approvals; it was retired on 2026-10-07 together with its table `ai_action_requests`.
 - **Conversation memory is dormant, not broken.** `MemoryService` summarizes conversations and extracts facts, but its hook lived in the superseded chat, so it never runs. `respond()` is also stateless per message: it builds a fresh agent and sends only the current input, with no history and no summary.
+
+#### Writes through the assistant
+
+The assistant acts as the signed-in person, with exactly their permissions and row-level ACL, evaluated by `CrudService` at the moment of each call.
+
+- **What exists.** `CrudToolProvider::offeredOperations()` is the single answer to "what may the assistant do for this person": the entities and operations the operator opted into (`ai.features.tools.crud.entities`), that the person is permitted to perform. An entity whose model has no approvals gets write tools only if it is listed under `ai.features.tools.crud.unmoderated_writes`. `approve` and `disapprove` are never offered. The policy (`AssistantPolicyCatalog`) admits the tools by wildcard name (`crud_*`) through two capabilities, `crud_reads` and `governed_writes`, granted to the in-app profile only; `DeveloperHelp` cannot receive them.
+- **A write is a proposal.** The write tool stores a row in `ai_write_proposals` (operation, exact payload, a bounded summary of what would change, whether Core would send it for a vote, the acting user, an expiry) and returns "nothing has been changed". A bulk proposal stores the ids that matched, so the person confirms what they were shown; the cap is 200 records and a turn may create five proposals.
+- **The person confirms outside the model.** `POST /app/crud/update/ai/assistant-writes/{proposal}/confirm` (and `/reject`, `GET .../{proposal}`) is an authenticated action of the person the proposal belongs to, in their own conversation. It applies the stored payload through `CrudService`; permission and ACL are decided again, and the operator's opt-in is checked again. The outcome is `applied`, `pending_approval` (Core captured it for a vote; the modification ids are recorded), `failed`, or the proposal was `rejected` or `expired`. Confirming twice writes once.
+- **What the client sees.** The assistant message carries `metadata.writes`: `{id, tool, module, entity, operation, status, acting_user_id, acting_user_name, summary, requires_approval, outcome, expires_at, resolved_at}` per proposal, and its text always says that nothing changes until the person confirms, in the person's language; a sentence claiming a change was made is replaced. `GET /app/ai/capabilities` returns `features.writes` and `actions`: each entity and operation the assistant may perform for the signed-in person, with `kind` (`read` or `write`) and `requires_approval`.
+- **Who is acting.** The system prompt carries a server-built block naming the acting user and listing exactly the entity/operation pairs offered; the name is quoted data. Every proposal, confirmation and rejection is logged (`Assistant write`) with actor, conversation, tool, entity, operation, a hash of the payload and the outcome, never the values.
+- **Confinement.** Input is classified before anything runs (override, role reassignment, exfiltration, claimed authority, chat-markup impersonation, hidden characters; English and Italian). What an entity read tool returns is withheld from the model when its text reads like an instruction. A write cannot be applied by the model in any way: there is no parameter and no tool for it.
+- **Not covered.** Core records no origin on a modification, so the log is where assistant writes are told apart. Mass query writes that bypass model events are outside Core approvals and outside this.
 
 #### What was removed, and why it still appears in history
 
@@ -623,7 +635,8 @@ after the save: it must stay cheap and write nothing.
 - Which subsystems does the AI module contain, and where does each one start?
 - Why does search live in Core rather than in the AI module?
 - Does the assistant remember earlier messages in the same conversation?
-- Why does nothing create `ActionRequest` records any more?
+- Why can the assistant not apply a change by itself, and how does a person confirm one?
+- What happened to `ActionRequest` and `RiskClassifier`?
 - What replaced `ChatService::sendMessage()`, and why?
 
 ## Application content evaluation

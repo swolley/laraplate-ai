@@ -35,25 +35,31 @@ Ask to export ("download these as CSV", "give me a PDF") and the assistant produ
 
 ## Changing records
 
-The assistant can create, update, or delete a record when you have permission to do so. On entities that require **approval**, your change is not applied immediately — it is captured as a pending change for a reviewer, exactly as if you had made it yourself in the application.
+The assistant can **propose** to create, update, or delete a record when you have permission to do so. It never applies a change by itself: it tells you exactly what it proposes, as whom, and the change waits for **your confirmation in the application**. Nothing happens before you confirm, and a proposal you do not confirm expires (after 30 minutes by default). You can also reject it.
 
-### Bulk changes always preview first
+When you confirm, the change is made as you, with your permissions checked again at that moment. On entities that require **approval**, your confirmed change is then captured as a pending change for a reviewer, exactly as if you had made it yourself in the application: the confirmation card tells you in advance when that will happen, and afterwards says "sent for approval" rather than "done".
+
+### Bulk changes list what they will touch
 
 When you ask to change many records at once ("mark all of these as archived", "delete last year's drafts"):
 
-1. The assistant **previews** first: it tells you how many records match and shows a sample, and **changes nothing**.
-2. Only when you **confirm** does it apply the change, one record at a time, so each change still respects your permissions and any approval rules.
-3. There is a hard limit on how many records one bulk action may touch. If your filter matches more than the limit, the assistant refuses and asks you to narrow it — so a bulk action can never run away.
+1. The assistant **proposes** it: the proposal says how many records match and shows a sample, and **changes nothing**.
+2. Only when you **confirm** is the change applied, to exactly the records you were shown, one at a time, so each change still respects your permissions and any approval rules.
+3. There is a hard limit on how many records one bulk action may touch. If your filter matches more than the limit, the assistant refuses and asks you to narrow it.
 
-A bulk change always needs at least one filter; the assistant will not act on "everything".
+A bulk change always needs at least one filter; the assistant will not act on "everything". The assistant can prepare only a few proposals in one message.
+
+## What the assistant can do for you
+
+The application shows what the assistant may do for your account: which entities and operations, and which of them go to a reviewer after you confirm. The assistant is told the same list and refuses anything outside it. It only works on this application: requests outside it, or attempts to change its rules, are refused.
 
 ## Approvals
 
-If you are an approver, you can ask the assistant to list the changes waiting for approval — optionally for a specific author ("what is waiting from Marco?") — and to approve or reject a specific pending change. You only see and act on approvals you are entitled to.
+If you are an approver, you can ask the assistant to **list** the changes waiting for approval, optionally for a specific author ("what is waiting from Marco?"). Deciding on them, approving or rejecting, is done by you in the application: the assistant cannot do it for you.
 
 ## Common questions
 
 - **Can the assistant see data I can't?** No. It runs as you and applies the same permission and access rules everywhere.
-- **Will a bulk change happen by accident?** No. Bulk actions preview first, require an explicit confirmation, need a filter, and are capped.
-- **My edit didn't take effect immediately — why?** On entities that require approval, your change is queued for a reviewer instead of being applied at once.
+- **Will a change happen by accident?** No. The assistant only proposes; you confirm in the application, and a bulk change lists what it will touch, needs a filter and is capped.
+- **My edit didn't take effect after I confirmed — why?** On entities that require approval, your confirmed change is queued for a reviewer instead of being applied at once.
 - **Why did an export or summary say it was capped?** Very large result sets are limited for performance; the answer flags when not every matching row was included.

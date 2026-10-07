@@ -12,7 +12,7 @@
 - [Overview](#overview)
 - [Core integration (indexing & moderation)](#core-integration-indexing--moderation)
 - [Chat System](#chat-system)
-- [Tool System (ActionRequest)](#tool-system-actionrequest)
+- [Tool System (governed writes)](#tool-system-governed-writes)
 - [Embedding & RAG System](#embedding--rag-system)
 - [Translation System](#translation-system)
 - [Memory & Summarization](#memory--summarization)
@@ -35,7 +35,7 @@ The AI Module provides AI-powered features through a layered architecture:
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Services                                 │
-│  ChatService, ActionRequestService, EmbeddingService, etc.      │
+│  ChatService, WriteProposalService, EmbeddingService, etc.      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -136,207 +136,29 @@ if ($should_use_rag && $documentation_service->isAvailable()) {
 
 ---
 
-## Tool System (ActionRequest)
+## Tool System (governed writes)
 
-> **IMPORTANT:** The tool system is **partially implemented but not exposed** via API endpoints.
-
-### Architecture
+The assistant never changes data by itself. A write tool (`crud_create_*`, `crud_update_*`, `crud_delete_*`, `crud_bulk_update_*`, `crud_bulk_delete_*`) only stores a **write proposal** (`ai_write_proposals`) and tells the model that nothing has changed. The person confirms or rejects the proposal through an authenticated action the model cannot perform, and only then is the stored payload applied, as that person, through `CrudService`. Whether the write is also sent for a vote is decided by Core approvals at the model (`HasApprovals`), not by the assistant.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        ToolRegistry                               │
-│  Registers tools with: name, description, parameters, handler    │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    ChatService::sendMessageWithTools()            │
-│  1. Send message to LLM with tool definitions                    │
-│  2. LLM returns tool calls (not executes)                        │
-│  3. Create ActionRequest for each tool call                      │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    ActionRequestService                           │
-│  1. Classify risk level (low/medium/high)                        │
-│  2. Set status based on risk                                     │
-│  3. Execute immediately if low risk                              │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    ExecuteActionRequestJob                        │
-│  Executes the tool handler asynchronously                        │
-└──────────────────────────────────────────────────────────────────┘
+model calls crud_update_core_role         person (UI)                         server
+        │                                      │
+        ▼                                      │
+  proposal stored (status proposed)            │
+  tool result: "nothing has changed"           │
+        │                                      │
+        ▼                                      │
+  assistant message, metadata.writes ─────────▶│ shows what would change, as whom
+                                               │
+                                               ├── POST .../assistant-writes/{id}/confirm ─▶ apply the stored payload
+                                               │                                             as the signed-in user:
+                                               │                                             applied | pending_approval | failed
+                                               └── POST .../assistant-writes/{id}/reject  ─▶ rejected
 ```
 
-### Risk Levels & Status Flow
+Read tools (`crud_list_*`, `crud_detail_*`, ...) run inline, under the permissions and row-level ACL of the person. Which tools exist for a person is the intersection of three things: the operator's opt-in (`ai.features.tools.crud.entities`, plus `unmoderated_writes` for entities without approvals), the person's permissions, and the policy capabilities `crud_reads` and `governed_writes` of the in-app profile. `approve` and `disapprove` are never offered: a decision on a pending change is made by a person in the panel.
 
-
-| Risk Level | Initial Status              | User Action Required | Execution           |
-| ---------- | --------------------------- | -------------------- | ------------------- |
-| `low`      | `approved`                  | None                 | Immediate (via job) |
-| `medium`   | `pending_user_confirmation` | User confirms        | After confirmation  |
-| `high`     | `pending_admin_approval`    | Admin approves       | After approval      |
-
-
-### ActionRequest Status Transitions
-
-```
-                    ┌──────────────┐
-                    │   Created    │
-                    └──────┬───────┘
-                           │
-            ┌──────────────┼──────────────┐
-            ▼              ▼              ▼
-    ┌───────────┐  ┌──────────────┐  ┌─────────────┐
-    │ approved  │  │ pending_user │  │ pending_    │
-    │ (low)     │  │ confirmation │  │ admin_      │
-    └─────┬─────┘  │ (medium)     │  │ approval    │
-          │        └──────┬───────┘  │ (high)      │
-          │               │          └──────┬──────┘
-          │               ▼                 │
-          │        ┌──────────────┐         │
-          │        │ confirmed/   │         │
-          │        │ rejected     │         │
-          │        └──────┬───────┘         │
-          │               │                 ▼
-          │               │          ┌──────────────┐
-          │               │          │ approved/    │
-          │               │          │ rejected     │
-          │               │          └──────┬───────┘
-          │               │                 │
-          ▼               ▼                 ▼
-    ┌─────────────────────────────────────────────┐
-    │              executing                       │
-    └──────────────────┬──────────────────────────┘
-                       │
-            ┌──────────┴──────────┐
-            ▼                     ▼
-    ┌───────────────┐    ┌───────────────┐
-    │   completed   │    │    failed     │
-    └───────────────┘    └───────────────┘
-```
-
-### Where ActionRequests Are Created
-
-ActionRequests are created **only** in `ChatService::sendMessageWithTools()`:
-
-```php
-// Line 99-178 in ChatService.php
-public function sendMessageWithTools(
-    Conversation $conversation,
-    string $user_message,
-    ?array $context = null,
-): array {
-    // ...
-    $result = $chat->generateTextOrReturnFunctionCalled($user_message);
-    
-    if (is_string($result)) {
-        // LLM returned text, no tools called
-        return ['message' => ..., 'action_requests' => []];
-    }
-    
-    // LLM proposed tool calls
-    foreach ($result as $function_info) {
-        $action_request = $action_request_service->createRequest(
-            $conversation->user,
-            $tool_name,
-            $tool_args,
-            $conversation,  // <-- linked to conversation
-        );
-        // ...
-    }
-}
-```
-
-### Current Status: NOT EXPOSED
-
-`**sendMessageWithTools()` is NOT called by any controller or route.**
-
-This means:
-
-1. Tools can be registered but never invoked
-2. ActionRequests are never created via API
-3. The entire tool system is dormant
-
-### Why This Exists (Design Intent)
-
-The tool system was designed for:
-
-1. **AI-triggered actions** - LLM can propose actions like:
-  - "Create a new content"
-  - "Update user settings"
-  - "Send an email"
-2. **Human-in-the-loop** - Medium/high risk actions require approval:
-  - User sees: "AI wants to delete this record. Confirm?"
-  - Admin sees: "AI wants to change system settings. Approve?"
-3. **Audit trail** - All AI-triggered actions are logged as ActionRequest records
-
-### To Activate Tool System
-
-You need to:
-
-1. **Create endpoint** for tool-enabled chat:
-
-```php
-// ChatController
-public function sendMessageWithTools(SendMessageRequest $request, Conversation $conversation): JsonResponse
-{
-    $this->authorizeConversationAccess($conversation);
-    
-    $result = $this->chatService->sendMessageWithTools(
-        $conversation,
-        $request->validated('message'),
-        $request->validated('context'),
-    );
-    
-    return (new ResponseBuilder($request))
-        ->setData([
-            'message' => $result['message'],
-            'action_requests' => $result['action_requests'],
-        ])
-        ->json();
-}
-```
-
-1. **Create endpoint** for action confirmation/approval:
-
-```php
-public function confirmAction(ActionRequest $actionRequest): JsonResponse
-{
-    $this->actionRequestService->confirmRequest($actionRequest);
-    return (new ResponseBuilder(request()))->setData(['status' => 'executing'])->json();
-}
-
-public function approveAction(ActionRequest $actionRequest): JsonResponse
-{
-    $this->actionRequestService->approveRequest($actionRequest, Auth::user());
-    return (new ResponseBuilder(request()))->setData(['status' => 'executing'])->json();
-}
-```
-
-1. **Register tools** in a ServiceProvider:
-
-```php
-// AIServiceProvider
-public function boot(): void
-{
-    $registry = app(ToolRegistry::class);
-    
-    $registry->register(
-        name: 'create_content',
-        handler: fn($title, $body) => Content::create(['title' => $title, 'body' => $body]),
-        description: 'Create a new content item',
-        parameters: [
-            ['name' => 'title', 'type' => 'string', 'description' => 'Content title'],
-            ['name' => 'body', 'type' => 'string', 'description' => 'Content body'],
-        ],
-        riskLevel: 'medium',
-    );
-}
-```
+Details, states, routes and the metadata shape are in `docs/rag/MODULE.md` (*Writes through the assistant*) and `docs/TOOLS_USAGE_EXAMPLE.md`.
 
 ---
 
@@ -509,19 +331,17 @@ All routes are prefixed with `/crud/` following the application's CRUD conventio
 | GET    | `/crud/list/conversations/{conversation}/messages`              | `listMessages`         | List messages                  |
 | POST   | `/crud/stream/conversations/{conversation}/messages`            | `streamMessage`        | Send message (SSE streaming)   |
 | POST   | `/crud/insert/conversations/{conversation}/messages`            | `insertMessage`        | Send message (JSON response)   |
-| POST   | `/crud/insert/conversations/{conversation}/messages-with-tools` | `sendMessageWithTools` | Send message with tool support |
+| POST   | `/crud/insert/conversations/{conversation}/messages-with-tools` | `sendMessageWithTools` | Send message (JSON, with the tools the policy allows) |
 
 
-### Action Request Routes (Tool Execution)
+### Assistant Write Routes (proposals)
 
 
-| Method | Path                                                   | Controller Method | Purpose                                              |
-| ------ | ------------------------------------------------------ | ----------------- | ---------------------------------------------------- |
-| GET    | `/crud/select/action-requests`                         | `list`            | List user's action requests (admins see all pending) |
-| GET    | `/crud/detail/action-requests/{actionRequest}`         | `detail`          | Get action request details                           |
-| POST   | `/crud/update/action-requests/{actionRequest}/confirm` | `confirm`         | Confirm medium-risk action (user)                    |
-| POST   | `/crud/update/action-requests/{actionRequest}/approve` | `approve`         | Approve high-risk action (admin)                     |
-| POST   | `/crud/update/action-requests/{actionRequest}/reject`  | `reject`          | Reject action request                                |
+| Method | Path                                                          | Controller Method | Purpose                                              |
+| ------ | ------------------------------------------------------------- | ----------------- | ---------------------------------------------------- |
+| GET    | `/app/crud/detail/ai/assistant-writes/{proposal}`             | `show`            | A proposal: what would change, as whom, its status   |
+| POST   | `/app/crud/update/ai/assistant-writes/{proposal}/confirm`     | `confirm`         | The person applies it (once; a second call answers the same outcome) |
+| POST   | `/app/crud/update/ai/assistant-writes/{proposal}/reject`      | `reject`          | The person declines it                               |
 
 
 ### Suggestion Routes
@@ -556,48 +376,14 @@ if ($conversation->user_id !== Auth::id()) {
 | ---------------------- | ------------ | ------------------------------------------- |
 | Chat (streaming)       | ✅ **Active** | Primary use case via `streamMessage`        |
 | Chat (non-streaming)   | ✅ **Active** | Available via `insertMessage` for jobs/APIs |
-| Chat with Tools        | ✅ **Active** | Available via `sendMessageWithTools`        |
+| Chat with Tools        | ✅ **Active** | `messages-with-tools`; writes are proposals |
 | RAG/FAQ                | ✅ **Active** | Automatic when question detected            |
 | Memory/Summarization   | ✅ **Active** | Configurable via `AI_CHAT_ENABLE_SUMMARY`   |
 | Guardrails             | ✅ **Active** | Configurable via `AI_GUARDRAILS_ENABLED`    |
 | Contextual Suggestions | ✅ **Active** | Routes exposed, configurable                |
-| Tool System            | ✅ **Active** | API exposed, needs tool registration        |
-| ActionRequests         | ✅ **Active** | Full CRUD with confirm/approve/reject       |
+| Governed writes        | ✅ **Active** | Propose, then the person confirms (`ai_write_proposals`) |
 
 
-### Tool System - How It Works
-
-The tool system allows AI to propose actions that require human approval:
-
-**Risk Levels:**
-
-- `low`: Auto-executed immediately
-- `medium`: Requires user confirmation
-- `high`: Requires admin approval
-
-**To Register Tools:**
-
-```php
-// In a ServiceProvider boot() method
-$registry = app(ToolRegistry::class);
-
-$registry->register(
-    name: 'create_content',
-    handler: fn($title, $body) => Content::create(['title' => $title, 'body' => $body]),
-    description: 'Create a new content item',
-    parameters: [
-        ['name' => 'title', 'type' => 'string', 'description' => 'Content title'],
-        ['name' => 'body', 'type' => 'string', 'description' => 'Content body'],
-    ],
-    riskLevel: 'medium',
-);
-```
-
-**What's Still Needed:**
-
-1. Frontend UI for action confirmation dialogs
-2. Filament panel for admin approval queue
-3. Tool definitions for your specific use cases
 
 ### When to Use Non-Streaming (`insertMessage`)
 

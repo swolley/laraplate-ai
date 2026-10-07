@@ -241,15 +241,17 @@ The AI Module includes built-in features such as:
     - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
     - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
 
--   **Tool/Function Calling:**
-    - Register custom tools with `ToolRegistry`
-    - 3-level risk classification (low, medium, high)
-    - Low risk: immediate execution
-    - Medium risk: user confirmation required
-    - High risk: admin approval required
-    - Async execution via jobs
+-   **Assistant tools:**
     - Authenticated in-app read-only Core Graph tools with request permission and ACL enforcement
     - Authenticated `application_content_search` with explicit module providers, server-side routing, safe citations, and evidence-free abstention
+        - `php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` — provider retrieval evaluation without chat generation
+    - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
+    - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
+
+-   **Assistant writes (governed):**
+    - The in-app assistant can read and propose changes to the entities the operator opts into (`ai.features.tools.crud.entities`), as the signed-in person and under their permissions.
+    - A write is only a **proposal**: the person confirms it in the application (`POST /app/crud/update/ai/assistant-writes/{id}/confirm`), and on entities with approvals it then goes to a vote. The model cannot apply, confirm or approve anything.
+    - Entities without approvals are written only if listed in `ai.features.tools.crud.unmoderated_writes`. Proposals expire after `ai.features.tools.crud.proposal_ttl_minutes` (30). See [docs/rag/MODULE.md](docs/rag/MODULE.md) (*Writes through the assistant*) and [docs/TOOLS_USAGE_EXAMPLE.md](docs/TOOLS_USAGE_EXAMPLE.md).
 
 -   **Conversation Memory:**
     - Automatic summarization after N messages
@@ -391,7 +393,7 @@ This section tracks all pending tasks and issues that need to be addressed in th
 ### High Priority
 
 - [ ] **Filament Admin Panel for AI**
-  - ActionRequest approval interface (for high-risk actions)
+  - Write proposals overview (what the assistant proposed, confirmed and rejected)
   - Conversation monitoring
   - Tool usage analytics
   - Guardrails configuration UI
@@ -434,8 +436,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Memory/Summarization** - Automatic conversation summarization
 - [x] **Guardrails** - Prompt injection detection (Lakera integration)
 - [x] **Contextual Suggestions** - Proactive AI suggestions with rate limiting
-- [x] **Tool System Infrastructure** - ToolRegistry, ActionRequest, risk classification
-- [x] **Tool System API** - Full API exposure with confirm/approve/reject endpoints
+- [x] **Governed assistant writes** - Write proposals the person confirms outside the model, over Core approvals (the earlier ActionRequest/risk-classification path was retired 2026-10-07)
 - [x] **Protected In-App Assistance** - Separate profile/corpus, fail-closed guardrails, read-only Graph and module evidence tools
 - [x] **Application Content Evaluation** - Synthetic datasets, sliced metrics, reproducible CMS record baseline
 - [x] **Event-Driven Architecture** - Clean decoupling from Core module
