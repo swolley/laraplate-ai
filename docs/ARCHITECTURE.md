@@ -1,55 +1,56 @@
 # AI Module - Architecture Documentation
 
-> **Status note.** The chat sections below describe the superseded `ChatService` message path
-> (`sendMessage()`, `sendMessageStream()`, `sendMessageWithTools()`, `buildAgent()`), which has been
-> removed. Every HTTP message now goes through `InAppAssistanceService::respond()`, which is
-> policy-compiled, guardrailed, scope-resolved and stateless per message; no token of the model is streamed (`POST /app/ai/agent` streams lifecycle events and one validated message).
-> For the current picture, read `docs/rag/MODULE.md`, sections *Perimeters* and *Message orchestration*.
-> The material here is kept because the tool, embedding, translation and suggestion sections remain accurate.
+How the parts of the module fit together. The message path of the in-app assistant (policy, guardrails,
+scope, tools, the event stream) is described in `docs/rag/MODULE.md`, sections *Perimeters* and *Message
+orchestration*; this file points there rather than repeating it.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Core integration (indexing & moderation)](#core-integration-indexing--moderation)
-- [Chat System](#chat-system)
+- [Assistant messages](#assistant-messages)
 - [Tool System (governed writes)](#tool-system-governed-writes)
 - [Embedding & RAG System](#embedding--rag-system)
 - [Translation System](#translation-system)
 - [Memory & Summarization](#memory--summarization)
 - [Contextual Suggestions](#contextual-suggestions)
 - [API Endpoints](#api-endpoints)
-- [Code Status & Future Work](#code-status--future-work)
+- [Feature Status](#feature-status)
 
 ---
 
 ## Overview
 
-The AI Module provides AI-powered features through a layered architecture:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Controllers                              │
+│  ChatController, AgentController, CapabilitiesController,       │
+│  AssistantWriteController, SuggestionController                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         Services                                │
+│  InAppAssistanceService, ChatService, WriteProposalService,     │
+│  DocumentationService, EmbeddingService, ModerationService, ... │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Neuron AI framework                          │
+│  ChatAgent (one door to the model: forFeature, ask, structured),│
+│  DocumentationAgent (RAG), providers built by ProviderFactory   │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Controllers                               │
-│  ChatController, SuggestionController                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Services                                 │
-│  ChatService, WriteProposalService, EmbeddingService, etc.      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      LLPhant Library                            │
-│  OpenAIChat, OllamaChat, MistralChat, AnthropicChat             │
-└─────────────────────────────────────────────────────────────────┘
-```
+Each AI feature takes its provider and model from its own setting (`features.*.model`); see
+`docs/rag/AI_MODEL_SELECTION_DEVELOPER.md`.
 
 ---
 
 ## Core integration (indexing & moderation)
 
-Cross-module pipelines are documented with **Mermaid** diagrams in dedicated guides (keep this file for in-module features: chat, RAG, tools).
+Cross-module pipelines are documented with **Mermaid** diagrams in dedicated guides (keep this file for in-module features: assistant, RAG, tools).
 
 | Pipeline | Canonical doc |
 |----------|----------------|
@@ -58,80 +59,35 @@ Cross-module pipelines are documented with **Mermaid** diagrams in dedicated gui
 
 ---
 
-## Chat System
+## Assistant messages
 
-### Core Components
+| Component | File | Purpose |
+|-----------|------|---------|
+| `ChatController` | `Http/Controllers/ChatController.php` | Conversations and the JSON message route |
+| `AgentController` | `Http/Controllers/AgentController.php` | `POST /app/ai/agent`: the run as an event stream, the answer sent whole |
+| `InAppAssistanceService` | `Services/Assistance/InAppAssistanceService.php` | Every message: policy, guardrails, scope, documentation and tools, one validated answer |
+| `ChatService` | `Services/ChatService.php` | Conversation lifecycle and the protected agent |
+| `Conversation`, `Message` | `Models/` | Persistence |
 
-
-| Component        | File                                  | Purpose                  |
-| ---------------- | ------------------------------------- | ------------------------ |
-| `ChatController` | `Http/Controllers/ChatController.php` | HTTP layer               |
-| `ChatService`    | `Services/ChatService.php`            | Business logic           |
-| `Conversation`   | `Models/Conversation.php`             | Conversation persistence |
-| `Message`        | `Models/Message.php`                  | Message persistence      |
-
-
-### Message Flow
-
-#### 1. Streaming Response (Primary Use Case)
-
-```
-User → POST /crud/stream/conversations/{id}/messages
-       │
-       ▼
-ChatController::streamMessage()
-       │
-       ▼
-ChatService::sendMessageStream()
-       │
-       ├─► conversation.addMessage('user', message)
-       │
-       ├─► chat.generateStreamOfText()
-       │       │
-       │       └─► SSE chunks to client (real-time)
-       │
-       └─► conversation.addMessage('assistant', full_response)
-```
-
-**Why Streaming?** For interactive chat UIs, users expect to see text appearing gradually (like ChatGPT). Waiting 10-30 seconds for a complete response provides poor UX.
-
-#### 2. Non-Streaming Response
+Every message goes through `InAppAssistanceService::respond()`, which is policy-compiled, guardrailed,
+scope-resolved and stateless per message: no history is replayed to the model. No token of the model is
+streamed: `POST /app/ai/agent` streams lifecycle events and one validated message, and
+`POST .../messages` answers the same message as JSON. The stream route `POST .../stream/...` answers 422
+(`in_app_streaming_unavailable`).
 
 ```
-User → POST /crud/insert/conversations/{id}/messages
+POST /app/crud/insert/ai/conversations/{id}/messages   (or POST /app/ai/agent)
        │
        ▼
-ChatController::insertMessage()
+ChatController::insertMessage()  /  AgentController::run()
        │
        ▼
-ChatService::sendMessage()
-       │
-       ├─► conversation.addMessage('user', message)
-       │
-       ├─► chat.generateText() (blocking)
-       │
-       └─► conversation.addMessage('assistant', response)
-```
-
-**When to use Non-Streaming:**
-
-- Job/Queue processing (no SSE support)
-- API integrations expecting JSON response
-- Automated testing
-- Retry mechanisms after streaming failures
-
-### RAG Integration
-
-When FAQ/RAG is enabled and the message looks like a question:
-
-```php
-// ChatService::sendMessage()
-if ($should_use_rag && $documentation_service->isAvailable()) {
-    $result = $documentation_service->answerQuestion($userMessage, $chat);
-    return $conversation->addMessage('assistant', $result['answer'], [
-        'citations' => $result['citations'],
-    ]);
-}
+InAppAssistanceService::respond()
+       ├─► policy and input guardrails (AssistanceGuardrailPipeline)
+       ├─► scope, documentation retrieval (DocumentationService::retrieveForInApp)
+       ├─► ChatAgent with the tools the policy allows (reads inline, writes as proposals)
+       ├─► output guardrails, citations
+       └─► conversation.addMessage('assistant', answer, metadata: citations, writes, ...)
 ```
 
 ---
@@ -156,7 +112,7 @@ model calls crud_update_core_role         person (UI)                         se
                                                └── POST .../assistant-writes/{id}/reject  ─▶ rejected
 ```
 
-Read tools (`crud_list_*`, `crud_detail_*`, ...) run inline, under the permissions and row-level ACL of the person. Which tools exist for a person is the intersection of three things: the operator's opt-in (`ai.features.tools.crud.entities`, plus `unmoderated_writes` for entities without approvals), the person's permissions, and the policy capabilities `crud_reads` and `governed_writes` of the in-app profile. `approve` and `disapprove` are never offered: a decision on a pending change is made by a person in the panel.
+Read tools (`crud_list_*`, `crud_detail_*`, ...) run inline, under the permissions and row-level ACL of the person. Which tools exist for a person is the intersection of three things: the operator's opt-in (`ai.features.tools.crud.entities`, plus `unmoderated_writes` for entities without approvals), the person's permissions, and the policy capabilities `crud_reads` and `governed_writes` of the in-app profile. `approve` and `disapprove` are never offered: a decision on a pending change is made by a person in the panel. A read result whose text reads like an instruction is withheld from the model (`ToolResultGuard`).
 
 Details, states, routes and the metadata shape are in `docs/rag/MODULE.md` (*Writes through the assistant*) and `docs/TOOLS_USAGE_EXAMPLE.md`.
 
@@ -184,40 +140,22 @@ sequenceDiagram
 ### RAG (Documentation Search) Flow
 
 ```
-php artisan ai:index-rag-docs
+php artisan ai:index-rag-docs [--profile=developer|user|all] [--full]
         │
         ▼
 DocumentationService::indexDocuments()
         │
-        ├─► Read files from docs path
-        │
+        ├─► Read files from the documentation roots
         ├─► Split into chunks
-        │
-        ├─► Generate embeddings
-        │
-        └─► Store in VectorStore (filesystem/memory)
-
----
-
-User asks question
-        │
-        ▼
-ChatService::sendMessage()
-        │
-        ├─► looksLikeQuestion() returns true
-        │
-        └─► DocumentationService::answerQuestion()
-                    │
-                    ├─► QuestionAnswering (LLPhant)
-                    │       │
-                    │       ├─► Embed question
-                    │       │
-                    │       ├─► Vector similarity search
-                    │       │
-                    │       └─► Generate answer with context
-                    │
-                    └─► Return answer + citations
+        ├─► Embed them as passages (PrefixingEmbeddingsProvider)
+        └─► Store in the vector store of the setting features.faq.vector_store
+            (elasticsearch or filesystem; memory in tests)
 ```
+
+Questions are answered from it in two places: the in-app assistant retrieves the user corpus through
+`DocumentationService::retrieveForInApp()` (see *Assistant messages*), and `php artisan ai:help` answers
+from the developer corpus with `DocumentationAgent`, citing the documents it used. Details:
+`docs/rag/MODULE.md`.
 
 ---
 
@@ -242,7 +180,10 @@ sequenceDiagram
 
 ## Memory & Summarization
 
-### When Summarization Triggers
+`MemoryService` summarises a conversation and extracts its key facts (a Neuron structured output,
+`ExtractedFacts`), and keeps the snapshots in `ConversationSummary`. It is kept for the persistent user
+memory plan, which reuses it; the in-app assistant does not call it today, because the assistant is
+stateless and replays no history until a security review accepts it.
 
 ```php
 // MemoryService::shouldSummarize()
@@ -261,26 +202,9 @@ if ($last_summary) {
 return $message_count >= $threshold;
 ```
 
-### Summary Creation
-
-```
-After sendMessage/sendMessageStream
-        │
-        ▼
-checkAndCreateSummaryIfNeeded()
-        │
-        ├─► shouldSummarize() returns true?
-        │
-        └─► MemoryService::createSummarySnapshot()
-                    │
-                    ├─► summarizeConversation() → LLM call
-                    │
-                    ├─► extractFacts() → LLM call (JSON array)
-                    │
-                    ├─► conversation.update(['summary' => ...])
-                    │
-                    └─► ConversationSummary::create([...])
-```
+`features.chat.summary.enabled` is a setting in Filament (seeded off); `summary_threshold` is a fixed value
+in `config.php`. `createSummarySnapshot()` runs `summarizeConversation()` and `extractFacts()`, stores the
+summary on the conversation and writes a `ConversationSummary` row.
 
 ---
 
@@ -296,7 +220,7 @@ Proactive AI suggestions based on user's current UI context (page, action, data)
 Frontend sends context
         │
         ▼
-POST /crud/insert/suggestions
+POST /app/crud/insert/ai/suggestions
         │
         ▼
 SuggestionController::generateSuggestion()
@@ -317,82 +241,51 @@ ContextualSuggestionService::generateSuggestion()
 
 ## API Endpoints
 
-All routes are prefixed with `/crud/` following the application's CRUD convention.
+All routes are under `/app`.
 
-### Chat Routes
+### Assistant Routes
 
-
-| Method | Path                                                            | Controller Method      | Purpose                        |
-| ------ | --------------------------------------------------------------- | ---------------------- | ------------------------------ |
-| GET    | `/crud/select/conversations`                                    | `listConversations`    | List user's conversations      |
-| POST   | `/crud/insert/conversations`                                    | `insertConversation`   | Create conversation            |
-| GET    | `/crud/detail/conversations/{conversation}`                     | `detailConversation`   | Get conversation details       |
-| DELETE | `/crud/delete/conversations/{conversation}`                     | `deleteConversation`   | Delete conversation            |
-| GET    | `/crud/list/conversations/{conversation}/messages`              | `listMessages`         | List messages                  |
-| POST   | `/crud/stream/conversations/{conversation}/messages`            | `streamMessage`        | Send message (SSE streaming)   |
-| POST   | `/crud/insert/conversations/{conversation}/messages`            | `insertMessage`        | Send message (JSON response)   |
-| POST   | `/crud/insert/conversations/{conversation}/messages-with-tools` | `sendMessageWithTools` | Send message (JSON, with the tools the policy allows) |
-
+| Method | Path | Controller Method | Purpose |
+|--------|------|-------------------|---------|
+| GET | `/app/ai/capabilities` | `CapabilitiesController::show` | What the assistant may do for the signed-in person |
+| POST | `/app/ai/agent` | `AgentController::run` | The run as an event stream, the answer sent whole |
+| GET | `/app/crud/select/ai/conversations` | `listConversations` | List the user's conversations |
+| POST | `/app/crud/insert/ai/conversations` | `insertConversation` | Create a conversation |
+| GET | `/app/crud/detail/ai/conversations/{conversation}` | `detailConversation` | Conversation details |
+| DELETE | `/app/crud/delete/ai/conversations/{conversation}` | `deleteConversation` | Delete a conversation |
+| GET | `/app/crud/select/ai/conversations/{conversation}/messages` | `listMessages` | List messages |
+| POST | `/app/crud/insert/ai/conversations/{conversation}/messages` | `insertMessage` | Send a message, JSON answer |
+| POST | `/app/crud/stream/ai/conversations/{conversation}/messages` | `streamMessage` | Answers 422: no token streaming |
 
 ### Assistant Write Routes (proposals)
 
-
-| Method | Path                                                          | Controller Method | Purpose                                              |
-| ------ | ------------------------------------------------------------- | ----------------- | ---------------------------------------------------- |
-| GET    | `/app/crud/detail/ai/assistant-writes/{proposal}`             | `show`            | A proposal: what would change, as whom, its status   |
-| POST   | `/app/crud/update/ai/assistant-writes/{proposal}/confirm`     | `confirm`         | The person applies it (once; a second call answers the same outcome) |
-| POST   | `/app/crud/update/ai/assistant-writes/{proposal}/reject`      | `reject`          | The person declines it                               |
-
+| Method | Path | Controller Method | Purpose |
+|--------|------|-------------------|---------|
+| GET | `/app/crud/detail/ai/assistant-writes/{proposal}` | `show` | A proposal: what would change, as whom, its status |
+| POST | `/app/crud/update/ai/assistant-writes/{proposal}/confirm` | `confirm` | The person applies it (once; a second call answers the same outcome) |
+| POST | `/app/crud/update/ai/assistant-writes/{proposal}/reject` | `reject` | The person declines it |
 
 ### Suggestion Routes
 
-
-| Method | Path                                            | Controller Method    | Purpose                  |
-| ------ | ----------------------------------------------- | -------------------- | ------------------------ |
-| GET    | `/crud/select/suggestions`                      | `listSuggestions`    | List pending suggestions |
-| POST   | `/crud/insert/suggestions`                      | `generateSuggestion` | Generate new suggestion  |
-| POST   | `/crud/update/suggestions/{suggestion}/dismiss` | `dismissSuggestion`  | Dismiss suggestion       |
-
+| Method | Path | Controller Method | Purpose |
+|--------|------|-------------------|---------|
+| GET | `/app/crud/select/ai/suggestions` | `listSuggestions` | List pending suggestions |
+| POST | `/app/crud/insert/ai/suggestions` | `generateSuggestion` | Generate a new suggestion |
+| POST | `/app/crud/update/ai/suggestions/{suggestion}/dismiss` | `dismissSuggestion` | Dismiss a suggestion |
 
 ### Authorization
 
-All endpoints require authentication. Conversation access is restricted to the owner:
-
-```php
-// ChatController::authorizeConversationAccess()
-if ($conversation->user_id !== Auth::id()) {
-    abort(403, 'You do not have access to this conversation.');
-}
-```
+All endpoints require authentication. Conversation access is restricted to the owner, and the message
+routes also require the in-app assistance profile (`AssistantAccessContextFactory::forInApp()`).
 
 ---
 
-## Code Status & Future Work
+## Feature Status
 
-### Feature Status
-
-
-| Feature                | Status       | Notes                                       |
-| ---------------------- | ------------ | ------------------------------------------- |
-| Chat (streaming)       | ✅ **Active** | Primary use case via `streamMessage`        |
-| Chat (non-streaming)   | ✅ **Active** | Available via `insertMessage` for jobs/APIs |
-| Chat with Tools        | ✅ **Active** | `messages-with-tools`; writes are proposals |
-| RAG/FAQ                | ✅ **Active** | Automatic when question detected            |
-| Memory/Summarization   | ✅ **Active** | Configurable via `AI_CHAT_ENABLE_SUMMARY`   |
-| Guardrails             | ✅ **Active** | Configurable via `AI_GUARDRAILS_ENABLED`    |
-| Contextual Suggestions | ✅ **Active** | Routes exposed, configurable                |
-| Governed writes        | ✅ **Active** | Propose, then the person confirms (`ai_write_proposals`) |
-
-
-
-### When to Use Non-Streaming (`insertMessage`)
-
-
-| Use Case          | Why Non-Streaming?                    |
-| ----------------- | ------------------------------------- |
-| Background jobs   | Queue workers don't support SSE       |
-| API integrations  | External systems expect JSON response |
-| Automated testing | Easier to assert on complete response |
-| Retry logic       | Simpler to retry failed requests      |
-
-
+| Feature | Status | Notes |
+|---------|--------|-------|
+| In-app assistant | Active | JSON answer or event stream; policy, guardrails and scope on every message |
+| RAG/FAQ | Active | User corpus for the assistant, developer corpus for `ai:help` |
+| Governed writes | Active | Propose, then the person confirms (`ai_write_proposals`) |
+| Contextual Suggestions | Active | Setting `features.contextual_suggestions.enabled` (seeded off) |
+| Memory/Summarization | Kept, not called | Setting `features.chat.summary.enabled`; reused by the persistent user memory plan |

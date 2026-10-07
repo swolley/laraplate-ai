@@ -2,8 +2,9 @@
 
 > **Status.** This replaces the `sendMessageWithTools` / `ActionRequest` example. That flow was removed on
 > 2026-10-07: nothing used it, and approval is enforced at the model by Core. What follows is the flow that
-> is live. The route `POST /app/crud/insert/ai/conversations/{conversation}/messages-with-tools` still answers
-> a single JSON message; the confirmation is a separate, authenticated action of the person.
+> is live. A message is sent to `POST /app/crud/insert/ai/conversations/{conversation}/messages` (or
+> `POST /app/ai/agent`), which answers a single message; the confirmation is a separate, authenticated action
+> of the person. The `messages-with-tools` route was removed on 2026-10-07.
 
 ## Why two steps, and why the second is not the model's
 
@@ -24,34 +25,33 @@ person ◀── message + metadata.writes ─┘
 ## What the client receives
 
 ```jsonc
-// POST /app/crud/insert/ai/conversations/12/messages-with-tools  → 201
+// POST /app/crud/insert/ai/conversations/12/messages  → 201
 {
   "data": {
-    "message": {
-      "id": 90,
-      "role": "assistant",
-      "content": "I propose renaming the role from \"editor\" to \"reviewer\".\n\nI prepared a change for you to confirm. Nothing changes until you confirm it.",
-      "metadata": {
-        "citations": [],
-        "writes": [
-          {
-            "id": 31,
-            "tool": "crud_update_core_role",
-            "module": "core",
-            "entity": "role",
-            "operation": "update",
-            "status": "proposed",
-            "acting_user_id": 5,
-            "acting_user_name": "Maria Rossi",
-            "summary": { "record_id": "4", "changes": { "name": { "from": "editor", "to": "reviewer" } } },
-            "requires_approval": false,
-            "outcome": null,
-            "expires_at": "2026-10-07T10:30:00+00:00",
-            "resolved_at": null
-          }
-        ]
-      }
-    }
+    "id": 90,
+    "role": "assistant",
+    "content": "I propose renaming the role from \"editor\" to \"reviewer\".\n\nI prepared a change for you to confirm. Nothing changes until you confirm it.",
+    "metadata": {
+      "citations": [],
+      "writes": [
+        {
+          "id": 31,
+          "tool": "crud_update_core_role",
+          "module": "core",
+          "entity": "role",
+          "operation": "update",
+          "status": "proposed",
+          "acting_user_id": 5,
+          "acting_user_name": "Maria Rossi",
+          "summary": { "record_id": "4", "changes": { "name": { "from": "editor", "to": "reviewer" } } },
+          "requires_approval": false,
+          "outcome": null,
+          "expires_at": "2026-10-07T10:30:00+00:00",
+          "resolved_at": null
+        }
+      ]
+    },
+    "created_at": "2026-10-07T10:00:00+00:00"
   }
 }
 ```

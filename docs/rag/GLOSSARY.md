@@ -90,13 +90,13 @@ Canonical English names for AI entities in this module. Use these terms in code,
 | Term                          | Meaning                                                    |
 | ----------------------------- | ---------------------------------------------------------- |
 | **EmbeddingsProviderFactory** | Resolves embedding provider from `config('ai.*')`.         |
-| **LLPhant**                   | Underlying library for OpenAI, Ollama, Mistral, Anthropic chat adapters. |
+| **Neuron AI** | The agent framework (`neuron-core/neuron-ai` v3) behind every model call: providers, tools, RAG, structured output. It replaced LLPhant, which is no longer a dependency. |
 
 
 ## Related reading
 
 - `docs/ARCHITECTURE.md` — module layout and message flows
-- `docs/DESIGN_DECISIONS.md` — streaming vs non-streaming, tool system rationale
+- `docs/DESIGN_DECISIONS.md` — why the answer is sent whole, governed writes, memory, internal use
 - `docs/SEARCH_AND_TRANSLATION.md` — indexing and translation listeners
 - `docs/MODERATION.md` — moderation pipeline and approval modes
 - `Modules/Core/docs/EVENT_ORCHESTRATION.md` — Core event bus contracts

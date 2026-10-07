@@ -4,35 +4,15 @@ This document explains the reasoning behind key architectural decisions and answ
 
 ---
 
-## Q: Why do we have both `streamMessage` and `insertMessage`?
+## Q: Why is the answer not streamed token by token?
 
-### Short Answer
-
-`streamMessage` is the **primary use case** for interactive chat. `insertMessage` was added for completeness but **may be unnecessary** in your application.
-
-### When `streamMessage` is Required
-
-- **Interactive UI**: Users see text appearing in real-time (ChatGPT-like experience)
-- **Better UX**: No waiting 10-30 seconds staring at a loading spinner
-- **Perceived performance**: Users feel the AI is "thinking" and responding
-
-### When `insertMessage` Would Be Useful
-
-
-| Use Case          | Why Non-Streaming?                         |
-| ----------------- | ------------------------------------------ |
-| Background jobs   | Queue workers don't support SSE            |
-| API integrations  | External systems expect JSON response      |
-| Automated testing | Easier to assert on complete response      |
-| Retry logic       | Simpler to retry failed requests           |
-| Mobile apps       | Some mobile HTTP clients struggle with SSE |
-
-
-### Recommendation
-
-**If you don't have any of the above use cases, you can safely remove `insertMessage`.**
-
-The route naming (`/insert/...`) was chosen for consistency with CRUD conventions, but it's misleading since it's really "send message and get AI response".
+Every message of the in-app assistant goes through `InAppAssistanceService::respond()`, and the answer is
+checked by the output guardrails before anyone sees it (no secret, no internal detail, citations that point
+at what was retrieved). A token stream would show text that the checks may still refuse. So the answer is
+sent whole: `POST /app/crud/insert/ai/conversations/{id}/messages` returns it as JSON, and
+`POST /app/ai/agent` streams the run's lifecycle events with the validated message as one event. The old
+token stream route answers 422 (`in_app_streaming_unavailable`). The previous `ChatService` paths
+(`sendMessage`, `sendMessageStream`, `sendMessageWithTools`) were removed.
 
 ---
 
@@ -52,66 +32,16 @@ The assistant never changes data by itself. A write tool (`crud_create_*`, `crud
 
 ---
 
-## Q: Do streaming messages support tool calling?
-
-### Short Answer: No
-
-LLPhant's streaming API (`generateStreamOfText`) returns text chunks, not function calls.
-
-### Technical Limitation
-
-```php
-// Non-streaming: can return FunctionInfo[]
-$result = $chat->generateTextOrReturnFunctionCalled($message);
-
-// Streaming: always returns text chunks
-foreach ($chat->generateStreamOfText($message) as $chunk) {
-    // $chunk is always string
-}
-```
-
-### Workaround (If Needed)
-
-1. Make non-streaming call to check for tool proposals
-2. If tools propose writes, store write proposals
-3. Send tool results back to LLM
-4. Stream the final response
-
-This would require refactoring `sendMessageStream` significantly.
-
----
-
 ## Q: How does the Memory/Summarization system work?
 
-### Purpose
+`MemoryService` summarises a conversation after a number of messages, extracts its key facts (a Neuron
+structured output) and keeps snapshots in `ConversationSummary`, to keep long conversations inside the
+context window. It is kept for the persistent user memory plan, which reuses it. The in-app assistant does
+not call it today: the assistant is stateless and replays no history until a security review accepts it.
 
-Prevent context window overflow in long conversations by:
-
-1. Summarizing older messages
-2. Extracting key facts
-3. Using summary as context for new messages
-
-### Trigger
-
-After **every** message (in `sendMessage` and `sendMessageStream`):
-
-```php
-$this->checkAndCreateSummaryIfNeeded($conversation, $chat);
-```
-
-### Configuration
-
-```env
-AI_CHAT_ENABLE_SUMMARY=true        # Enable the feature
-AI_CHAT_SUMMARY_THRESHOLD=20       # Summarize after N messages
-```
-
-### Per-Conversation Control
-
-```php
-$conversation->memory_enabled = true;  // Enable memory
-$conversation->memory_enabled = false; // Disable (also clears existing summary)
-```
+- Switch: the setting `features.chat.summary.enabled` in Filament (seeded off).
+- Threshold: `ai.features.chat.summary_threshold` in `config.php` (20 messages), a fixed value.
+- Per conversation: `$conversation->memory_enabled`; `MemoryService::setMemoryEnabled($conversation, false)` also clears the existing summary.
 
 ---
 
@@ -123,33 +53,26 @@ The module is designed for:
 
 1. **Event-driven integration** - Embeddings, translations triggered by model events
 2. **Job processing** - Background AI tasks
-3. **Internal services** - Use `ChatService` directly in your code
+3. **Internal services** - Build a `ChatAgent` for a feature in your code
 
 ### Example: Internal AI Service
 
 ```php
-class MyService
+use Modules\AI\Ai\Agents\ChatAgent;
+use Modules\AI\Enums\AiModelFeature;
+
+final class MyService
 {
-    public function __construct(
-        private readonly ChatService $chatService,
-    ) {}
-    
     public function analyzeContent(Content $content): string
     {
-        $conversation = $this->chatService->createConversation(
-            user: $content->author,
-            systemMessage: 'You are a content analyzer...',
-        );
-        
-        $message = $this->chatService->sendMessage(
-            $conversation,
-            "Analyze this content: {$content->body}",
-        );
-        
-        return $message->content;
+        return ChatAgent::forFeature(AiModelFeature::TextGeneration, 'You are a content analyzer...')
+            ->ask("Analyze this content: {$content->body}");
     }
 }
 ```
+
+`ChatAgent::forFeature()` builds the agent on the provider and model of that feature's setting; `ask()` is
+a one-shot plain text call, and `structured()` (Neuron) returns a validated object.
 
 No HTTP endpoint needed - use services directly.
 
@@ -157,25 +80,21 @@ No HTTP endpoint needed - use services directly.
 
 ## Summary: Feature Status
 
-
-| Component              | Status   | Notes                                       |
-| ---------------------- | -------- | ------------------------------------------- |
-| `streamMessage`        | ✅ Active | Primary chat use case, SSE streaming        |
-| `insertMessage`        | ✅ Active | For jobs, APIs, testing - JSON response     |
-| `messages-with-tools`  | ✅ Active | Writes are proposals the person confirms     |
-| Embedding system       | ✅ Active | Powers vector search                        |
-| Translation system     | ✅ Active | Automatic translations                      |
-| RAG/FAQ                | ✅ Active | Automatic question detection + answer       |
-| Contextual suggestions | ✅ Active | Proactive AI suggestions with rate limiting |
-| Memory/Summary         | ✅ Active | Enable via `AI_CHAT_ENABLE_SUMMARY=true`    |
-| Guardrails             | ✅ Active | Enable via `AI_GUARDRAILS_ENABLED=true`     |
-
+| Component | Status | Notes |
+|-----------|--------|-------|
+| In-app assistant | Active | JSON answer or event stream, answer sent whole |
+| Governed writes | Active | Writes are proposals the person confirms |
+| Embedding system | Active | Powers vector search; setting `features.embeddings.enabled` |
+| Translation system | Active | Automatic translations; setting `features.translation.enabled` |
+| RAG/FAQ | Active | Documentation answers; setting `features.faq.enabled` |
+| Contextual suggestions | Active | Proactive AI suggestions with rate limiting; setting `features.contextual_suggestions.enabled` |
+| Memory/Summary | Kept, not called | Setting `features.chat.summary.enabled`; for the persistent user memory plan |
+| Guardrails | Active | In-app assistance guardrails, mandatory, no switch |
 
 ### Key Design Principles
 
 1. **Event-Driven Integration** - AI module listens to Core events, Core never imports AI
 2. **Privacy-First Default** - Ollama as default provider (local processing)
-3. **Human-in-the-Loop** - Tool system requires confirmation for medium/high risk actions
-4. **Configurable Everything** - All features can be enabled/disabled via env vars
+3. **Human-in-the-Loop** - The assistant only proposes writes; the person confirms each one outside the model
+4. **Settings, not env** - Feature switches and tuning are settings in Filament > Settings; env holds provider keys and URLs
 5. **Graceful Degradation** - App works normally when AI module is disabled
-

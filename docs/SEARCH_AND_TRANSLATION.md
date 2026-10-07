@@ -68,8 +68,9 @@ sequenceDiagram
 
 Embeddings use the profile chosen in the setting `features.embeddings.model` (`provider:model`), not an env var (and not `AI_PROVIDER`). The model that serves search is Core's managed setting `search.vector.model`; it changes only when `ai:embeddings:switch` activates the chosen model. Profiles, the switch, its commands and the vector length of each profile (`dimensions`, measured with `ai:embeddings:probe`): [rag/MODULE.md](rag/MODULE.md), section *Embedding model and model switch*. Self-hosted Sentence Transformers: [SENTENCE_TRANSFORMERS_INSTALLATION.md](SENTENCE_TRANSFORMERS_INSTALLATION.md).
 
+The switch is the setting `features.embeddings.enabled` in Filament > Settings, group `ai` (seeded off; no env variable). The service is env:
+
 ```env
-AI_EMBEDDINGS_ENABLED=true
 SENTENCE_TRANSFORMERS_URL=http://embedding-host:8003
 SENTENCE_TRANSFORMERS_API_KEY=
 ```

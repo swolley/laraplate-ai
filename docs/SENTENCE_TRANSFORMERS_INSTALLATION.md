@@ -245,11 +245,9 @@ From the Laraplate application server, repeat the same checks against the remote
 
 ## Configure Laraplate
 
-Add or update `.env` on the Laravel host:
+Switch embeddings on with the setting `features.embeddings.enabled` in Filament > Settings, group `ai` (seeded off; there is no env variable for it), then add or update `.env` on the Laravel host:
 
 ```env
-AI_EMBEDDINGS_ENABLED=true
-
 SENTENCE_TRANSFORMERS_URL=http://EMBEDDING_HOST:8000
 SENTENCE_TRANSFORMERS_API_KEY=
 ```
