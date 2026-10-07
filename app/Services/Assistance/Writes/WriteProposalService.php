@@ -62,6 +62,15 @@ final class WriteProposalService
         bool $requires_approval,
     ): ?WriteProposal {
         if (! $this->budget->take()) {
+            $this->audit('refused', null, [
+                'actor_id' => (int) $user->getKey(),
+                'conversation_id' => (int) $conversation_id,
+                'tool' => $tool,
+                'entity' => mb_strtolower($module . '.' . $entity),
+                'operation' => $operation,
+                'reason' => 'write_budget_exceeded',
+            ]);
+
             return null;
         }
 
@@ -81,6 +90,7 @@ final class WriteProposalService
         ]);
 
         $this->proposedInTurn[] = $proposal;
+        $this->audit('proposed', $proposal);
 
         return $proposal;
     }
@@ -134,6 +144,8 @@ final class WriteProposalService
             'resolved_at' => now(),
         ]);
 
+        $this->audit('confirmed', $claimed, ['outcome' => $result->status->value]);
+
         return $claimed->refresh();
     }
 
@@ -148,10 +160,34 @@ final class WriteProposalService
 
             if ((int) $locked->user_id === (int) $actor->getKey() && $locked->status->isOpen()) {
                 $locked->update(['status' => WriteProposalStatus::Rejected, 'resolved_at' => now()]);
+                $this->audit('rejected', $locked);
             }
 
             return $locked->refresh();
         });
+    }
+
+    /**
+     * One line per step of a write the assistant proposed: who, in which conversation, through which
+     * tool, on what, what came of it. Never the values: the hash of the payload says that two lines are
+     * about the same change without keeping what it was. The Core modification record has no field for
+     * where a write came from, so this log is where the assistant's writes are told apart.
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    private function audit(string $event, ?WriteProposal $proposal, array $extra = []): void
+    {
+        $context = $proposal instanceof WriteProposal ? [
+            'proposal_id' => (int) $proposal->getKey(),
+            'actor_id' => (int) $proposal->user_id,
+            'conversation_id' => (int) $proposal->conversation_id,
+            'tool' => $proposal->tool,
+            'entity' => mb_strtolower($proposal->module . '.' . $proposal->entity),
+            'operation' => $proposal->operation,
+            'payload_hash' => hash('sha256', (string) json_encode($proposal->payload)),
+        ] : [];
+
+        Log::info('Assistant write', ['event' => $event, ...$context, ...$extra]);
     }
 
     private function ttlMinutes(): int
