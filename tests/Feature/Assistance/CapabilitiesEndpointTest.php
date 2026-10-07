@@ -61,7 +61,7 @@ it('tells a signed-in user what the assistant offers', function (): void {
     $this->actingAs($this->user)
         ->getJson(route('ai.capabilities'))
         ->assertOk()
-        ->assertJsonPath('data', ['enabled' => true, 'configured' => true, 'features' => ['proposals' => true, 'writes' => false, 'streaming' => true]]);
+        ->assertJsonPath('data', ['enabled' => true, 'configured' => true, 'features' => ['proposals' => true, 'writes' => false, 'streaming' => true], 'actions' => []]);
 });
 
 it('is not enabled while the assistant feature is off', function (): void {
@@ -128,4 +128,36 @@ it('answers the same whatever the query string says', function (): void {
         ->assertOk()
         ->assertJsonPath('data.enabled', true)
         ->assertJsonPath('data.features.proposals', true);
+});
+
+it('tells the signed-in user what the assistant may do for them, and what then goes to a vote', function (): void {
+    Modules\Core\Tests\Support\HttpContext::pretendHttpRequest();
+
+    foreach (['select', 'update'] as $ability) {
+        $name = Modules\Core\Support\PermissionName::forModel(Modules\Core\Models\DynamicEntity::resolve('setting', module: 'core'), $ability);
+        Modules\Core\Models\Permission::findOrCreate($name, 'web');
+        $this->user->givePermissionTo($name);
+    }
+
+    config([
+        'ai.features.tools.crud.entities' => ['core.setting' => ['list', 'update', 'delete'], 'core.role' => ['list']],
+        'ai.features.tools.crud.unmoderated_writes' => [],
+    ]);
+
+    $this->actingAs($this->user)
+        ->getJson(route('ai.capabilities'))
+        ->assertOk()
+        ->assertJsonPath('data.features.writes', true)
+        ->assertJsonPath('data.actions', [
+            ['entity' => 'core.setting', 'operation' => 'list', 'kind' => 'read', 'requires_approval' => false],
+            ['entity' => 'core.setting', 'operation' => 'update', 'kind' => 'write', 'requires_approval' => true],
+        ]);
+});
+
+it('lists no action for a user who may do nothing the operator opted in', function (): void {
+    config(['ai.features.tools.crud.entities' => ['core.setting' => ['list', 'update']]]);
+
+    $this->actingAs($this->user)
+        ->getJson(route('ai.capabilities'))
+        ->assertJsonPath('data.actions', []);
 });

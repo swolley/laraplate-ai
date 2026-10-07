@@ -19,6 +19,21 @@ final readonly class CompiledAssistantPolicy
         public array $deniedTools = [],
     ) {}
 
+    /**
+     * The same policy with more instructions after its own.
+     */
+    public function withInstructions(string $instructions): self
+    {
+        return new self(
+            $this->version,
+            $this->systemPrompt . "\n\n" . $instructions,
+            $this->allowedCorpora,
+            $this->allowedTools,
+            $this->allowedFields,
+            $this->deniedTools,
+        );
+    }
+
     public function allowsTool(string $name): bool
     {
         return ToolNameMatcher::allows($name, $this->allowedTools, $this->deniedTools);

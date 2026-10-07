@@ -15,6 +15,8 @@ final readonly class ToolDefinition
      * @param  ParameterShape[]  $parameters
      * @param  callable(mixed ...$args): mixed  $handler
      * @param  int|null  $maxRuns  how many times the model may call the tool in one turn; null leaves Neuron's default
+     * @param  string|null  $entity  `module.entity` when the tool acts on one entity, so the person can be told what the assistant may do
+     * @param  string|null  $operation  the operation on that entity (`list`, `update`, ...)
      */
     public function __construct(
         public string $name,
@@ -23,5 +25,7 @@ final readonly class ToolDefinition
         public string $riskLevel,
         public mixed $handler,
         public ?int $maxRuns = null,
+        public ?string $entity = null,
+        public ?string $operation = null,
     ) {}
 }

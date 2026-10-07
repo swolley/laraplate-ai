@@ -28,6 +28,7 @@ use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Assistance\Scope\AssistantScopeResolver;
 use Modules\AI\Services\Assistance\Scope\DataAccess;
 use Modules\AI\Services\Assistance\Stream\RunProgress;
+use Modules\AI\Services\Assistance\Writes\ActingIdentityBlock;
 use Modules\AI\Services\Assistance\Writes\WriteProposalService;
 use Modules\AI\Services\ChatService;
 use Modules\AI\Services\DocumentationService;
@@ -35,6 +36,7 @@ use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\ProposePreferenceChangeTool;
 use Modules\AI\Services\Tools\ProposeViewStateTool;
+use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\AI\Services\Tools\ToolRegistry;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -105,9 +107,16 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             );
             // DataAccess::None is currently unreachable via respond() (forInApp always resolves InAppAssistance profile);
             // reserved as a seam for future guest/superadmin profiles routed through this service (see docs/rag/ASSISTANT_SCOPE.md).
-            $tools = $scope->dataAccess === DataAccess::None
+            $definitions = $scope->dataAccess === DataAccess::None
                 ? []
-                : $this->contextualTools($access, $input, $policy);
+                : $this->contextualDefinitions($access, $input, $policy);
+            $identity = ActingIdentityBlock::render($authenticated_user, $definitions);
+
+            if ($identity !== null) {
+                $policy = $policy->withInstructions($identity);
+            }
+
+            $tools = $this->tool_registry->getNeuronToolsForDefinitions($definitions);
             $proposals = $this->proposalCollector($policy);
             $tools = [...$tools, ...$this->proposalTools($policy, $proposals)];
             $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_RETRIEVE);
@@ -202,29 +211,25 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
     }
 
     /**
-     * @return list<Tool>
+     * The tool definitions the policy lets this turn have: what the providers offer for the acting user,
+     * filtered by the compiled policy. Providers decide what exists, the policy decides what the surface
+     * may reach, and the offer is the intersection.
+     *
+     * @return list<ToolDefinition>
      */
-    private function contextualTools(
+    private function contextualDefinitions(
         AssistantAccessContext $access,
         string $input,
         CompiledAssistantPolicy $policy,
     ): array {
-        if ($this->tool_provider instanceof CompositeContextualToolProvider) {
-            $definitions = $this->tool_provider->toolsForRequest(
-                $access,
-                $input,
-                $this->serverApplicationContext(),
-            );
+        $definitions = $this->tool_provider instanceof CompositeContextualToolProvider
+            ? $this->tool_provider->toolsForRequest($access, $input, $this->serverApplicationContext())
+            : $this->tool_provider->tools($access);
 
-            return $this->tool_registry->getNeuronToolsForDefinitions($definitions, $policy->allowedTools, $policy->deniedTools);
-        }
-
-        return $this->tool_registry->getContextualNeuronTools(
-            $this->tool_provider,
-            $access,
-            $policy->allowedTools,
-            $policy->deniedTools,
-        );
+        return array_values(array_filter(
+            $definitions,
+            static fn (ToolDefinition $definition): bool => $policy->allowsTool($definition->name),
+        ));
     }
 
     /**

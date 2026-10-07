@@ -139,7 +139,22 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             return [];
         }
 
-        $tools = [];
+        return array_map(
+            fn (array $offered): ToolDefinition => $this->buildTool($offered['module'], $offered['entity'], $offered['operation'], $context),
+            $this->offeredOperations(),
+        );
+    }
+
+    /**
+     * What the assistant may do for the acting person right now: the opted-in entities and operations
+     * that the person is permitted to perform. Tools are built from exactly this list, and the client is
+     * told the same thing, so what the person is shown and what the model is offered cannot differ.
+     *
+     * @return list<array{module: string, entity: string, operation: string, write: bool, requires_approval: bool}>
+     */
+    public function offeredOperations(): array
+    {
+        $offered = [];
 
         foreach ($this->allowlist() as $entityKey => $operations) {
             [$module, $entity] = $this->splitEntityKey((string) $entityKey);
@@ -159,11 +174,18 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
                     continue;
                 }
 
-                $tools[] = $this->buildTool($module, $entity, (string) $operation, $context);
+                $write = in_array($operation, self::WRITE_OPERATIONS, true);
+                $offered[] = [
+                    'module' => $module,
+                    'entity' => $entity,
+                    'operation' => (string) $operation,
+                    'write' => $write,
+                    'requires_approval' => $write && $this->wouldRequireApproval($model, (string) $operation),
+                ];
             }
         }
 
-        return $tools;
+        return $offered;
     }
 
     /**
@@ -297,6 +319,8 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
             riskLevel: 'low',
             handler: $this->handlerFor($operation, $module, $entity, $context),
             maxRuns: self::MAX_RUNS,
+            entity: $label,
+            operation: $operation,
         );
     }
 
