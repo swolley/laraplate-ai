@@ -1033,7 +1033,6 @@ final readonly class CrudToolProvider implements ContextualToolProviderInterface
 
     /**
      * The record as the acting person may read it, through CrudService::list so permission and ACL apply.
-     * Not through `detail`: that call resolves its key from a form request that was never validated here.
      *
      * @return array<string, mixed>|null
      */

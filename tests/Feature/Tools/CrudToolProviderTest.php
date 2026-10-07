@@ -452,3 +452,36 @@ it('still requires the ability of the user for an opted-in unmoderated write', f
 
     expect(makeCrudToolProvider($user)->tools(inAppContext($user)))->toBe([]);
 });
+
+it('fetches a record through the detail tool for a permitted user', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['detail']]);
+    $setting = Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'detail-me']);
+
+    $detail = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_detail_core_setting');
+
+    /** @var array<string, mixed> $result */
+    $result = ($detail->handler)(id: (string) $setting->getKey());
+
+    expect($result)->not->toHaveKey('error')
+        ->and($result['data']['name'])->toBe('detail-me');
+});
+
+it('does not fetch a record through the detail tool for a user who may not read it', function (): void {
+    $user = user_class()::factory()->create();
+    Auth::login($user);
+    grantSettingAbility($user, 'select');
+    Config::set('ai.features.tools.crud.entities', ['core.setting' => ['detail']]);
+    $setting = Modules\Core\Models\Setting::factory()->persistedWithoutApprovalCapture()->create(['name' => 'hidden']);
+    $detail = findTool(makeCrudToolProvider($user)->tools(inAppContext($user)), 'crud_detail_core_setting');
+
+    $user->revokePermissionTo(PermissionName::forModel(DynamicEntity::resolve('setting', module: 'core'), 'select'));
+
+    /** @var array<string, mixed> $result */
+    $result = ($detail->handler)(id: (string) $setting->getKey());
+
+    expect($result)->toHaveKey('error')
+        ->and($result)->not->toHaveKey('data');
+});
