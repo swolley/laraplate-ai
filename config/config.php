@@ -194,6 +194,9 @@ return [
             'in_app_max_output_length' => 8000,
         ],
         'search_orchestration' => [
+            // Deliberately an env variable, not a setting: it is read once at boot, in
+            // AIServiceProvider::boot(), to choose the classes the container binds for Core's search
+            // contracts, and the settings overlay of an HTTP request or a queue worker comes later.
             'enabled' => env('AI_SEARCH_ORCHESTRATION_ENABLED', true),
         ],
         'moderation' => [

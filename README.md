@@ -310,7 +310,9 @@ When the AI module is disabled:
 
 #### Search orchestration bindings
 
-When `ai.features.search_orchestration.enabled` is true (default), `AIServiceProvider` overrides
+When `ai.features.search_orchestration.enabled` is true (default; the environment variable
+`AI_SEARCH_ORCHESTRATION_ENABLED`, which stays an env variable because it is read once at boot to choose
+the container bindings, before any settings overlay applies), `AIServiceProvider` overrides
 four Core search contracts. Three of them have a Core fallback; one does not:
 
 | Contract | AI implementation | Core fallback | Effect without AI |
