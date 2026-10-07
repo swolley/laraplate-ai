@@ -15,6 +15,12 @@ it('recognizes an answer that says a change was made', function (string $text): 
     'Ho modificato il layout.',
     'Il layout è stato salvato.',
     'Le impostazioni sono state aggiornate.',
+    'The roles were deleted and renamed.',
+    'I deleted the role as you asked.',
+    'I created the record.',
+    'Ho eliminato il ruolo.',
+    'Ho cancellato i record richiesti.',
+    'The request was sent.',
 ]);
 
 it('lets an answer that only suggests, explains or asks through', function (string $text): void {
@@ -26,4 +32,7 @@ it('lets an answer that only suggests, explains or asks through', function (stri
     'You can update it in Settings.',
     'Posso proporti le schede: accetta il suggerimento se ti piace.',
     'Puoi modificarlo dalle impostazioni.',
+    'I propose deleting the role; confirm it below.',
+    'Propongo di eliminare il ruolo: conferma sotto.',
+    'The record can be created from the Roles page.',
 ]);

@@ -53,6 +53,14 @@ final readonly class AssistanceGuardrailPipeline
         return $this->context_policy->validate($context);
     }
 
+    /**
+     * Whether what a tool returned carries text that reads like an instruction.
+     */
+    public function toolResultContainsInstructions(mixed $result): bool
+    {
+        return $this->context_policy->containsInstructions($result);
+    }
+
     public function validateOutput(string $output): string
     {
         return $this->output_policy->validate($output);

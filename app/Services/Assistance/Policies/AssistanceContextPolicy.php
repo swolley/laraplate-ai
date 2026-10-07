@@ -102,6 +102,33 @@ final readonly class AssistanceContextPolicy
     }
 
     /**
+     * Whether any text inside what a tool returned reads like an instruction. A classifier that cannot
+     * answer counts as yes: the result is withheld rather than trusted.
+     */
+    public function containsInstructions(mixed $value): bool
+    {
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if ($this->containsInstructions($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (! is_string($value) || mb_trim($value) === '') {
+            return false;
+        }
+
+        try {
+            return $this->classifier->classify($value) !== AssistanceSafetyDecision::Safe;
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    /**
      * @param  array<array-key, mixed>  $values
      */
     private function assertAuthorizedResultSchema(array $values): void

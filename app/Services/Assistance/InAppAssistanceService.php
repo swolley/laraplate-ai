@@ -38,6 +38,7 @@ use Modules\AI\Services\Tools\ProposePreferenceChangeTool;
 use Modules\AI\Services\Tools\ProposeViewStateTool;
 use Modules\AI\Services\Tools\ToolDefinition;
 use Modules\AI\Services\Tools\ToolRegistry;
+use Modules\AI\Services\Tools\ToolResultGuard;
 use Modules\Core\Models\User;
 use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\RAG\Document;
@@ -116,7 +117,8 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
                 $policy = $policy->withInstructions($identity);
             }
 
-            $tools = $this->tool_registry->getNeuronToolsForDefinitions($definitions);
+            $guard = new ToolResultGuard($this->guardrails);
+            $tools = $this->tool_registry->getNeuronToolsForDefinitions(array_map($guard->wrap(...), $definitions));
             $proposals = $this->proposalCollector($policy);
             $tools = [...$tools, ...$this->proposalTools($policy, $proposals)];
             $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_RETRIEVE);

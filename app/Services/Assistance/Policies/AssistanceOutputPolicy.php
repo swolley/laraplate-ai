@@ -12,7 +12,7 @@ final readonly class AssistanceOutputPolicy
      * An answer that says a change was made, in English or Italian: "I have updated", "has been
      * applied", "ho modificato", "è stato salvato".
      */
-    private const string APPLIED_CLAIM = '/\b(?:i(?:\'|’)?ve|i have|we(?:\'|’)?ve|we have|has been|have been|was|were|is now|are now|ho|abbiamo|è stato|è stata|sono stati|sono state|è ora|sono ora|ora è)\s+(?:\p{L}+\s+){0,2}?(?:changed|updated|applied|set|saved|switched|enabled|disabled|modified|configured|done|modificat\p{L}*|cambiat\p{L}*|aggiornat\p{L}*|impostat\p{L}*|applicat\p{L}*|salvat\p{L}*|attivat\p{L}*|disattivat\p{L}*|fatto)\b/iu';
+    private const string APPLIED_CLAIM = '/\b(?:i(?:\'|’)?ve|i have|i|we(?:\'|’)?ve|we have|we|has been|have been|was|were|is now|are now|ho|abbiamo|è stato|è stata|sono stati|sono state|è ora|sono ora|ora è)\s+(?:\p{L}+\s+){0,2}?(?:changed|updated|applied|set|saved|switched|enabled|disabled|modified|configured|done|deleted|removed|created|renamed|added|approved|sent|executed|completed|modificat\p{L}*|cambiat\p{L}*|aggiornat\p{L}*|impostat\p{L}*|applicat\p{L}*|salvat\p{L}*|attivat\p{L}*|disattivat\p{L}*|eliminat\p{L}*|rimoss\p{L}*|cancellat\p{L}*|cread\p{L}*|rinominat\p{L}*|aggiunt\p{L}*|approvat\p{L}*|inviat\p{L}*|eseguit\p{L}*|completat\p{L}*|fatto)\b/iu';
 
     public function __construct(
         private RestrictedTopicPolicy $restricted_topics,
