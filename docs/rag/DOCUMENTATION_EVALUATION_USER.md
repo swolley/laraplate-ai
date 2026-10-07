@@ -90,7 +90,7 @@ The report is aggregated numbers only — it never contains the raw question tex
 ## Configuration
 
 - `ai.features.faq.max_documents` — retrieval depth (top-K), clamped to 1–10. This, not the dataset's `top_k`, sets the actual K.
-- `ai.features.faq.policy_classification_version` — the user-safe classification version documents must carry.
+- `ai.features.faq.policy_classification_version` (the setting `features.faq.policy_classification_version`) — the user-safe classification version documents must carry.
 
 ## PermissionsAndSecurity
 

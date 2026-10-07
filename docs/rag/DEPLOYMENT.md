@@ -1,23 +1,21 @@
 # RAG vector store — deployment guide
 
-Documentation RAG (`ai:index-rag-docs`) persists chunk embeddings in a **vector store** selected by `AI_FAQ_VECTOR_STORE` (`ai.features.faq.vector_store`).
+Documentation RAG (`ai:index-rag-docs`) persists chunk embeddings in a **vector store** selected by the setting `features.faq.vector_store` in Filament > Settings, group `ai` (read as `ai.features.faq.vector_store`). It was the env variable `AI_FAQ_VECTOR_STORE` until 2026-10-07; that variable is no longer read. After changing the store, rebuild the indexes (`ai:index-rag-docs --full`).
 
 ## Drivers
 
 | Driver | Storage | Multi-instance |
 |--------|---------|----------------|
-| `filesystem` (default) | Local file (`AI_FAQ_VECTOR_STORE_PATH` or `storage/app/ai/faq-vectorstore.store`) | **Only** if every replica mounts the **same read-write path** (shared PVC/NFS). |
-| `memory` | In-process RAM | **Not for production.** Test/CLI only; data is lost on process restart. |
-| `elasticsearch` | Shared Elasticsearch index (`AI_FAQ_ES_INDEX`) | **Recommended** when Elasticsearch is already in the stack. All app instances read the same index. |
+| `filesystem` | Local file (`AI_FAQ_VECTOR_STORE_PATH` or `storage/app/ai/faq-vectorstore.store`) | **Only** if every replica mounts the **same read-write path** (shared PVC/NFS). |
+| `memory` | In-process RAM | **Not for production.** Tests only, set in config; the setting does not offer it. |
+| `elasticsearch` (default) | Shared Elasticsearch index (`AI_FAQ_ES_INDEX`) | **Recommended** when Elasticsearch is already in the stack. All app instances read the same index. |
 
 ## Filesystem on Kubernetes (interim)
 
-Run indexing from **one** job or pod, or ensure all pods share the store file:
+Set `features.faq.vector_store` to `filesystem`, then run indexing from **one** job or pod, or ensure all pods share the store file:
 
 ```yaml
 env:
-  - name: AI_FAQ_VECTOR_STORE
-    value: filesystem
   - name: AI_FAQ_VECTOR_STORE_PATH
     value: /shared/ai/faq-vectorstore.store
 volumeMounts:
@@ -40,10 +38,9 @@ Without a shared volume, each replica has its own index and FAQ answers differ p
 php artisan ai:create-rag-es-index
 ```
 
-3. Configure:
+3. Configure: the setting `features.faq.vector_store` is `elasticsearch` (its default), and the index name is env:
 
 ```env
-AI_FAQ_VECTOR_STORE=elasticsearch
 AI_FAQ_ES_INDEX=laraplate_rag_docs
 ```
 

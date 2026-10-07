@@ -76,7 +76,7 @@ php artisan module:install AI
 
 The AI module configuration is automatically mapped as `ai.*` when the module is active. Configuration file: `Modules/AI/config/config.php`.
 
-Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.summary.enabled`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*`, the `features.moderation.*` thresholds, `features.media_analysis.enabled` (seeded off), and the model of each AI feature, `features.*.model` (value `provider:model`, choices refreshed from the providers by `ai:models:refresh`, nightly or from the setting row; see `docs/rag/AI_MODEL_SELECTION_DEVELOPER.md`). Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`. A value managed by a setting has no env variable: its default lives in code.
+Feature switches and tuning are runtime settings managed from Filament > Settings, not env vars: `features.{embeddings,translation,faq,contextual_suggestions,moderation}.enabled` (seeded off: they need a configured provider), `features.chat.summary.enabled`, `features.faq.{max_documents,min_similarity,format_citations}`, `features.faq.splitter.*`, the `features.moderation.*` thresholds and `features.moderation.queue` (the queue of the moderation jobs, read when a job is dispatched), `features.text_generation.{enabled,max_output_chars,cache_ttl_seconds}` and `features.text_generation.rate_limit.{max,per_seconds}` (seeded off, 500, 0, 60 and 60), `features.faq.vector_store` (`elasticsearch` or `filesystem`, seeded `elasticsearch`) and `features.faq.policy_classification_version` (seeded `in-app-docs-v1`), `features.media_analysis.enabled` (seeded off), and the model of each AI feature, `features.*.model` (value `provider:model`, choices refreshed from the providers by `ai:models:refresh`, nightly or from the setting row; see `docs/rag/AI_MODEL_SELECTION_DEVELOPER.md`). Settings are listed without the module prefix (the module is a column) and read from config as `ai.<name>`. A value managed by a setting has no env variable: its default lives in code.
 
 ```env
 # AI Features
@@ -117,24 +117,21 @@ AI_EMBEDDINGS_STATE_LOCK_WAIT_SECONDS=10     # Seconds a writer of the switch st
 # DeepL Configuration (for automatic translation)
 DEEPL_API_KEY=                       # DeepL API key
 
-# Optional Text Generation (answers Core's AiTextGenerationRequested event)
-AI_TEXT_GENERATION_ENABLED=false     # Opt-in: let AI fulfil one-shot text requests (e.g. SAO ownership-suggestion phrasing)
-AI_TEXT_GENERATION_MAX_CHARS=500     # Hard cap on the returned text (truncated on a word boundary)
-AI_TEXT_GENERATION_CACHE_TTL=0       # Optional cache TTL (seconds) keyed by (purpose, prompt); 0 = off
-AI_TEXT_GENERATION_RATE_MAX=60       # Max requests per purpose within the window (0 = unlimited)
-AI_TEXT_GENERATION_RATE_WINDOW=60    # Rate-limit window in seconds
+# Optional Text Generation (answers Core's AiTextGenerationRequested event): the settings features.text_generation.* in Filament
 # Live smoke test (tests/Integration/AiTextGenerationLiveSmokeTest.php) runs only with AI_LIVE_TESTS=1 + provider credentials.
 
 # FAQ/RAG Configuration
 AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/newline); see docs/README.md and rag_paths()
-AI_FAQ_VECTOR_STORE=filesystem       # Vector store: memory (tests), filesystem, elasticsearch (multi-instance)
+# The vector store is the setting features.faq.vector_store in Filament (elasticsearch or filesystem)
 AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
-AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
+AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when the vector store is elasticsearch
 # (AI_FAQ_ES_EMBEDDING_DIMS was removed: the RAG vector length is the active embedding profile's `dimensions`)
 
 ```
 
 Removed on 2026-09-29, now settings in Filament > Settings (see above): `AI_CHAT_PROVIDER`, `AI_TEXT_GENERATION_PROVIDER`, `AI_TEXT_GENERATION_MODEL`, `AI_MODERATION_PROVIDER`, `AI_COMMENT_MOD_PROVIDER`, `AI_SEARCH_ORCHESTRATION_PROVIDER`, `AI_TRANSLATION_PROVIDER`, `ANTHROPIC_MODEL`, `AI_MEDIA_ANALYSIS_ENABLED`, `AI_MEDIA_VISION_MODEL`, `AI_MEDIA_VISION_OLLAMA_MODEL`, `AI_MEDIA_TRANSCRIPTION_MODEL`, `AI_MEDIA_WHISPER_LOCAL_MODEL`.
+
+Removed on 2026-10-07, now settings in Filament > Settings, group `ai`: `AI_TEXT_GENERATION_ENABLED`, `AI_TEXT_GENERATION_MAX_CHARS`, `AI_TEXT_GENERATION_CACHE_TTL`, `AI_TEXT_GENERATION_RATE_MAX`, `AI_TEXT_GENERATION_RATE_WINDOW` (`features.text_generation.*`), `AI_FAQ_VECTOR_STORE` (`features.faq.vector_store`), `AI_FAQ_POLICY_CLASSIFICATION_VERSION` (`features.faq.policy_classification_version`), `AI_MODERATION_QUEUE` and its fallback `AI_COMMENT_MOD_QUEUE` (`features.moderation.queue`). Removed with nothing in their place, since nothing read them or the code they drove is gone: `AI_TOOLS_ENABLED`, `AI_GUARDRAILS_ENABLED`, `AI_GUARDRAILS_PROMPT_INJECTION`, `AI_GUARDRAILS_JSON_VALIDATION`, `LAKERA_API_KEY`, `LAKERA_ENDPOINT`. `AI_EMBEDDINGS_ENABLED`, `AI_CHAT_ENABLE_SUMMARY`, the `AI_MODERATION_*` switches and the other `AI_COMMENT_*` variables are read by nothing: the switches are the settings `features.embeddings.enabled`, `features.chat.summary.enabled` and `features.moderation.*`.
 
 ### Module Priority
 
@@ -227,17 +224,17 @@ The AI Module includes built-in features such as:
     - Citations with source attribution in answers
     - **Commands:**
         - `php artisan ai:index-rag-docs` — build or update a profile corpus (`--profile=developer|user|all`, `--path=`, `--full`)
-        - `php artisan ai:create-rag-es-index` — create Elasticsearch index when using `AI_FAQ_VECTOR_STORE=elasticsearch`
+        - `php artisan ai:create-rag-es-index` — create Elasticsearch index when the setting `features.faq.vector_store` is `elasticsearch`
         - `php artisan ai:help` — developer documentation assistant in the terminal
         - `php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` — provider retrieval evaluation without chat generation
-    - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
+    - **Vector store options** (the setting `features.faq.vector_store`): `elasticsearch` (default, recommended for multi-instance), `filesystem`; `memory` is for tests only. See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
     - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
 
 -   **Assistant tools:**
     - Authenticated in-app read-only Core Graph tools with request permission and ACL enforcement
     - Authenticated `application_content_search` with explicit module providers, server-side routing, safe citations, and evidence-free abstention
         - `php artisan ai:evaluate-application-content --dataset=... --source=... --output=...` — provider retrieval evaluation without chat generation
-    - **Vector store options:** `filesystem` (default), `memory` (tests only), `elasticsearch` (recommended for multi-instance). See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
+    - **Vector store options** (the setting `features.faq.vector_store`): `elasticsearch` (default, recommended for multi-instance), `filesystem`; `memory` is for tests only. See [docs/rag/DEPLOYMENT.md](docs/rag/DEPLOYMENT.md).
     - **Corpus authoring:** [docs/rag/README.md](../../docs/rag/README.md) (what to index, structure, conventions). **Implementation detail:** [docs/rag/MODULE.md](docs/rag/MODULE.md).
 
 -   **Assistant writes (governed):**
@@ -280,7 +277,7 @@ Core is the **event bus**; this module registers AI listeners and jobs. Full dia
 | **Embeddings, Elasticsearch, translations** | [docs/SEARCH_AND_TRANSLATION.md](docs/SEARCH_AND_TRANSLATION.md) |
 | **Self-hosted Sentence Transformers** | [docs/SENTENCE_TRANSFORMERS_INSTALLATION.md](docs/SENTENCE_TRANSFORMERS_INSTALLATION.md) |
 | **Modification moderation (AI vote)** | [docs/MODERATION.md](docs/MODERATION.md) |
-| **Optional text generation** (answers `AiTextGenerationRequested`, e.g. SAO ownership phrasing) | `HandleAiTextGenerationListener`, gated by `AI_TEXT_GENERATION_ENABLED` |
+| **Optional text generation** (answers `AiTextGenerationRequested`, e.g. SAO ownership phrasing) | `HandleAiTextGenerationListener`, gated by the setting `features.text_generation.enabled` |
 | Chat, tools (module-internal) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | **RAG corpus conventions** (what to put in `docs/rag/`) | [docs/rag/README.md](../../docs/rag/README.md) |
 | **RAG implementation** (pipeline, agents, stores) | [docs/rag/MODULE.md](docs/rag/MODULE.md) |

@@ -348,3 +348,27 @@ it('does not cache events when the modification has no cacheable key', function 
     Cache::shouldNotHaveReceived('put');
     Queue::assertPushed(ApproveModificationJob::class);
 });
+
+it('puts the moderation job on the queue the setting names when the listener runs', function (): void {
+    Queue::fake();
+
+    $listener = app(HandleModificationModerationListener::class);
+    config(['ai.features.moderation.queue' => 'ai-moderation']);
+
+    $modification = Modification::query()->create([
+        'modifiable_type' => ModeratedTestModel::class,
+        'modifiable_id' => null,
+        'modifier_id' => $this->system_user->id,
+        'modifier_type' => User::class,
+        'active' => true,
+        'operation' => Operation::Create,
+        'approvers_required' => 1,
+        'disapprovers_required' => 1,
+        'md5' => md5('queue-setting'),
+        'modifications' => ['body' => ['original' => null, 'modified' => 'Hi']],
+    ]);
+
+    $listener->handle(new ModificationRequiresModeration($modification));
+
+    Queue::assertPushedOn('ai-moderation', ApproveModificationJob::class);
+});

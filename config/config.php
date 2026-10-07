@@ -106,27 +106,30 @@ return [
         // AiTextGenerationRequested event (e.g. SAO ownership-suggestion
         // phrasing). Opt-in: off unless explicitly enabled. Any failure or a
         // guard tripping leaves the request unfulfilled so the caller falls back.
+        // Every value is the setting `features.text_generation.*` (AIDatabaseSeeder);
+        // these are the defaults used until the settings are seeded.
         'text_generation' => [
-            'enabled' => env('AI_TEXT_GENERATION_ENABLED', false),
+            'enabled' => false,
 
             // Hard cap on the returned text; longer generations are truncated on
             // a word boundary rather than rejected.
-            'max_output_chars' => env('AI_TEXT_GENERATION_MAX_CHARS', 500),
+            'max_output_chars' => 500,
 
             // Optional short-TTL cache keyed by (purpose, prompt hash). 0 = off.
-            'cache_ttl_seconds' => env('AI_TEXT_GENERATION_CACHE_TTL', 0),
+            'cache_ttl_seconds' => 0,
 
             // Per-purpose rate limit; when exhausted the listener no-ops so a
             // burst cannot run up cost.
             'rate_limit' => [
-                'max' => env('AI_TEXT_GENERATION_RATE_MAX', 60),
-                'per_seconds' => env('AI_TEXT_GENERATION_RATE_WINDOW', 60),
+                'max' => 60,
+                'per_seconds' => 60,
             ],
         ],
         'faq' => [
             // Optional extra root for app-level custom docs. Default scan always includes `docs/rag` and active `Modules/*/docs/rag` (see `docs/README.md`).
             'documentation_path' => env('AI_FAQ_DOCS_PATH'),
-            'vector_store' => env('AI_FAQ_VECTOR_STORE', 'elasticsearch'), // memory (testing only), filesystem, elasticsearch
+            // The setting `features.faq.vector_store` (elasticsearch or filesystem); `memory` is for tests only.
+            'vector_store' => 'elasticsearch',
             'vector_store_path' => env('AI_FAQ_VECTOR_STORE_PATH'), // null = storage_path('app/ai/faq-vectorstore.store'); the store writes exactly this file
             'elasticsearch' => [
                 'developer_index' => env(
@@ -137,7 +140,8 @@ return [
                 // The vector length is the active embedding profile's `dimensions`
                 // (ai.features.embeddings.models); a model switch rebuilds these indexes.
             ],
-            'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
+            // The setting `features.faq.policy_classification_version`.
+            'policy_classification_version' => 'in-app-docs-v1',
         ],
         'tools' => [
             // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
@@ -193,7 +197,8 @@ return [
             'enabled' => env('AI_SEARCH_ORCHESTRATION_ENABLED', true),
         ],
         'moderation' => [
-            'queue' => env('AI_MODERATION_QUEUE', env('AI_COMMENT_MOD_QUEUE', 'default')),
+            // The setting `features.moderation.queue`, read when the job is dispatched.
+            'queue' => 'default',
         ],
     ],
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Modules\AI\Database\Seeders\AIDatabaseSeeder;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\Core\Models\Setting;
+use Modules\Core\Services\DatabaseConfigOverlay;
+use Modules\Core\Services\PerModelSettingResolver;
 
 it('seeds AI runtime settings stamped with the AI module', function (): void {
     $this->seed(AIDatabaseSeeder::class);
@@ -58,4 +60,18 @@ it('keeps refreshed model choices across a re-seed', function (): void {
 
     expect(Setting::query()->withoutGlobalScopes()->where('name', 'features.chat.model')->sole()->choices)
         ->toBe(['ollama:a', 'ollama:b']);
+});
+
+it('overlays a seeded switch that used to be an env variable onto the config the code reads', function (): void {
+    $this->seed(AIDatabaseSeeder::class);
+
+    Setting::query()->withoutGlobalScopes()->where('name', 'features.moderation.queue')
+        ->update(['value' => json_encode('ai-moderation')]);
+    Setting::query()->withoutGlobalScopes()->where('name', 'features.text_generation.max_output_chars')
+        ->update(['value' => json_encode(120)]);
+
+    app(DatabaseConfigOverlay::class)->applyFromDatabase(app(PerModelSettingResolver::class));
+
+    expect(config('ai.features.moderation.queue'))->toBe('ai-moderation')
+        ->and(config('ai.features.text_generation.max_output_chars'))->toBe(120);
 });

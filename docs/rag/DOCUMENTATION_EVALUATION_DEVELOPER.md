@@ -78,7 +78,7 @@ Dataset↔corpus label alignment is the property that makes the gate non-vacuous
 ## Configuration
 
 - `ai.features.faq.max_documents` — resolved top-K (`DocumentationRetrievalContext`, clamped 1–10). The case's `top_k` is informational; tests set this config to the intended K.
-- `ai.features.faq.policy_classification_version` — must match the documents' `policy_classification_version` (default `in-app-docs-v1`).
+- `ai.features.faq.policy_classification_version` (the setting `features.faq.policy_classification_version`) — must match the documents' `policy_classification_version` (default `in-app-docs-v1`).
 
 ## PermissionsAndSecurity
 

@@ -187,7 +187,7 @@ Slices `proposal`, `forged_hint`, `applied_claim`, `no_proposal` and locales `en
 
 
 - `ai.features.faq.max_documents` — resolved top-K for documentation retrieval in evaluated cases (clamped 1–10). Tests set this to the dataset's intended K.
-- `ai.features.faq.policy_classification_version` — must match the fixture documents' `policy_classification_version` (default `in-app-docs-v1`).
+- `ai.features.faq.policy_classification_version` (the setting `features.faq.policy_classification_version`) — must match the fixture documents' `policy_classification_version` (default `in-app-docs-v1`).
 - No new configuration surface for assistant evaluation. Scope and profile are server-owned and fixed per-request, never read from config or model output.
 
 ## Permissions and Security

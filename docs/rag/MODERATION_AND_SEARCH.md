@@ -52,13 +52,16 @@ If AI does not handle indexing, Core `IndexModelFallbackListener` still runs `In
 
 ## Configuration
 
-| Key | Env (legacy) | Meaning |
-|-----|--------------|---------|
-| `ai.features.moderation.enabled` | `AI_MODERATION_ENABLED` | Master switch |
-| `permission.users.system` | `SYSTEM_USER` | Username of the system user AI votes as |
-| `ai.features.moderation.threshold_*` | `AI_COMMENT_*` | Score thresholds (comments) |
-| `ai.features.embeddings.enabled` | — | Embedding pipeline |
-| `ai.features.faq.enabled` | — | Documentation RAG assistant |
+| Key | Set by | Meaning |
+|-----|--------|---------|
+| `ai.features.moderation.enabled` | setting `features.moderation.enabled` | Master switch |
+| `permission.users.system` | `SYSTEM_USER` (env) | Username of the system user AI votes as |
+| `ai.features.moderation.threshold.{approve,reject}` | settings `features.moderation.threshold.*` | Confidence thresholds |
+| `ai.features.moderation.queue` | setting `features.moderation.queue` | Queue of the moderation job, read at dispatch |
+| `ai.features.embeddings.enabled` | setting `features.embeddings.enabled` | Embedding pipeline |
+| `ai.features.faq.enabled` | setting `features.faq.enabled` | Documentation RAG assistant |
+
+The settings are in Filament > Settings, group `ai`. No `AI_MODERATION_*` or `AI_COMMENT_*` env variable is read.
 
 AI moderation switches are `ai.features.moderation.entities.{table}` settings, declared by the AI module only for models with a registered `ModerationAdapter` and read from config; `translations.auto.{table}` is resolved by `PerModelSettingResolver`.
 

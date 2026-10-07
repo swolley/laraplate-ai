@@ -92,16 +92,19 @@ Thresholds:
 
 ## Configuration
 
-```env
-AI_MODERATION_ENABLED=true
-AI_MODERATION_APPROVAL_MODE=threshold
-AI_MODERATION_AI_VOTES=true
-AI_MODERATION_APPROVE_THRESHOLD=0.85
-AI_MODERATION_REJECT_THRESHOLD=0.85
-AI_MODERATION_QUEUE=default
-```
+Every value is a setting in Filament > Settings, group `ai`, read as `ai.<name>`; none is an env variable:
 
-The moderation model is the setting `features.moderation.model` in Filament > Settings (see `rag/AI_MODEL_SELECTION_USER.md`); `AI_MODERATION_PROVIDER` and `AI_COMMENT_MOD_PROVIDER` were removed. Other legacy `AI_COMMENT_*` env vars are still read as fallbacks in `config/config.php`.
+| Setting | Seeded | Meaning |
+|---------|--------|---------|
+| `features.moderation.enabled` | `false` | Master switch |
+| `features.moderation.approval_mode` | `threshold` | `threshold` or `dual` |
+| `features.moderation.votes` | `true` | Allow AI votes in the approval workflow |
+| `features.moderation.threshold.approve` | `0.85` | Approval confidence threshold |
+| `features.moderation.threshold.reject` | `0.85` | Rejection confidence threshold |
+| `features.moderation.queue` | `default` | Queue of `ApproveModificationJob`, read when the job is dispatched |
+| `features.moderation.model` | `ollama:llama3.2:3b` | The moderation model (see `rag/AI_MODEL_SELECTION_USER.md`) |
+
+The env variables `AI_MODERATION_ENABLED`, `AI_MODERATION_APPROVAL_MODE`, `AI_MODERATION_AI_VOTES`, `AI_MODERATION_APPROVE_THRESHOLD`, `AI_MODERATION_REJECT_THRESHOLD` and the `AI_COMMENT_*` variables are read by nothing. `AI_MODERATION_QUEUE` and its fallback `AI_COMMENT_MOD_QUEUE` were read until 2026-10-07, when the queue became the setting `features.moderation.queue`. `AI_MODERATION_PROVIDER` and `AI_COMMENT_MOD_PROVIDER` were removed on 2026-09-29.
 
 Per-model (Core settings, group `moderation`):
 

@@ -6,6 +6,7 @@ namespace Modules\AI\Database\Seeders;
 
 use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Embeddings\Switching\EmbeddingSwitchState;
+use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
 use Modules\AI\Enums\AiModelFeature;
 use Modules\AI\Services\ModerationEntitySettings;
 use Modules\Core\Casts\SettingTypeEnum;
@@ -43,6 +44,14 @@ class AIDatabaseSeeder extends Seeder
             self::setting('features.moderation.votes', true, SettingTypeEnum::Boolean, 'ai', 'Allow AI votes in approval workflow'),
             self::setting('features.moderation.threshold.approve', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation approval confidence threshold'),
             self::setting('features.moderation.threshold.reject', 0.85, SettingTypeEnum::Float, 'ai', 'AI moderation rejection confidence threshold'),
+            self::setting('features.moderation.queue', 'default', SettingTypeEnum::String, 'ai', 'Queue of the AI moderation jobs (read when a job is dispatched)'),
+            self::setting('features.text_generation.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Enable one-shot text generation for other modules (e.g. SAO ownership suggestions)'),
+            self::setting('features.text_generation.max_output_chars', 500, SettingTypeEnum::Integer, 'ai', 'Maximum characters of a generated text (longer text is cut on a word boundary)'),
+            self::setting('features.text_generation.cache_ttl_seconds', 0, SettingTypeEnum::Integer, 'ai', 'Text generation cache TTL seconds (0 = no cache)'),
+            self::setting('features.text_generation.rate_limit.max', 60, SettingTypeEnum::Integer, 'ai', 'Text generation requests per purpose within the window (0 = unlimited)'),
+            self::setting('features.text_generation.rate_limit.per_seconds', 60, SettingTypeEnum::Integer, 'ai', 'Text generation rate limit window seconds'),
+            self::setting('features.faq.vector_store', FaqVectorStoreConfig::DEFAULT_DRIVER, SettingTypeEnum::String, 'ai', 'Vector store of the documentation (RAG) indexes; rebuild them after a change (ai:index-rag-docs --full)', ['elasticsearch', 'filesystem']),
+            self::setting('features.faq.policy_classification_version', 'in-app-docs-v1', SettingTypeEnum::String, 'ai', 'Policy classification version the user documentation must carry to be answered from'),
         ];
     }
 
