@@ -69,7 +69,7 @@ Actions:
 
 - Prompt: `Ai\Prompts\ModerationPrompt`
 - Structured JSON verdict (approve / reject / uncertain)
-- Guardrails + optional retry on invalid JSON
+- Neuron structured output (`ModerationVerdictData`): an answer that does not fit the schema is asked again once, then the verdict is `uncertain`
 
 ---
 

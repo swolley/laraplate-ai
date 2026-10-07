@@ -36,9 +36,9 @@ The AI Module provides artificial intelligence capabilities for embeddings gener
 - 🌐 Automatic translation (AI-powered and DeepL)
 - 💬 AI Chat with conversation history and streaming
 - 📚 RAG (Retrieval-Augmented Generation) for FAQ/documentation
-- 🛠️ Tool/Function calling with 3-level risk management
+- 🛠️ Assistant tools: reads under the user's permissions, writes as proposals the user confirms
 - 🧠 Conversation memory with automatic summarization
-- 🛡️ Guardrails for prompt injection detection and output validation
+- 🛡️ In-app assistance guardrails: policy, input and output limits, a deterministic injection classifier, tool results checked before the model reads them
 - 🔄 Event-driven architecture for seamless integration
 - 🎯 Zero dependencies from Core/Cms modules (Core never depends on AI)
 
@@ -132,14 +132,6 @@ AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/a
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when AI_FAQ_VECTOR_STORE=elasticsearch
 # (AI_FAQ_ES_EMBEDDING_DIMS was removed: the RAG vector length is the active embedding profile's `dimensions`)
 
-# Tools Configuration
-AI_TOOLS_ENABLED=true                # Enable tool/function calling
-
-# Guardrails Configuration
-AI_GUARDRAILS_ENABLED=false          # Enable guardrails
-AI_GUARDRAILS_PROMPT_INJECTION=false # Enable prompt injection detection
-LAKERA_API_KEY=                      # Lakera Guard API key
-LAKERA_ENDPOINT=https://api.lakera.ai/  # Lakera endpoint
 ```
 
 Removed on 2026-09-29, now settings in Filament > Settings (see above): `AI_CHAT_PROVIDER`, `AI_TEXT_GENERATION_PROVIDER`, `AI_TEXT_GENERATION_MODEL`, `AI_MODERATION_PROVIDER`, `AI_COMMENT_MOD_PROVIDER`, `AI_SEARCH_ORCHESTRATION_PROVIDER`, `AI_TRANSLATION_PROVIDER`, `ANTHROPIC_MODEL`, `AI_MEDIA_ANALYSIS_ENABLED`, `AI_MEDIA_VISION_MODEL`, `AI_MEDIA_VISION_OLLAMA_MODEL`, `AI_MEDIA_TRANSCRIPTION_MODEL`, `AI_MEDIA_WHISPER_LOCAL_MODEL`.
@@ -260,12 +252,11 @@ The AI Module includes built-in features such as:
     - Opt-in/opt-out per conversation
     - "Forget" functionality
 
--   **Guardrails:**
-    - Prompt injection detection (Lakera Guard API, with an LLM classifier as fallback). Fail-closed: when
-      neither check can give a verdict, the input is refused
-    - JSON format validation
-    - Retry strategy for failed validations
-    - Configurable per feature
+-   **Guardrails (in-app assistance):**
+    - `AssistanceGuardrailPipeline` checks the input, the retrieved context, the citations and the output, fail-closed, with the limits `ai.features.guardrails.in_app_*`; they are mandatory and have no switch
+    - Prompt injection is recognised by `DeterministicAssistanceSafetyClassifier` (patterns, no model call)
+    - `ToolResultGuard` withholds an entity read-tool result whose text reads like an instruction, before the model sees it
+    - The model's answers that must be data go through Neuron's structured output, which validates them and asks again (see `docs/rag/MODULE.md`, *Structured output of the model*)
 
 -   **Event-Driven Architecture:**
     - `ModelRequiresIndexing`: Event emitted when a model needs indexing
@@ -396,7 +387,6 @@ This section tracks all pending tasks and issues that need to be addressed in th
   - Write proposals overview (what the assistant proposed, confirmed and rejected)
   - Conversation monitoring
   - Tool usage analytics
-  - Guardrails configuration UI
 
 - [ ] **User/Tenant-Selectable AI Provider**
   - Allow users or tenants to select their preferred AI provider
@@ -434,7 +424,7 @@ The locked retrieval direction is documented in `docs/superpowers/specs/2026-07-
 - [x] **Chat System** - Protected in-app assistant: a JSON answer, or the run as an event stream, the answer sent whole
 - [x] **RAG/FAQ** - Documentation indexing and question answering
 - [x] **Memory/Summarization** - Automatic conversation summarization
-- [x] **Guardrails** - Prompt injection detection (Lakera integration)
+- [x] **Guardrails** - In-app assistance guardrails and a deterministic injection classifier (the optional Lakera and LLM injection check, `GuardrailsService`, was removed 2026-10-07: nothing called it)
 - [x] **Contextual Suggestions** - Proactive AI suggestions with rate limiting
 - [x] **Governed assistant writes** - Write proposals the person confirms outside the model, over Core approvals (the earlier ActionRequest/risk-classification path was retired 2026-10-07)
 - [x] **Protected In-App Assistance** - Separate profile/corpus, fail-closed guardrails, read-only Graph and module evidence tools

@@ -254,7 +254,6 @@ fails asks the model again with the list of what was wrong, up to `$maxRetries` 
 | Search intent | `SearchIntentData` | 0 | the raw query, no keywords |
 | Image analysis | `ImageAnalysisData` | 1 | throws, `AnalyzeMediaJob` retries |
 | Conversation facts | `ExtractedFacts` | 1 | no facts |
-| Prompt injection (LLM fallback) | `InjectionCheck` with `InjectionVerdict` | 1 | the input is refused |
 
 The retries are constants of the service that makes the call (`MAX_RETRIES`), not settings. The two calls
 on the path of a search do not retry because a search waits for them. The prompt of each call describes
@@ -290,8 +289,8 @@ Phase 1 remains authenticated and non-guest only. Laraplate may attach the confi
 Important groups include:
 
 - `ai.features.faq.*` for RAG enablement, max docs, vector store behavior, and **splitter** (`driver`, `max_words`, `overlap_words`, `prepend_heading_breadcrumb`).
-- `ai.features.tools.*` for tools and approval pipeline.
-- `ai.features.guardrails.*` for prompt-injection and input hardening behavior.
+- `ai.features.tools.*` for the assistant tools (`tools.crud.*`, see *Writes through the assistant*). `tools.enabled` (`AI_TOOLS_ENABLED`) was removed on 2026-10-07: nothing read it.
+- `ai.features.guardrails.in_app_*` for the policy version and the input and output limits of the in-app assistance guardrails (`AssistanceGuardrailPipeline`, `AssistantPolicyCatalog`). They have no switch. The optional guardrails (`GuardrailsService` with Lakera and an LLM fallback, `LAKERA_API_KEY`, `guardrails.enabled`, `prompt_injection_detection`, `json_validation`) were removed on 2026-10-07: nothing called them.
 - `ai.features.search_orchestration.*` for AI-driven search planner/reranking bindings.
 - `ai.features.embeddings.modules` / `ai.features.translation.modules` — optional per-module allowlist gating auto embedding/translation by the model's owning `Modules\{Name}\` namespace (empty = every module; enforced by `FeatureModuleGate` in the indexing/translation listeners).
 - `ai.features.tools.crud.entities` — opt-in `"module.entity" => [operations]` map exposing Core CRUD as in-app assistant tools (`CrudToolProvider`); tools are exposed only for operations the user is permitted to perform, ACL-enforced by `CrudService`, with moderation handled by `HasApprovals` on the model.

@@ -21,7 +21,7 @@ overlay writes, and falls back to `AiModelFeature::defaultChoice()`:
 
 | Feature | Default |
 |---|---|
-| chat, text generation, moderation, search orchestration, FAQ, contextual suggestions, chat summary, guardrails | `ollama:llama3.2:3b` |
+| chat, text generation, moderation, search orchestration, FAQ, contextual suggestions, chat summary | `ollama:llama3.2:3b` |
 | translation | `deepl` |
 | vision | `anthropic:claude-sonnet-5` |
 | transcription | `whisper` |
@@ -36,7 +36,9 @@ request's time limit.
 
 Every feature builds its agent with `ChatAgent::forFeature()`: `ChatService`, the text-generation
 listener, `ModerationService`, `LlmSearchService` (unless constructed with an explicit provider),
-`DocumentationAgent` (FAQ), `ContextualSuggestionService`, `MemoryService`, `GuardrailsService`.
+`DocumentationAgent` (FAQ), `ContextualSuggestionService`, `MemoryService`. The guardrails feature and its
+setting `features.guardrails.model` were removed on 2026-10-07 with `GuardrailsService`, which nothing called;
+the in-app assistant is guarded by `AssistanceGuardrailPipeline` and its deterministic classifier, which use no model.
 `MediaAnalysisModelRegistry` builds the vision and transcription profiles from their choices; the profile
 key is the full choice and is stored as the analysis model version.
 

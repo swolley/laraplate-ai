@@ -18,7 +18,6 @@ enum AiModelFeature: string
     case Faq = 'faq';
     case ContextualSuggestions = 'contextual_suggestions';
     case ChatSummary = 'chat_summary';
-    case Guardrails = 'guardrails';
     case Vision = 'vision';
     case Transcription = 'transcription';
 
@@ -49,7 +48,6 @@ enum AiModelFeature: string
             self::Faq => 'features.faq.model',
             self::ContextualSuggestions => 'features.contextual_suggestions.model',
             self::ChatSummary => 'features.chat.summary.model',
-            self::Guardrails => 'features.guardrails.model',
             self::Vision => 'features.media_analysis.vision.model',
             self::Transcription => 'features.media_analysis.transcription.model',
         };
@@ -66,7 +64,6 @@ enum AiModelFeature: string
             self::Faq => 'AI model used for FAQ answers (provider:model)',
             self::ContextualSuggestions => 'AI model used for contextual suggestions (provider:model)',
             self::ChatSummary => 'AI model used for chat summaries and memory (provider:model)',
-            self::Guardrails => 'AI model used for prompt-injection detection (provider:model)',
             self::Vision => 'AI model used for media vision analysis (provider:model)',
             self::Transcription => 'Transcription provider for media analysis',
         };

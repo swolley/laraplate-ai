@@ -140,8 +140,6 @@ return [
             'policy_classification_version' => env('AI_FAQ_POLICY_CLASSIFICATION_VERSION', 'in-app-docs-v1'),
         ],
         'tools' => [
-            'enabled' => env('AI_TOOLS_ENABLED', true),
-
             // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
             // Empty = no CRUD tools (default). Each key is "module.entity"; the value
             // lists the allowed operations. A tool is exposed only for an operation
@@ -184,13 +182,9 @@ return [
                 'proposal_ttl_minutes' => 30,
             ],
         ],
+        // Limits and policy version of the in-app assistance guardrails (AssistanceGuardrailPipeline,
+        // AssistantPolicyCatalog). They are mandatory and have no switch.
         'guardrails' => [
-            'enabled' => env('AI_GUARDRAILS_ENABLED', false),
-            'prompt_injection_detection' => env('AI_GUARDRAILS_PROMPT_INJECTION', false),
-            'lakera_api_key' => env('LAKERA_API_KEY'),
-            'lakera_endpoint' => env('LAKERA_ENDPOINT', 'https://api.lakera.ai/'),
-            'json_validation' => env('AI_GUARDRAILS_JSON_VALIDATION', false),
-            // In-app assistance policies are mandatory and do not use the optional flags above.
             'in_app_policy_version' => 'in-app-v1',
             'in_app_max_input_length' => 4000,
             'in_app_max_output_length' => 8000,

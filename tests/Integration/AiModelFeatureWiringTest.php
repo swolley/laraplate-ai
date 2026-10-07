@@ -7,7 +7,6 @@ use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Providers\ProviderFactory;
 use Modules\AI\Listeners\HandleAiTextGenerationListener;
 use Modules\AI\Services\ContextualSuggestionService;
-use Modules\AI\Services\GuardrailsService;
 use Modules\AI\Services\LlmSearchService;
 use Modules\AI\Services\MemoryService;
 use Modules\AI\Services\ModerationService;
@@ -45,7 +44,6 @@ it('builds every chat-family agent on its own feature choice', function (): void
     config()->set('ai.features.search_orchestration.model', 'ollama:search-model');
     config()->set('ai.features.contextual_suggestions.model', 'ollama:suggestion-model');
     config()->set('ai.features.chat.summary.model', 'ollama:summary-model');
-    config()->set('ai.features.guardrails.model', 'ollama:guard-model');
 
     $request = new ModerationRequest(
         input: new ModerationInput(subjectText: 'x', locale: 'en', contextSections: [], profile: 'test'),
@@ -58,8 +56,7 @@ it('builds every chat-family agent on its own feature choice', function (): void
         ->and(wiredAgent(invokeWiring(new ModerationService, 'createAgent', $request)))->toBe(['ollama', 'moderation-model'])
         ->and(wiredAgent(invokeWiring(new LlmSearchService(), 'createAgent', 'prompt')))->toBe(['ollama', 'search-model'])
         ->and(wiredAgent(invokeWiring(new ContextualSuggestionService(), 'makeChatAgent')))->toBe(['ollama', 'suggestion-model'])
-        ->and(wiredAgent(invokeWiring(new MemoryService(), 'makeChatAgent', 'prompt')))->toBe(['ollama', 'summary-model'])
-        ->and(wiredAgent(invokeWiring(new GuardrailsService(), 'makeChatAgent')))->toBe(['ollama', 'guard-model']);
+        ->and(wiredAgent(invokeWiring(new MemoryService(), 'makeChatAgent', 'prompt')))->toBe(['ollama', 'summary-model']);
 });
 
 it('keeps an explicit provider override on search orchestration', function (): void {

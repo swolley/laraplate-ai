@@ -3,14 +3,12 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Providers\ProviderFactory;
-use Modules\AI\Exceptions\GuardrailViolationException;
 use Modules\AI\Exceptions\MediaAnalysisException;
 use Modules\AI\Exceptions\TranslationException;
 use Modules\Core\Exceptions\ConfigurationException;
 
 test('ai exceptions use the expected base types', function (): void {
     expect(TranslationException::class)->toExtend(RuntimeException::class)
-        ->and(GuardrailViolationException::class)->toExtend(RuntimeException::class)
         ->and(MediaAnalysisException::class)->toExtend(RuntimeException::class);
 });
 

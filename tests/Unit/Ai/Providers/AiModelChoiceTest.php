@@ -44,7 +44,6 @@ it('falls back to the default choice when nothing is overlaid', function (AiMode
 
 it('keeps today\'s defaults', function (): void {
     expect(AiModelFeature::Chat->defaultChoice())->toBe('ollama:llama3.2:3b')
-        ->and(AiModelFeature::Guardrails->defaultChoice())->toBe('ollama:llama3.2:3b')
         ->and(AiModelFeature::Translation->defaultChoice())->toBe('deepl')
         ->and(AiModelFeature::Vision->defaultChoice())->toBe('anthropic:claude-sonnet-5')
         ->and(AiModelFeature::Transcription->defaultChoice())->toBe('whisper');

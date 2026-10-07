@@ -19,7 +19,6 @@ Filament > Settings, group `ai`. Every AI feature has its own setting:
 | `features.faq.model` | FAQ answers from the documentation |
 | `features.contextual_suggestions.model` | Contextual suggestions |
 | `features.chat.summary.model` | Chat summaries and memory |
-| `features.guardrails.model` | Prompt-injection detection |
 | `features.media_analysis.vision.model` | Image analysis (caption, OCR, idea, intent) |
 | `features.media_analysis.transcription.model` | Audio and video transcription |
 
