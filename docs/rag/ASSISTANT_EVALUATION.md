@@ -25,7 +25,7 @@ See also: `ASSISTANT_SCOPE.md` (module-scoped documentation retrieval that L1 ve
 |---------|-------|----------|
 | CLI command (`ai:evaluate-assistant --live`) | AI | `Modules\AI\Console\EvaluateAssistantCommand` — not yet implemented; will be the future interface for Level-2 live evaluation |
 
-The dataset contract mirrors `DocumentationEvaluationDataset`: JSON with exact-key validation, bounded sizes, and synthetic-only data classification.
+The dataset contract mirrors `DocumentationEvaluationDataset`: JSON with exact-key validation, bounded sizes, and synthetic-only data classification. The reading of the file, the typed accessors and the statistics are shared code (`Modules\AI\Services\Evaluation\*`, see `DOCUMENTATION_EVALUATION_DEVELOPER.md`); the assistant dataset keeps its own optional-key helpers.
 
 ## Internal Flow
 
