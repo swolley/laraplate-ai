@@ -52,6 +52,9 @@ class AIDatabaseSeeder extends Seeder
             self::setting('features.text_generation.rate_limit.per_seconds', 60, SettingTypeEnum::Integer, 'ai', 'Text generation rate limit window seconds'),
             self::setting('features.faq.vector_store', FaqVectorStoreConfig::DEFAULT_DRIVER, SettingTypeEnum::String, 'ai', 'Vector store of the documentation (RAG) indexes; rebuild them after a change (ai:index-rag-docs --full)', ['elasticsearch', 'filesystem']),
             self::setting('features.faq.policy_classification_version', 'in-app-docs-v1', SettingTypeEnum::String, 'ai', 'Policy classification version the user documentation must carry to be answered from'),
+            self::setting('features.faq.query_logging.enabled', false, SettingTypeEnum::Boolean, 'ai', 'Log answered in-app documentation questions for analytics (create the index first: ai:create-rag-query-index)'),
+            self::setting('features.faq.query_logging.query_text_mode', 'raw', SettingTypeEnum::String, 'ai', 'Whether the question is logged as typed (raw) or not at all (off)', ['raw', 'off']),
+            self::setting('features.faq.query_logging.retention_days', 30, SettingTypeEnum::Integer, 'ai', 'Days a logged documentation question is kept before it is deleted'),
         ];
     }
 

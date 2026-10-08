@@ -33,4 +33,7 @@ it('defines the switches and tuning values that were env variables, with the def
     'documentation vector store' => ['features.faq.vector_store', 'elasticsearch', SettingTypeEnum::String, ['elasticsearch', 'filesystem']],
     'documentation policy version' => ['features.faq.policy_classification_version', 'in-app-docs-v1', SettingTypeEnum::String, null],
     'moderation queue' => ['features.moderation.queue', 'default', SettingTypeEnum::String, null],
+    'documentation query log switch' => ['features.faq.query_logging.enabled', false, SettingTypeEnum::Boolean, null],
+    'documentation query log text' => ['features.faq.query_logging.query_text_mode', 'raw', SettingTypeEnum::String, ['raw', 'off']],
+    'documentation query log retention' => ['features.faq.query_logging.retention_days', 30, SettingTypeEnum::Integer, null],
 ]);

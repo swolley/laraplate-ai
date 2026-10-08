@@ -142,6 +142,15 @@ return [
             ],
             // The setting `features.faq.policy_classification_version`.
             'policy_classification_version' => 'in-app-docs-v1',
+            // Analytics of answered in-app documentation questions (docs/rag/query-analytics-privacy-review.md).
+            // `enabled`, `query_text_mode` (raw or off) and `retention_days` are the settings
+            // `features.faq.query_logging.*`; the index name is deployment.
+            'query_logging' => [
+                'enabled' => false,
+                'query_text_mode' => 'raw',
+                'retention_days' => 30,
+                'index' => env('AI_FAQ_QUERY_LOG_INDEX', Str::slug(config('app.name')) . '_rag_queries'),
+            ],
         ],
         'tools' => [
             // Default CRUD tools exposed to the in-app assistant, opt-in per entity.
