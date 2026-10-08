@@ -14,6 +14,7 @@ use Modules\AI\Ai\MediaAnalysis\MediaAnalysisModelRegistry;
 use Modules\AI\Ai\MediaAnalysis\Transcription\WhisperTranscriber;
 use Modules\AI\Ai\MediaAnalysis\Vision\NeuronVisionAnalyzer;
 use Modules\AI\Ai\Rag\RagIndexRebuilder;
+use Modules\AI\Console\PruneRagQueryAnalyticsCommand;
 use Modules\AI\Console\RefreshAiModelsCommand;
 use Modules\AI\Console\RepairMissingEmbeddingsCommand;
 use Modules\AI\Contracts\IChatService;
@@ -200,6 +201,13 @@ class AIServiceProvider extends ModuleServiceProvider
             // was doing. The limit is ContextualSuggestion::RETENTION_DAYS, in code.
             $this->app->make(Schedule::class)
                 ->command('model:prune', ['--model' => [ContextualSuggestion::class]])
+                ->daily()
+                ->onOneServer();
+
+            // Retention of the documentation query log: documents past the window of the setting
+            // features.faq.query_logging.retention_days (docs/rag/query-analytics-privacy-review.md).
+            $this->app->make(Schedule::class)
+                ->command(PruneRagQueryAnalyticsCommand::class)
                 ->daily()
                 ->onOneServer();
         });
