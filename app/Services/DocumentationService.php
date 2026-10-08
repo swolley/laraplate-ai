@@ -17,9 +17,11 @@ use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
 use Modules\AI\Ai\Rag\Retrieval\InAppDocumentationRetrieval;
 use Modules\AI\Enums\AssistantProfile;
+use Modules\AI\Exceptions\UnknownDocumentAudienceException;
 use Modules\AI\Services\Assistance\AssistantAccessContext;
 use Modules\AI\Services\Assistance\Scope\AssistantScope;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
+use Modules\AI\Services\Documentation\DocumentationMetadata;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use Modules\AI\Services\Documentation\FileDocumentReader;
 use NeuronAI\Chat\Messages\UserMessage;
@@ -111,6 +113,18 @@ final readonly class DocumentationService
         $this->storeDocuments($split_documents, $profile, replaceSources: true);
 
         return count($split_documents);
+    }
+
+    /**
+     * Reads every documentation source (from {@see rag_paths()}, or `$path` alone) without writing
+     * anything, so that a caller about to empty an index first learns whether the sources can be
+     * indexed at all.
+     *
+     * @throws UnknownDocumentAudienceException when a source declares an unknown audience
+     */
+    public function validateSources(?string $path = null): void
+    {
+        $this->gatherDocumentsFromRoots($this->roots($path));
     }
 
     /**
@@ -333,7 +347,11 @@ final readonly class DocumentationService
 
     /**
      * The documents under `$roots` that the audience policy allows in `$profile`; those of the user
-     * profile are marked as validated against their required permissions.
+     * profile are marked as validated against their required permissions, those of the developer
+     * profile receive the neutral defaults of the metadata they do not declare
+     * ({@see DocumentationMetadata::applyDeveloperDefaults()}), after the policy, which never sees them.
+     * Every source is read before anything is written: an unknown audience throws
+     * {@see UnknownDocumentAudienceException} with the store untouched, even on a full rebuild.
      *
      * @param  list<array{path: string, prefix: string}>  $roots
      * @return list<Document>
@@ -348,6 +366,12 @@ final readonly class DocumentationService
             $documents,
             static fn (Document $document): bool => $audience_policy->allows($document, $profile),
         ));
+
+        if ($profile === DocumentationIndexProfile::Developer) {
+            foreach ($documents as $document) {
+                DocumentationMetadata::applyDeveloperDefaults($document);
+            }
+        }
 
         if ($profile === DocumentationIndexProfile::User) {
             foreach ($documents as $document) {

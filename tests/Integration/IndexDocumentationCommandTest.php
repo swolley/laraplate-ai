@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\File;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Console\IndexDocumentationCommand;
 use Modules\AI\Services\DocumentationService;
@@ -145,4 +146,29 @@ it('rejects an invalid documentation profile', function (): void {
     $tester->execute(['--profile' => 'unsafe']);
 
     expect($tester->getStatusCode())->toBe(IndexDocumentationCommand::FAILURE);
+});
+
+it('stops with a readable error naming the file and the value of an unknown audience', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-command-bad-audience-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/wrong.md', "---\naudience: admin\n---\n# Wrong\n\nBody.");
+    Config::set('ai.features.faq.vector_store', 'memory');
+    app()->instance(DocumentationService::class, new DocumentationService);
+
+    $command = new IndexDocumentationCommand;
+    $command->setLaravel(app());
+
+    $tester = new CommandTester($command);
+
+    try {
+        $tester->execute(['--path' => $tmp_dir, '--profile' => 'all', '--full' => true]);
+
+        expect($tester->getStatusCode())->toBe(IndexDocumentationCommand::FAILURE)
+            ->and($tester->getDisplay())->toContain('Indexing failed')
+            ->and($tester->getDisplay())->toContain('wrong.md')
+            ->and($tester->getDisplay())->toContain('"admin"')
+            ->and($tester->getDisplay())->not->toContain('Indexed');
+    } finally {
+        File::deleteDirectory($tmp_dir);
+    }
 });

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Modules\AI\Services\Documentation\Chunking\MarkdownAwareSplitter;
+use Modules\AI\Services\Documentation\DocumentationMetadata;
 use NeuronAI\RAG\Document;
 
 it('keeps a mermaid block atomic even when it exceeds maxWords', function (): void {
@@ -241,4 +242,28 @@ it('exposes splitDocuments as a thin wrapper over splitDocument', function (): v
     $chunks = $splitter->splitDocuments($documents);
 
     expect(count($chunks))->toBeGreaterThanOrEqual(2);
+});
+
+it('gives every chunk of a developer corpus document the normalized metadata', function (): void {
+    $document = new Document("# Guide\n\nFirst part of the guide.\n\n## Details\n\nSecond part of the guide.");
+    $document->sourceType = 'files';
+    $document->sourceName = 'faq-app-rag/GUIDE.md';
+    $document->metadata = ['heading_breadcrumb' => []];
+    DocumentationMetadata::applyDeveloperDefaults($document);
+
+    $chunks = (new MarkdownAwareSplitter(maxWords: 20))->splitDocument($document);
+
+    expect($chunks)->toHaveCount(2)
+        ->and($chunks[0]->metadata['heading_breadcrumb'])->toBe(['Guide'])
+        ->and($chunks[1]->metadata['heading_breadcrumb'])->toBe(['Guide', 'Details']);
+
+    foreach ($chunks as $chunk) {
+        expect($chunk->metadata)->toMatchArray([
+            'audience' => 'shared',
+            'module' => 'app',
+            'locale' => 'und',
+            'canonical_source' => 'faq-app-rag/GUIDE.md',
+            'source_type' => 'file',
+        ]);
+    }
 });

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
+use Modules\AI\Services\Documentation\DocumentationMetadata;
 use Modules\AI\Services\Documentation\DocumentAudiencePolicy;
 use NeuronAI\RAG\Document;
 
@@ -65,3 +66,14 @@ it('denies unsafe or incomplete documentation from the user corpus', function (a
     'stale policy version' => [array_replace(valid_user_documentation_metadata(), ['policy_classification_version' => 'legacy'])],
     'tenant scope without tenant' => [array_replace(valid_user_documentation_metadata(), ['tenant_scope' => 'tenant'])],
 ]);
+
+it('never admits a document to the user corpus on the developer defaults alone', function (): void {
+    $document = documentation_document(['heading_breadcrumb' => []]);
+    $document->sourceName = 'faq-module-Core/LEGACY.md';
+
+    DocumentationMetadata::applyDeveloperDefaults($document);
+
+    expect($document->metadata['audience'])->toBe('shared')
+        ->and((new DocumentAudiencePolicy('in-app-docs-v1'))->allows($document, DocumentationIndexProfile::User))->toBeFalse()
+        ->and((new DocumentAudiencePolicy('in-app-docs-v1'))->allows($document, DocumentationIndexProfile::Developer))->toBeTrue();
+});

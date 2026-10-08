@@ -133,6 +133,16 @@ flowchart LR
   AddDocs --> Store
 ```
 
+#### Chunk metadata, the two corpora and a wrong audience
+
+`FileDocumentReader` turns the YAML front matter of a file into its metadata as declared, removes it from the indexed text, and adds only an empty `heading_breadcrumb`. Invalid YAML yields no metadata. The splitters copy the document metadata to every chunk, and `MarkdownAwareSplitter` replaces `heading_breadcrumb` with the headings of the chunk.
+
+- **Developer corpus.** Every chunk carries `audience`, `module`, `locale`, `canonical_source`, `heading_breadcrumb` and `source_type`. What the front matter declares is kept; what it leaves absent or blank gets a neutral default (`DocumentationMetadata::applyDeveloperDefaults()`): audience `shared`, module `app`, locale `und`, the source name (with its `faq-module-{Name}` prefix) as canonical source, an empty breadcrumb, and source type `file`. A legacy file without front matter is therefore indexed with those values.
+- **User corpus.** No default is applied. `DocumentAudiencePolicy` admits a document on its declared metadata alone (audience `user` or `shared`, module, locale, canonical source, safe source label, version, `policy_classification: user_safe` with the configured version, required permissions and tenant scope), so a file without front matter never reaches it, and the developer defaults cannot satisfy the policy: they set no safe source label, version, classification or tenant scope.
+- **Unknown audience.** The accepted values are `user`, `developer` and `shared` (`DocumentationMetadata::AUDIENCES`, exact and case-sensitive; an absent or empty `audience` is not an error). Any other value throws `UnknownDocumentAudienceException` from the reader, naming the file and the value, and the indexing stops: `ai:index-rag-docs` prints `Indexing failed: ...` and exits non-zero, for every profile. All sources are read before anything is written, so the store keeps what it held, even with `--full`. An embedding model switch reads the sources (`DocumentationService::validateSources()`) before recreating the documentation indexes, so it stops with the indexes whole. Fix the front matter and index again.
+
+The Elasticsearch mapping types `source_type` as a `keyword`. An index created before that maps the field dynamically on the first write. The mapping changes on the next `ai:create-rag-index --force` or model switch.
+
 ### Question answering
 
 - Uses retrieval + LLM response generation through `DocumentationService::answerQuestion`.

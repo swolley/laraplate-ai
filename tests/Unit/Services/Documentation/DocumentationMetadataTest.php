@@ -1,0 +1,65 @@
+<?php
+
+declare(strict_types=1);
+
+use Modules\AI\Services\Documentation\DocumentationMetadata;
+use NeuronAI\RAG\Document;
+
+function legacy_documentation_document(array $metadata = ['heading_breadcrumb' => []]): Document
+{
+    $document = new Document('# Legacy');
+    $document->sourceType = 'files';
+    $document->sourceName = 'faq-module-Core/nested/LEGACY.md';
+    $document->metadata = $metadata;
+
+    return $document;
+}
+
+it('gives a legacy document the neutral developer corpus metadata', function (): void {
+    $document = legacy_documentation_document();
+
+    DocumentationMetadata::applyDeveloperDefaults($document);
+
+    expect($document->metadata)->toBe([
+        'heading_breadcrumb' => [],
+        'audience' => 'shared',
+        'module' => 'app',
+        'locale' => 'und',
+        'canonical_source' => 'faq-module-Core/nested/LEGACY.md',
+        'source_type' => 'file',
+    ]);
+});
+
+it('keeps the metadata a document declares and fills only what is missing or blank', function (): void {
+    $document = legacy_documentation_document([
+        'audience' => 'developer',
+        'module' => 'core',
+        'locale' => '',
+        'canonical_source' => null,
+        'heading_breadcrumb' => ['Import'],
+        'cross_cutting_user' => true,
+    ]);
+
+    DocumentationMetadata::applyDeveloperDefaults($document);
+
+    expect($document->metadata)->toBe([
+        'audience' => 'developer',
+        'module' => 'core',
+        'locale' => 'und',
+        'canonical_source' => 'faq-module-Core/nested/LEGACY.md',
+        'heading_breadcrumb' => ['Import'],
+        'cross_cutting_user' => true,
+        'source_type' => 'file',
+    ]);
+});
+
+it('knows exactly the user, developer and shared audiences', function (mixed $audience, bool $known): void {
+    expect(DocumentationMetadata::isKnownAudience($audience))->toBe($known);
+})->with([
+    'user' => ['user', true],
+    'developer' => ['developer', true],
+    'shared' => ['shared', true],
+    'unknown' => ['admin', false],
+    'wrong case' => ['Shared', false],
+    'not a string' => [['user'], false],
+]);

@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\File;
 use Modules\AI\Ai\Agents\DocumentationAgent;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
+use Modules\AI\Ai\Rag\FaqVectorStoreConfig;
+use Modules\AI\Exceptions\UnknownDocumentAudienceException;
+use Modules\AI\Services\Documentation\Chunking\MarkdownAwareSplitter;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Tests\Stubs\Documentation\CountingSplitter;
 use Modules\AI\Tests\Stubs\Documentation\EmptySplitter;
@@ -644,5 +648,147 @@ it('indexes only the sources of a range, replacing each of them, so a range writ
         }
 
         rmdir($tmp_dir);
+    }
+});
+
+it('stores every developer corpus chunk with the normalized metadata, declared values first', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-dev-metadata-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/legacy.md', "# Legacy\n\nFirst part.\n\n## More\n\nSecond part.");
+    file_put_contents($tmp_dir . '/declared.md', "---\naudience: developer\nmodule: core\n---\n# Declared\n\nBody.");
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+
+    /** @var list<Document> $stored */
+    $stored = [];
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldReceive('reindexBySource')
+        ->andReturnUsing(function (array $documents) use (&$stored): void {
+            array_push($stored, ...$documents);
+        });
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock, new MarkdownAwareSplitter(maxWords: 4));
+
+    try {
+        $count = $service->indexDocuments($tmp_dir);
+
+        expect($count)->toBe(count($stored))
+            ->and($count)->toBeGreaterThan(2);
+
+        foreach ($stored as $chunk) {
+            expect($chunk->metadata)->toHaveKeys(['audience', 'module', 'locale', 'canonical_source', 'heading_breadcrumb', 'source_type']);
+            $prefix_and_name = explode('/', $chunk->getSourceName(), 2);
+
+            if ($prefix_and_name[1] === 'legacy.md') {
+                expect($chunk->metadata)->toMatchArray([
+                    'audience' => 'shared',
+                    'module' => 'app',
+                    'locale' => 'und',
+                    'canonical_source' => $chunk->getSourceName(),
+                    'source_type' => 'file',
+                ]);
+
+                continue;
+            }
+
+            expect($chunk->metadata)->toMatchArray([
+                'audience' => 'developer',
+                'module' => 'core',
+                'locale' => 'und',
+                'canonical_source' => $chunk->getSourceName(),
+                'heading_breadcrumb' => ['Declared'],
+                'source_type' => 'file',
+            ]);
+        }
+    } finally {
+        File::deleteDirectory($tmp_dir);
+    }
+});
+
+it('gives the user corpus none of the developer defaults', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-user-no-defaults-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/legacy.md', "# Legacy\n\nUnclassified.");
+    file_put_contents($tmp_dir . '/user.md', <<<'MARKDOWN'
+---
+audience: user
+module: CMS
+locale: it
+canonical_source: cms/content/editing
+safe_source_label: Modifica dei contenuti
+required_permissions: []
+tenant_scope: global
+version: '1.0'
+policy_classification: user_safe
+policy_classification_version: in-app-docs-v1
+---
+# Modifica
+
+Apri il contenuto.
+MARKDOWN);
+
+    config()->set('ai.features.faq.vector_store', 'memory');
+    config()->set('ai.features.faq.policy_classification_version', 'in-app-docs-v1');
+
+    /** @var list<Document> $stored */
+    $stored = [];
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldReceive('reindexBySource')
+        ->andReturnUsing(function (array $documents) use (&$stored): void {
+            array_push($stored, ...$documents);
+        });
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock);
+
+    try {
+        expect($service->indexDocuments($tmp_dir, false, DocumentationIndexProfile::User))->toBe(1)
+            ->and($stored[0]->getSourceName())->toEndWith('/user.md')
+            ->and($stored[0]->metadata)->not->toHaveKey('source_type');
+    } finally {
+        File::deleteDirectory($tmp_dir);
+    }
+});
+
+it('stops indexing on an unknown audience before touching the store', function (DocumentationIndexProfile $profile): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-bad-audience-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/a-valid.md', "# Valid\n\nBody.");
+    file_put_contents($tmp_dir . '/b-wrong.md', "---\naudience: internal\n---\n# Wrong\n\nBody.");
+
+    config()->set('ai.features.faq.vector_store', 'filesystem');
+    config()->set('ai.features.faq.vector_store_path', sys_get_temp_dir() . '/ai-vs-bad-audience-' . uniqid() . '.store');
+    $tmp_store = FaqVectorStoreConfig::file($profile)->path;
+    file_put_contents($tmp_store, "existing\n");
+
+    $agent_mock = Mockery::mock(DocumentationAgent::class);
+    $agent_mock->shouldNotReceive('addDocuments');
+    $agent_mock->shouldNotReceive('reindexBySource');
+
+    $service = new DocumentationService(fn (): DocumentationAgent => $agent_mock);
+
+    try {
+        expect(fn (): int => $service->indexDocuments($tmp_dir, true, $profile))
+            ->toThrow(UnknownDocumentAudienceException::class, $tmp_dir . DIRECTORY_SEPARATOR . 'b-wrong.md')
+            ->and(file_get_contents($tmp_store))->toBe("existing\n")
+            ->and(fn (): array => $service->sourceNames($profile, $tmp_dir))->toThrow(UnknownDocumentAudienceException::class)
+            ->and(fn () => $service->validateSources($tmp_dir))->toThrow(UnknownDocumentAudienceException::class, '"internal"');
+    } finally {
+        File::deleteDirectory($tmp_dir);
+        @unlink($tmp_store);
+    }
+})->with([
+    'developer' => [DocumentationIndexProfile::Developer],
+    'user' => [DocumentationIndexProfile::User],
+]);
+
+it('validates sources that all declare a known audience', function (): void {
+    $tmp_dir = sys_get_temp_dir() . '/ai-good-audience-' . uniqid();
+    mkdir($tmp_dir, 0755, true);
+    file_put_contents($tmp_dir . '/doc.md', "---\naudience: shared\n---\n# Doc\n");
+
+    try {
+        expect(fn () => (new DocumentationService)->validateSources($tmp_dir))->not->toThrow(UnknownDocumentAudienceException::class);
+    } finally {
+        File::deleteDirectory($tmp_dir);
     }
 });

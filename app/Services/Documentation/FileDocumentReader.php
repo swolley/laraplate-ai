@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace Modules\AI\Services\Documentation;
 
+use Modules\AI\Exceptions\UnknownDocumentAudienceException;
 use NeuronAI\RAG\Document;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
  * Reads markdown and HTML files from a path (file or directory) for documentation indexing.
+ *
+ * The YAML front matter of a file becomes its document metadata, as declared: the reader adds only
+ * an empty `heading_breadcrumb` and invents no other value (the developer corpus defaults are
+ * applied by the indexing, {@see DocumentationMetadata::applyDeveloperDefaults()}). A declared
+ * `audience` outside {@see DocumentationMetadata::AUDIENCES} throws
+ * {@see UnknownDocumentAudienceException} naming the file: every caller reads all the sources
+ * before writing to an index, so a wrong audience stops the indexing with the index untouched.
  */
 final readonly class FileDocumentReader
 {
@@ -52,7 +60,7 @@ final readonly class FileDocumentReader
             return [];
         }
 
-        return [$this->createDocument($file['content'], basename($this->file_path), $file['metadata'])];
+        return [$this->createDocument($file['content'], basename($this->file_path), $file['metadata'], $this->file_path)];
     }
 
     /**
@@ -94,6 +102,7 @@ final readonly class FileDocumentReader
                     $file['content'],
                     $this->normalizeRelativeSourceName($child_relative),
                     $file['metadata'],
+                    $full_path,
                 );
             }
         }
@@ -144,9 +153,16 @@ final readonly class FileDocumentReader
 
     /**
      * @param  array<string, mixed>  $metadata
+     * @param  string  $path  the file read, named by the exception on an unknown audience
+     *
+     * @throws UnknownDocumentAudienceException
      */
-    private function createDocument(string $content, string $source_name, array $metadata = []): Document
+    private function createDocument(string $content, string $source_name, array $metadata, string $path): Document
     {
+        if (isset($metadata['audience']) && ! DocumentationMetadata::isKnownAudience($metadata['audience'])) {
+            throw new UnknownDocumentAudienceException($path, $metadata['audience']);
+        }
+
         $metadata['heading_breadcrumb'] ??= [];
 
         $document = new Document($content);

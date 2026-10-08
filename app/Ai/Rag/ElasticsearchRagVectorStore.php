@@ -91,6 +91,7 @@ final class ElasticsearchRagVectorStore implements VectorStoreInterface
                         'tenant_id' => ['type' => 'keyword'],
                         'version' => ['type' => 'keyword'],
                         'heading_breadcrumb' => ['type' => 'keyword'],
+                        'source_type' => ['type' => 'keyword'],
                         'policy_classification' => ['type' => 'keyword'],
                         'policy_classification_version' => ['type' => 'keyword'],
                     ],

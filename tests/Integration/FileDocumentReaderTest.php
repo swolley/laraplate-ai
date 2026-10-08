@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\File;
+use Modules\AI\Exceptions\UnknownDocumentAudienceException;
 use Modules\AI\Services\Documentation\FileDocumentReader;
 
 it('returns no documents when the path does not exist', function (): void {
@@ -122,3 +123,48 @@ MARKDOWN);
         @unlink($path);
     }
 });
+
+it('invents no metadata for a document without front matter', function (): void {
+    $path = sys_get_temp_dir() . '/lp-reader-legacy-' . uniqid() . '.md';
+    file_put_contents($path, "# Legacy\n\nNo front matter.");
+
+    try {
+        expect((new FileDocumentReader($path))->getDocuments()[0]->metadata)->toBe(['heading_breadcrumb' => []]);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('accepts every known audience value', function (string $audience): void {
+    $path = sys_get_temp_dir() . '/lp-reader-audience-' . uniqid() . '.md';
+    file_put_contents($path, "---\naudience: {$audience}\n---\n# Doc\n");
+
+    try {
+        expect((new FileDocumentReader($path))->getDocuments()[0]->metadata['audience'])->toBe($audience);
+    } finally {
+        @unlink($path);
+    }
+})->with(['user', 'developer', 'shared']);
+
+it('rejects an unknown audience naming the file and the value', function (string $front_matter, string $shown_value): void {
+    $base = sys_get_temp_dir() . '/lp-reader-bad-audience-' . uniqid();
+    mkdir($base . '/nested', 0755, true);
+    file_put_contents($base . '/valid.md', "---\naudience: user\n---\n# Valid\n");
+    file_put_contents($base . '/nested/wrong.md', "---\n{$front_matter}\n---\n# Wrong\n");
+
+    try {
+        expect(fn (): array => (new FileDocumentReader($base))->getDocuments())
+            ->toThrow(function (UnknownDocumentAudienceException $exception) use ($base, $shown_value): void {
+                expect($exception->path)->toBe($base . DIRECTORY_SEPARATOR . 'nested' . DIRECTORY_SEPARATOR . 'wrong.md')
+                    ->and($exception->getMessage())->toContain($exception->path)
+                    ->and($exception->getMessage())->toContain($shown_value)
+                    ->and($exception->getMessage())->toContain('user, developer, shared');
+            });
+    } finally {
+        File::deleteDirectory($base);
+    }
+})->with([
+    'unknown word' => ['audience: admin', '"admin"'],
+    'wrong case' => ['audience: User', '"User"'],
+    'not a string' => ["audience:\n  - user", 'array'],
+]);

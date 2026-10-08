@@ -18,7 +18,9 @@ use RuntimeException;
 
 /**
  * Rebuilds the Elasticsearch documentation indexes for a target embedding profile during a model
- * switch. {@see self::prepare()} runs `ai:create-rag-index --profile=all --force`, which recreates
+ * switch. {@see self::prepare()} first reads every documentation source
+ * ({@see DocumentationService::validateSources()}, which stops on an unknown audience while the
+ * indexes are still whole), then runs `ai:create-rag-index --profile=all --force`, which recreates
  * them sized for the target's vectors; the documents are then written in chunks: per documentation
  * profile, ranges of source names in string order, the first and last range open so that a file
  * added after the plan still falls in one. Each chunk is indexed through
@@ -50,6 +52,8 @@ final readonly class RagIndexRebuilder implements IRagIndexRebuilder
         if (! self::rebuildsDocumentation()) {
             return;
         }
+
+        $this->documentation->validateSources();
 
         $this->registry->withActive($target->key, function (): void {
             $this->call('ai:create-rag-index', ['--profile' => 'all', '--force' => true]);

@@ -7,6 +7,7 @@ use Modules\AI\Ai\Embeddings\EmbeddingModelRegistry;
 use Modules\AI\Ai\Rag\DocumentationIndexProfile;
 use Modules\AI\Ai\Rag\ElasticsearchRagVectorStore;
 use Modules\AI\Ai\Rag\RagIndexRebuilder;
+use Modules\AI\Exceptions\UnknownDocumentAudienceException;
 use Modules\AI\Services\DocumentationService;
 
 const RAG_ACTIVE = 'sentence_transformers:intfloat/multilingual-e5-small';
@@ -99,3 +100,15 @@ it('does nothing and plans nothing when the documentation is not kept in Elastic
     'faq disabled' => ['ai.features.faq.enabled', false],
     'filesystem store' => ['ai.features.faq.vector_store', 'filesystem'],
 ]);
+
+it('validates the documentation sources before recreating the RAG indexes', function (): void {
+    Artisan::shouldReceive('call')->never();
+    $documentation = Mockery::mock(DocumentationService::class);
+    $documentation->shouldReceive('validateSources')
+        ->once()
+        ->andThrow(new UnknownDocumentAudienceException('/docs/rag/WRONG.md', 'admin'));
+    app()->instance(DocumentationService::class, $documentation);
+
+    expect(fn () => app(RagIndexRebuilder::class)->prepare(app(EmbeddingModelRegistry::class)->get(RAG_WIDE)))
+        ->toThrow(UnknownDocumentAudienceException::class, '/docs/rag/WRONG.md');
+});
