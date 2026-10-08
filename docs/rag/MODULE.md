@@ -184,6 +184,17 @@ flowchart TB
   Cit --> Out
 ```
 
+### Documentation query analytics
+
+An optional, write-only log of the questions the in-app assistant answered from the user documentation, so corpus gaps, language mix, abstention rate and retrieval latency can be seen. It is off by default (setting `features.faq.query_logging.enabled`), and nothing in the application reads it: it never feeds retrieval, ranking or tuning. The privacy decisions are in `query-analytics-privacy-review.md`.
+
+- **Where it is written.** `InAppAssistanceService::respond()` times the documentation retrieval and, once the answer is stored, hands it to `RagQueryRecorder`. The recorder checks the switch, skips guests and impersonated sessions (impersonation is known only in the request), builds a `RagQueryLog` and queues `LogRagQueryJob` with the finished document. `RagQueryAnalyticsWriter` indexes it. A refused turn is not logged, and nothing on this path can fail or delay the answer: a dispatch or write failure is logged with the exception class only.
+- **What a document holds.** `id`, `logged_at`, `user_ref`, `tenant` (tenant id or `global`), `profile`, `locale`, `query`, `retrieved_count` (documentation documents after the similarity floor), `citation_count` (in this flow every retrieved document is cited, so it equals `retrieved_count`), `answered` (false when retrieval found nothing), `latency_ms` (retrieval only) and `index` (the user documentation index). Never the answer, document bodies or the user id. The index mapping (`RagQueryLogIndex`) is `dynamic: strict`, so a field outside this list is refused.
+- **The question.** Stored as typed when `features.faq.query_logging.query_text_mode` is `raw` (the default), not at all when it is `off`.
+- **The user.** `user_ref` is an HMAC-SHA256 of the user id under `APP_KEY` (`RagQueryUserReference`).
+- **Retention and erasure.** `ai:prune-rag-queries` runs daily and deletes documents older than `features.faq.query_logging.retention_days` (30). `ai:erase-rag-queries {user}` deletes a user's documents, matching the HMAC under `APP_KEY` and every key in `APP_PREVIOUS_KEYS`, so a key rotation does not hide older documents. No user-erasure flow calls it yet. Both act with the log switched off, and do nothing when the index does not exist.
+- **The index.** `ai:create-rag-query-index` creates it (`AI_FAQ_QUERY_LOG_INDEX`, default `{app}_rag_queries`); `--force` recreates it and loses the logged questions.
+
 ### Message orchestration
 
 Every message sent over HTTP goes through `InAppAssistanceService::respond()`. It compiles the policy for the profile and the enabled capabilities (`application_content`, `in_app_rag`, `read_only_graph`), validates the input, resolves the assistant scope, retrieves documentation for that scope, builds an `AssistantPromptContext` from the authorized evidence, validates that context, and only then completes the answer through `ChatService::buildProtectedAgent()`, which wraps the evidence in an explicitly untrusted block. Output is validated before it is stored, which is also why no token of the model is ever streamed: an answer that has already been streamed cannot be refused. `POST /app/ai/agent` streams the run as lifecycle events and one complete validated message, as a wrapper of this same method (see `ASSISTANT_PROPOSALS_DEVELOPER.md`).

@@ -125,6 +125,7 @@ AI_FAQ_DOCS_PATH=                    # Optional extra roots (comma/semicolon/new
 # The vector store is the setting features.faq.vector_store in Filament (elasticsearch or filesystem)
 AI_FAQ_VECTOR_STORE_PATH=            # Filesystem store file (default: storage/app/ai/faq-vectorstore.store); use shared volume in multi-instance
 AI_FAQ_ES_INDEX=laraplate_rag_docs   # Elasticsearch index name when the vector store is elasticsearch
+AI_FAQ_QUERY_LOG_INDEX=laraplate_rag_queries   # Elasticsearch index of the documentation query log (ai:create-rag-query-index); the switch, the question mode and the retention are the settings features.faq.query_logging.* in Filament
 # (AI_FAQ_ES_EMBEDDING_DIMS was removed: the RAG vector length is the active embedding profile's `dimensions`)
 
 ```

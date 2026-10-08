@@ -52,6 +52,21 @@ php artisan ai:index-rag-docs
 
 All replicas then share the same corpus via Elasticsearch.
 
+### Documentation query log (optional)
+
+The log of the questions answered from the user documentation is off by default. To turn it on:
+
+1. Create its index (the name is `AI_FAQ_QUERY_LOG_INDEX`, default `{app}_rag_queries`):
+
+```bash
+php artisan ai:create-rag-query-index
+```
+
+2. In Filament > Settings, group `ai`, turn on `features.faq.query_logging.enabled`. `features.faq.query_logging.query_text_mode` keeps the question as typed (`raw`) or drops it (`off`); `features.faq.query_logging.retention_days` is how long a document is kept (30).
+3. Run a queue worker: the log is written by a queued job.
+
+The scheduler deletes expired documents every day (`ai:prune-rag-queries`). To delete everything logged for one user, run `php artisan ai:erase-rag-queries {user id}`. The privacy decisions behind these defaults are in `query-analytics-privacy-review.md`.
+
 ### Embedding dimension changes
 
 Changing the embedding model goes through `ai:embeddings:switch`, which recreates these indexes for the new model (`ai:create-rag-index --profile=all --force`) and reindexes the documentation in `IndexDocumentsChunkJob` chunks of `AI_EMBEDDINGS_RAG_CHUNK_SIZE` files on the `embeddings-index` queue (the work of `ai:index-rag-docs`, one range of files per chunk). By hand: `ai:create-rag-index --force` drops and recreates each index with the active profile's dimensions.
