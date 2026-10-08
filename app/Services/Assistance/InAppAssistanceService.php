@@ -31,6 +31,7 @@ use Modules\AI\Services\Assistance\Stream\RunProgress;
 use Modules\AI\Services\Assistance\Writes\ActingIdentityBlock;
 use Modules\AI\Services\Assistance\Writes\WriteProposalService;
 use Modules\AI\Services\ChatService;
+use Modules\AI\Services\Documentation\Analytics\RagQueryRecorder;
 use Modules\AI\Services\DocumentationService;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
@@ -100,12 +101,15 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
             $this->report($progress, RunProgress::STARTED, RunProgress::STEP_RETRIEVE);
             $module_context = $this->serverApplicationContext();
             $scope = $this->scope_resolver->resolve($access->profile, $module_context?->module);
+            $retrieval_started_at = hrtime(true);
             $documents = $this->documentation_retrieval instanceof Closure
                 ? ($this->documentation_retrieval)($input, $access, $scope)
                 : $this->documentation->retrieveForInApp($input, $access, $scope);
+            $retrieval_latency_ms = (hrtime(true) - $retrieval_started_at) / 1_000_000;
             $prompt_context = $this->guardrails->validateContext(
                 $this->promptContext($policy, $documents, $request_context),
             );
+            $documentation_citation_count = count($prompt_context->safeCitations);
             // DataAccess::None is currently unreachable via respond() (forInApp always resolves InAppAssistance profile);
             // reserved as a seam for future guest/superadmin profiles routed through this service (see docs/rag/ASSISTANT_SCOPE.md).
             $definitions = $scope->dataAccess === DataAccess::None
@@ -166,6 +170,14 @@ final readonly class InAppAssistanceService implements InAppAssistanceServiceInt
 
             $reply = $conversation->addMessage('assistant', $output, $metadata);
             $this->titleTheConversation($conversation, $reply);
+            app(RagQueryRecorder::class)->record(
+                $authenticated_user,
+                $access,
+                $input,
+                count($documents),
+                $documentation_citation_count,
+                $retrieval_latency_ms,
+            );
             $this->report($progress, RunProgress::FINISHED, RunProgress::STEP_VALIDATE);
 
             return $reply;
