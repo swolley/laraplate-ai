@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\AI\Database\Factories\WriteProposalFactory;
 use Modules\AI\Enums\AITables;
 use Modules\AI\Enums\WriteProposalStatus;
+use Modules\Core\Contracts\IsPartOfParent;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\Model;
 use Override;
@@ -31,7 +32,7 @@ use Override;
  * @property \Carbon\CarbonImmutable $expires_at
  * @property \Carbon\CarbonImmutable|null $resolved_at
  */
-final class WriteProposal extends Model
+final class WriteProposal extends Model implements IsPartOfParent
 {
     /**
      * An audit record of what the assistant asked for: never soft deleted.
@@ -70,6 +71,15 @@ final class WriteProposal extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The relation to the record this one only exists inside, whose visibility it inherits.
+     */
+    #[Override]
+    public function parentRelation(): string
+    {
+        return 'conversation';
     }
 
     /**

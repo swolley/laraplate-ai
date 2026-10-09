@@ -6,10 +6,11 @@ namespace Modules\AI\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\AI\Enums\AITables;
+use Modules\Core\Contracts\IsPartOfParent;
 use Modules\Core\Overrides\Model;
 use Override;
 
-final class ConversationSummary extends Model
+final class ConversationSummary extends Model implements IsPartOfParent
 {
     /**
      * @var string
@@ -24,6 +25,15 @@ final class ConversationSummary extends Model
         'facts',
         'message_count',
     ];
+
+    /**
+     * The relation to the record this one only exists inside, whose visibility it inherits.
+     */
+    #[Override]
+    public function parentRelation(): string
+    {
+        return 'conversation';
+    }
 
     /**
      * @return BelongsTo<Conversation, $this>
