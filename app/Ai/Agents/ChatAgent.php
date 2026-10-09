@@ -28,6 +28,7 @@ class ChatAgent extends Agent
         protected ?string $systemPrompt = null,
         protected ?string $model = null,
         protected ?int $maxOutputTokens = null,
+        protected ?float $timeout = null,
     ) {
         // Agent extends NeuronAI's Workflow, whose constructor initialises the
         // workflow executor. Without this call the executor stays uninitialised
@@ -57,6 +58,16 @@ class ChatAgent extends Agent
     }
 
     /**
+     * Caps the seconds one call to the model may take, for a caller that would rather degrade than wait.
+     */
+    public function withTimeout(float $seconds): static
+    {
+        $this->timeout = $seconds;
+
+        return $this;
+    }
+
+    /**
      * A tool that fails does not end the turn: the model gets a fixed message as the tool's result and
      * can try again or answer without it. The message never carries the exception's text, which can name
      * a parameter, a class or a record. A policy violation is not a failure of the tool and is not
@@ -80,7 +91,13 @@ class ChatAgent extends Agent
 
     protected function provider(): AIProviderInterface
     {
-        return ProviderFactory::make($this->providerName, $this->model, $this->maxOutputTokens);
+        $provider = ProviderFactory::make($this->providerName, $this->model, $this->maxOutputTokens);
+
+        if ($this->timeout !== null && method_exists($provider, 'getHttpClient')) {
+            $provider->getHttpClient()->withTimeout($this->timeout);
+        }
+
+        return $provider;
     }
 
     protected function instructions(): string

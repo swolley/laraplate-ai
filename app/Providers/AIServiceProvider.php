@@ -28,6 +28,7 @@ use Modules\AI\Models\Conversation;
 use Modules\AI\Observers\MediaAnalysisRefcountObserver;
 use Modules\AI\Observers\PurgeAssistantDataOfDeletedUserObserver;
 use Modules\AI\Observers\PurgeDeletedConversationObserver;
+use Modules\AI\Search\AiSearchStrategyResolver;
 use Modules\AI\Search\MediaAnalysisSearchContributor;
 use Modules\AI\Services\ApplicationContent\ApplicationContentCitationMapper;
 use Modules\AI\Services\ApplicationContent\ApplicationContentToolProvider;
@@ -45,16 +46,13 @@ use Modules\AI\Services\Assistance\Policies\AssistantPolicyCompiler;
 use Modules\AI\Services\Assistance\Writes\AssistantWriteBudget;
 use Modules\AI\Services\Assistance\Writes\WriteProposalService;
 use Modules\AI\Services\ChatService;
-use Modules\AI\Services\CrossEncoderService;
 use Modules\AI\Services\DiscoveryTranslatableModelClassNames;
 use Modules\AI\Services\Documentation\Chunking\SplitterFactory;
 use Modules\AI\Services\Documentation\Evaluation\DocumentationEvaluationService;
 use Modules\AI\Services\EmbeddableModels;
 use Modules\AI\Services\EmbeddingService;
 use Modules\AI\Services\EmbeddingVectorSearchAvailability;
-use Modules\AI\Services\LlmQueryIntentParser;
 use Modules\AI\Services\SearchEmbedder;
-use Modules\AI\Services\SearchOrchestratorAgent;
 use Modules\AI\Services\Tools\CompositeContextualToolProvider;
 use Modules\AI\Services\Tools\ContextualToolProviderInterface;
 use Modules\AI\Services\Tools\CrudToolProvider;
@@ -63,9 +61,7 @@ use Modules\Core\Filament\ResourceSchemaContributorRegistry;
 use Modules\Core\Models\Media;
 use Modules\Core\Models\User;
 use Modules\Core\Overrides\ModuleServiceProvider;
-use Modules\Core\Search\Contracts\IQueryIntentParser;
-use Modules\Core\Search\Contracts\IReranker;
-use Modules\Core\Search\Contracts\ISearchPlanner;
+use Modules\Core\Search\Contracts\ISearchStrategyResolver;
 use Modules\Core\Search\Contracts\ITextEmbedder;
 use Modules\Core\Search\Contracts\IVectorSearchAvailability;
 use Modules\Core\Search\SearchableContributorRegistry;
@@ -218,13 +214,10 @@ class AIServiceProvider extends ModuleServiceProvider
      */
     private function registerSearchBindings(): void
     {
-        if (! config('ai.features.search_orchestration.enabled', true)) {
-            return;
-        }
-
-        $this->app->singleton(IReranker::class, CrossEncoderService::class);
-        $this->app->singleton(ISearchPlanner::class, SearchOrchestratorAgent::class);
-        $this->app->singleton(IQueryIntentParser::class, LlmQueryIntentParser::class);
+        // One contract overlaid, per request: Core's own components stay bound to its search contracts,
+        // so a search that asks for `fast` never pays for a model. The embedder stays bound for the
+        // commands that embed outside a search.
+        $this->app->singleton(ISearchStrategyResolver::class, AiSearchStrategyResolver::class);
         $this->app->singleton(ITextEmbedder::class, SearchEmbedder::class);
     }
 }

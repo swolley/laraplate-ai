@@ -309,22 +309,27 @@ When the AI module is disabled:
 - Core's `IndexModelFallbackListener` handles indexing without pre-processing
 - Application continues to function normally
 
-#### Search orchestration bindings
+#### Search modes and the AI overlay
 
-When `ai.features.search_orchestration.enabled` is true (default; the environment variable
-`AI_SEARCH_ORCHESTRATION_ENABLED`, which stays an env variable because it is read once at boot to choose
-the container bindings, before any settings overlay applies), `AIServiceProvider` overrides
-four Core search contracts. Three of them have a Core fallback; one does not:
+A search asks for a mode per request: `fast` (default, Core's own cheap path), `balanced` (adds the query
+embedding) or `deep` (adds LLM intent parsing and planning, and cross-encoder reranking). `AIServiceProvider`
+binds one Core contract, `ISearchStrategyResolver`, to `AiSearchStrategyResolver`; it no longer rebinds the
+planner, reranker or intent parser, so a `fast` search never builds an AI class. A mode that cannot be served is
+answered by a cheaper one and `meta.search.degraded_reason` says why.
 
-| Contract | AI implementation | Core fallback | Effect without AI |
-|----------|-------------------|---------------|-------------------|
-| `ITextEmbedder` | `SearchEmbedder` | **none** | vector and hybrid retrieval unavailable |
-| `IReranker` | `CrossEncoderService` | `HeuristicReranker` | reranking still runs, lexical heuristics only |
-| `ISearchPlanner` | `SearchOrchestratorAgent` | `FallbackSearchPlanner` | plan from rules, not from an LLM |
-| `IQueryIntentParser` | `LlmQueryIntentParser` | `SimpleQueryIntentParser` | no LLM query expansion |
+| Mode | Components | Needs |
+|------|------------|-------|
+| `fast` | Core's `FallbackSearchPlanner`, `HeuristicReranker`, `SimpleQueryIntentParser`, no vector | nothing |
+| `balanced` | the same, plus the query embedding (`SearchEmbedder`) | the embedding service |
+| `deep` | `SearchOrchestratorAgent`, `LlmQueryIntentParser`, `CrossEncoderService`, embedding | an LLM provider (for example `OLLAMA_API_URL`) |
 
-Vector retrieval therefore needs **both** `core.search.vector.enabled` = true in Core and the AI module
-providing `ITextEmbedder`. Pipeline details: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `AI_SEARCH_ORCHESTRATION_ENABLED` | `true` | when false, `balanced` and `deep` are served as `fast` (`search_orchestration_disabled`) |
+| `AI_SEARCH_LLM_TIMEOUT` | `10` | seconds one LLM call of a `deep` search may take before it falls back to rules |
+
+Vector retrieval needs **both** `core.search.vector.enabled` = true in Core and the AI module providing the
+embedder. Pipeline details: `Modules/Core/docs/rag/SEARCH_RETRIEVAL_PIPELINE.md`.
 
 ## Scripts
 

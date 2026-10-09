@@ -101,3 +101,23 @@ it('tells the model a tool has been called too often', function (): void {
 it('lets a policy violation end the turn instead of handing it to the model', function (): void {
     chatAgentToolErrorFor(new Modules\AI\Exceptions\AssistancePolicyViolationException('unsafe_output'));
 })->throws(Modules\AI\Exceptions\AssistancePolicyViolationException::class);
+
+it('caps the seconds of one call on the provider it builds', function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+
+    $agent = ChatAgent::make(providerName: 'ollama')->withTimeout(7.0);
+    $provider = (new ReflectionMethod($agent, 'provider'))->invoke($agent);
+    $client = $provider->getHttpClient();
+
+    expect((new ReflectionProperty($client, 'timeout'))->getValue($client))->toBe(7.0);
+});
+
+it('leaves the provider timeout alone when none is asked for', function (): void {
+    config()->set('ai.providers.ollama.api_url', 'http://localhost:11434');
+
+    $agent = ChatAgent::make(providerName: 'ollama');
+    $provider = (new ReflectionMethod($agent, 'provider'))->invoke($agent);
+    $client = $provider->getHttpClient();
+
+    expect((new ReflectionProperty($client, 'timeout'))->getValue($client))->toBe(60.0);
+});
