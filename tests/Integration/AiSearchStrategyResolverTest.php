@@ -57,6 +57,7 @@ it('serves deep with the LLM components, the cross-encoder and the embedder', fu
         ->and($strategy->intent_parser)->toBeInstanceOf(LlmQueryIntentParser::class)
         ->and($strategy->reranker)->toBeInstanceOf(CrossEncoderService::class)
         ->and($strategy->embedder)->toBeInstanceOf(SearchEmbedder::class)
+        ->and($strategy->max_retries)->toBe(2)
         ->and($strategy->degraded_reason)->toBeNull();
 });
 

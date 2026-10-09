@@ -25,6 +25,11 @@ use Throwable;
  */
 final readonly class AiSearchStrategyResolver implements ISearchStrategyResolver
 {
+    /**
+     * The most a `deep` search may be repeated; the caller's `retries` and the Settings cap come below this.
+     */
+    private const int DEEP_MAX_RETRIES = 2;
+
     public function __construct(
         private CoreSearchStrategyResolver $core,
         private Application $app,
@@ -66,6 +71,7 @@ final readonly class AiSearchStrategyResolver implements ISearchStrategyResolver
                 reranker: $this->app->make(CrossEncoderService::class),
                 intent_parser: $this->app->make(LlmQueryIntentParser::class),
                 embedder: $embedder,
+                max_retries: self::DEEP_MAX_RETRIES,
             );
         } catch (Throwable) {
             return $this->degraded($cheap, 'deep_unavailable');
